@@ -1,0 +1,6 @@
+# Activation code workflow
+1. Admin creates a confirmed customer Auth account (public signups remain disabled).
+2. In the integrated admin panel, choose a plan and duration, then issue a code. Copy the one-time plaintext message immediately; only the SHA-256 hash is stored. Code redemption window is 7 days; license duration begins on redemption. Redeeming replaces the existing license with the selected plan/duration, not an additive extension.
+3. Customer enters their email/password and optional activation code in the unified login. The authenticated user ID must match the issued code, and the server atomically consumes it.
+4. Subsequent logins and compatible version updates do not need a code. Issuing another code invalidates older unused codes; direct license changes invalidate pending codes. Admin may revoke unused codes separately. Used codes cannot be reused.
+5. No customer project files, passwords, or plaintext codes are stored by the application database. Supabase Auth handles password credentials. Device limits, payment automation, self-signup, password reset, and anti-copy protection of public frontend code are not implemented.

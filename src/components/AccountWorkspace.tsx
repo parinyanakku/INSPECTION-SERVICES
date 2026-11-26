@@ -15,6 +15,7 @@ async function request<T>(path:string,token?:string,body?:unknown):Promise<T>{
 async function allowed(token:string){return (await request<boolean>('/rest/v1/rpc/inspection_has_access',token,{}))===true;}
 export default function AccountWorkspace(){
  const [session,setSession]=useState<Session|null>(null),[blocked,setBlocked]=useState(false),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[storage,setStorage]=useState(workspaceStatus);
+ const [activationCode,setActivationCode]=useState('');
  const [isAdmin,setIsAdmin]=useState(false),[adminOpen,setAdminOpen]=useState(false);
  const live=useRef<Session|null>(null);
  useEffect(()=>{const listen=()=>setStorage(workspaceStatus());window.addEventListener('tis-workspace-storage',listen);return()=>window.removeEventListener('tis-workspace-storage',listen);},[]);
@@ -22,7 +23,13 @@ export default function AccountWorkspace(){
    e.preventDefault();if(busy)return;setBusy(true);setError('');
    try{
      const s=await request<Session>('/auth/v1/token?grant_type=password',undefined,{email:email.trim(),password});
-     if(!s?.access_token||!s.user?.id||!await allowed(s.access_token))throw Error('บัญชียังไม่ได้รับสิทธิ์ หรือสิทธิ์หมดอายุ/ถูกระงับ');
+     if(!s?.access_token||!s.user?.id)throw Error('ไม่พบข้อมูลบัญชี');
+     if(activationCode.trim()){
+       try{await request('/rest/v1/rpc/inspection_redeem_code',s.access_token,{p_code:activationCode.trim()});}
+       catch{throw Error('เปิดใช้งานรหัสไม่สำเร็จ: ตรวจสอบว่ารหัสตรงกับบัญชีนี้ ยังไม่ถูกใช้ และไม่หมดอายุ หากเคยใช้แล้วให้เข้าสู่ระบบโดยไม่กรอกรหัส');}
+       setActivationCode('');
+     }
+     if(!await allowed(s.access_token))throw Error('บัญชียังไม่ได้รับสิทธิ์ หรือสิทธิ์หมดอายุ/ถูกระงับ กรุณาติดต่อผู้ดูแลเพื่อรับรหัสลงทะเบียน');
      const admin = (await request<boolean>('/rest/v1/rpc/inspection_is_admin',s.access_token,{}))===true;
      await openWorkspace(s.user.id);
      live.current=s;setSession(s);setBlocked(false);setIsAdmin(admin);setAdminOpen(false);
@@ -60,6 +67,7 @@ export default function AccountWorkspace(){
  <h1 className="text-xl font-bold text-blue-950">TEAM INSPECTION PRO ELITE</h1><p className="text-sm text-slate-600">เข้าสู่ระบบเพื่อเปิดพื้นที่งานส่วนตัวบนอุปกรณ์นี้</p>
  <form onSubmit={login} className="space-y-3"><label className="block text-sm font-medium">อีเมล<input type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)} className="block w-full border rounded-lg p-2 mt-1"/></label>
  <label className="block text-sm font-medium">รหัสผ่าน<input type="password" autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)} className="block w-full border rounded-lg p-2 mt-1"/></label>
+ <details className="border border-slate-200 rounded-lg p-3"><summary className="cursor-pointer text-sm font-semibold text-blue-800">มีรหัสลงทะเบียน / ต่ออายุ License</summary><label className="block text-sm font-medium mt-3">รหัสลงทะเบียน<input autoComplete="off" spellCheck={false} value={activationCode} onChange={e=>setActivationCode(e.target.value)} placeholder="TIP-..." className="block w-full border rounded-lg p-2 mt-1"/></label><p className="text-xs text-slate-500 mt-2">กรอกเฉพาะครั้งแรกที่เปิดใช้งานหรือต่ออายุ รหัสใช้ได้ครั้งเดียวและผูกกับบัญชีของคุณ</p></details>
  <button disabled={busy} className="w-full bg-blue-800 text-white font-bold p-3 rounded-lg disabled:opacity-50">{busy?'กำลังตรวจสอบ…':'เข้าสู่ระบบ'}</button></form>
  {error&&<p className="text-sm text-red-700" role="alert">{error}</p>}<p className="text-xs text-slate-500">ไฟล์งานเก็บในเบราว์เซอร์นี้เท่านั้น ไม่ซิงก์ระหว่างเครื่อง โปรดสำรอง JSON เป็นประจำ รูปที่กดวิเคราะห์จะส่งไปยัง Google Gemini เพื่อวิเคราะห์</p></section></main>;
  return <><div className="bg-slate-900 text-white px-4 py-2 flex flex-wrap items-center gap-3 text-xs"><span>{session.user.email} · พื้นที่งานส่วนตัว {isAdmin&&!blocked&&<strong className="ml-2 text-amber-300">Admin</strong>}</span>{isAdmin&&!blocked&&<button type="button" disabled={busy} onClick={()=>setAdminOpen(true)} className="bg-blue-600 hover:bg-blue-500 rounded-lg px-3 py-1.5 font-semibold">จัดการบัญชีลูกค้า / License</button>}<span className="ml-auto">{storage.failed?'บันทึกไม่สำเร็จ — สำรอง JSON':storage.pending?'กำลังบันทึก…':'ข้อมูลอยู่ในเครื่องนี้'}</span><button disabled={busy} onClick={logout} className="border rounded px-2 py-1">ออกจากระบบ</button></div>
