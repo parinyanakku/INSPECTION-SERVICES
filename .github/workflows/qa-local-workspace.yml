@@ -1,0 +1,28 @@
+name: Local workspace browser tests
+on:
+  push:
+    branches: [qa/local-workspace]
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-package-lock
+      - run: npm install --no-save --no-package-lock playwright@1.56.1
+      - run: npx playwright install --with-deps chromium
+      - name: Test account storage and mocked login
+        run: |
+          set -euo pipefail
+          npm exec vite -- --host 127.0.0.1 --port 4173 --strictPort > /tmp/vite-test.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; cat /tmp/vite-test.log' EXIT
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then break; fi
+            sleep 1
+          done
+          node tests/local-workspace.mjs
