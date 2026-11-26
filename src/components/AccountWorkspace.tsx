@@ -1,5 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
 import App from '../App';
+import { AdminLicensePanel } from './AdminLicensePanel';
 import {openWorkspace,closeWorkspace,flushWorkspace,workspaceStatus} from '../utils/workspaceStorage';
 const API='https://geleptwbxjoumxyxbhqa.supabase.co';
 const PUBLIC_KEY="sb_publishable_v-AeQKI2OT9QRGVP1HVHbQ_STCiFAnk";
@@ -14,6 +15,7 @@ async function request<T>(path:string,token?:string,body?:unknown):Promise<T>{
 async function allowed(token:string){return (await request<boolean>('/rest/v1/rpc/inspection_has_access',token,{}))===true;}
 export default function AccountWorkspace(){
  const [session,setSession]=useState<Session|null>(null),[blocked,setBlocked]=useState(false),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[storage,setStorage]=useState(workspaceStatus);
+ const [isAdmin,setIsAdmin]=useState(false),[adminOpen,setAdminOpen]=useState(false);
  const live=useRef<Session|null>(null);
  useEffect(()=>{const listen=()=>setStorage(workspaceStatus());window.addEventListener('tis-workspace-storage',listen);return()=>window.removeEventListener('tis-workspace-storage',listen);},[]);
  async function login(e:React.FormEvent){
@@ -21,8 +23,9 @@ export default function AccountWorkspace(){
    try{
      const s=await request<Session>('/auth/v1/token?grant_type=password',undefined,{email:email.trim(),password});
      if(!s?.access_token||!s.user?.id||!await allowed(s.access_token))throw Error('บัญชียังไม่ได้รับสิทธิ์ หรือสิทธิ์หมดอายุ/ถูกระงับ');
+     const admin = (await request<boolean>('/rest/v1/rpc/inspection_is_admin',s.access_token,{}))===true;
      await openWorkspace(s.user.id);
-     live.current=s;setSession(s);setBlocked(false);
+     live.current=s;setSession(s);setBlocked(false);setIsAdmin(admin);setAdminOpen(false);
    }catch(e){setError(e instanceof Error?e.message:'เข้าสู่ระบบไม่สำเร็จ');}
    finally{setBusy(false);setPassword('');}
  }
@@ -45,7 +48,9 @@ export default function AccountWorkspace(){
    let running=false,disposed=false;
    const check=async()=>{if(running||disposed||live.current!==session)return;running=true;try{
      if(!await allowed(session.access_token))throw Error('สิทธิ์หมดอายุหรือถูกระงับ');
-   }catch{if(!disposed&&live.current===session){setBlocked(true);setError('ไม่สามารถยืนยันสิทธิ์ได้ กรุณาออกจากระบบและเข้าสู่ระบบใหม่');}}finally{running=false;}};
+     const admin = (await request<boolean>('/rest/v1/rpc/inspection_is_admin',session.access_token,{}))===true;
+     if(!disposed&&live.current===session){setIsAdmin(admin);if(!admin)setAdminOpen(false);}
+   }catch{if(!disposed&&live.current===session){setIsAdmin(false);setAdminOpen(false);setBlocked(true);setError('ไม่สามารถยืนยันสิทธิ์ได้ กรุณาออกจากระบบและเข้าสู่ระบบใหม่');}}finally{running=false;}};
    const timer=window.setInterval(check,60000);
    const focus=()=>{if(document.visibilityState==='visible')void check();};
    document.addEventListener('visibilitychange',focus);
@@ -57,8 +62,10 @@ export default function AccountWorkspace(){
  <label className="block text-sm font-medium">รหัสผ่าน<input type="password" autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)} className="block w-full border rounded-lg p-2 mt-1"/></label>
  <button disabled={busy} className="w-full bg-blue-800 text-white font-bold p-3 rounded-lg disabled:opacity-50">{busy?'กำลังตรวจสอบ…':'เข้าสู่ระบบ'}</button></form>
  {error&&<p className="text-sm text-red-700" role="alert">{error}</p>}<p className="text-xs text-slate-500">ไฟล์งานเก็บในเบราว์เซอร์นี้เท่านั้น ไม่ซิงก์ระหว่างเครื่อง โปรดสำรอง JSON เป็นประจำ รูปที่กดวิเคราะห์จะส่งไปยัง Google Gemini เพื่อวิเคราะห์</p></section></main>;
- return <><div className="bg-slate-900 text-white px-4 py-2 flex flex-wrap items-center gap-3 text-xs"><span>{session.user.email} · พื้นที่งานส่วนตัว</span><span className="ml-auto">{storage.failed?'บันทึกไม่สำเร็จ — สำรอง JSON':storage.pending?'กำลังบันทึก…':'ข้อมูลอยู่ในเครื่องนี้'}</span><button disabled={busy} onClick={logout} className="border rounded px-2 py-1">ออกจากระบบ</button></div>
+ return <><div className="bg-slate-900 text-white px-4 py-2 flex flex-wrap items-center gap-3 text-xs"><span>{session.user.email} · พื้นที่งานส่วนตัว {isAdmin&&!blocked&&<strong className="ml-2 text-amber-300">Admin</strong>}</span>{isAdmin&&!blocked&&<button type="button" disabled={busy} onClick={()=>setAdminOpen(true)} className="bg-blue-600 hover:bg-blue-500 rounded-lg px-3 py-1.5 font-semibold">จัดการบัญชีลูกค้า / License</button>}<span className="ml-auto">{storage.failed?'บันทึกไม่สำเร็จ — สำรอง JSON':storage.pending?'กำลังบันทึก…':'ข้อมูลอยู่ในเครื่องนี้'}</span><button disabled={busy} onClick={logout} className="border rounded px-2 py-1">ออกจากระบบ</button></div>
  {error&&<p role="alert" className="bg-red-100 text-red-900 p-3 text-sm">{error}</p>}
  {storage.failed&&<p role="alert" className="bg-red-100 text-red-900 p-3 text-sm">บันทึก IndexedDB ไม่สำเร็จ กรุณาบันทึกเป็นไฟล์ JSON ก่อนปิดหน้า</p>}
- {blocked?<div className="p-6">ระงับการเปิดพื้นที่งานจนกว่าจะเข้าสู่ระบบใหม่</div>:<App key={session.user.id}/>}</>;
+ {blocked?<div className="p-6">ระงับการเปิดพื้นที่งานจนกว่าจะเข้าสู่ระบบใหม่</div>:<App key={session.user.id}/>}
+ {adminOpen&&isAdmin&&!blocked&&<AdminLicensePanel key={session.user.id} rpc={(name,body={})=>request('/rest/v1/rpc/'+name,session.access_token,body)} onClose={()=>setAdminOpen(false)}/>}
+ </>;
 }

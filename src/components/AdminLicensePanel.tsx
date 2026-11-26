@@ -1,0 +1,64 @@
+import React,{useEffect,useRef,useState} from 'react';
+
+type Plan='trial'|'monthly'|'yearly'|'lifetime'|'custom';
+type Account={user_id:string;email:string|null;display_name:string|null;role:string;plan:Plan|null;active:boolean;expires_at:string|null;last_sign_in_at:string|null};
+type Edit={display_name:string;plan:Plan;active:boolean;expires_at:string};
+type Rpc=(name:string,body?:unknown)=>Promise<unknown>;
+const plans:Record<Plan,string>={trial:'ทดลองใช้ 7 วัน',monthly:'รายเดือน',yearly:'รายปี',lifetime:'ตลอดชีพ',custom:'กำหนดเอง'};
+function localDate(value:string|null){if(!value)return '';const d=new Date(value);if(!Number.isFinite(d.getTime()))return '';const p=(n:number)=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes());}
+function expiry(plan:Plan){if(plan==='lifetime')return '';const d=new Date();d.setDate(d.getDate()+({trial:7,monthly:30,yearly:365,custom:30,lifetime:0}[plan]));return localDate(d.toISOString());}
+function initial(u:Account):Edit{const plan=u.plan||'trial';return {display_name:u.display_name||'',plan,active:!!u.active,expires_at:localDate(u.expires_at)||expiry(plan)};}
+function state(u:Account){return !u.plan?'ยังไม่ได้รับสิทธิ์':!u.active?'ระงับสิทธิ์':u.expires_at&&Date.parse(u.expires_at)<=Date.now()?'หมดอายุ':'ใช้งานได้';}
+function AccountRow({u,rpc,onSaved}:{u:Account;rpc:Rpc;onSaved:()=>Promise<void>}){
+ const [edit,setEdit]=useState(()=>initial(u)),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ useEffect(()=>{setEdit(initial(u));},[u]);
+ const readOnly=u.role==='admin';
+ async function save(){
+  if(readOnly||busy)return;setBusy(true);setError('');
+  try{
+   const d=edit.plan==='lifetime'?null:new Date(edit.expires_at);
+   if(d&&!Number.isFinite(d.getTime()))throw Error('กรุณาระบุวันหมดอายุ');
+   if(edit.active&&d&&d.getTime()<=Date.now()&&!window.confirm('วันหมดอายุผ่านไปแล้ว ยืนยันบันทึกหรือไม่?'))return;
+   await rpc('inspection_admin_set_license',{p_user_id:u.user_id,p_display_name:edit.display_name.trim(),p_plan:edit.plan,p_active:edit.active,p_expires_at:d?d.toISOString():null});
+   await onSaved();
+  }catch(e){setError(e instanceof Error?e.message:'บันทึกไม่สำเร็จ');}finally{setBusy(false);}
+ }
+ const inputClass='border border-slate-300 rounded-lg px-2 py-1.5 text-sm w-full disabled:bg-slate-100';
+ return <tr className="border-b border-slate-200 align-top">
+ <td className="p-3 min-w-[220px]"><div className="font-medium break-all">{u.email||u.user_id}</div><input aria-label="ชื่อผู้ใช้" className={inputClass+' mt-1'} value={edit.display_name} disabled={readOnly||busy} onChange={e=>setEdit(p=>({...p,display_name:e.target.value}))}/><div className="text-xs text-slate-500 mt-1">เข้าใช้ล่าสุด: {u.last_sign_in_at?new Date(u.last_sign_in_at).toLocaleString('th-TH'):'—'}</div></td>
+ <td className="p-3 whitespace-nowrap"><div>{readOnly?'ผู้ดูแลระบบ':'ลูกค้า'}</div><div className="text-xs text-slate-500">{state(u)}</div></td>
+ <td className="p-3 min-w-[160px]"><select aria-label="แพ็กเกจ" className={inputClass} disabled={readOnly||busy} value={edit.plan} onChange={e=>{const plan=e.target.value as Plan;setEdit(p=>({...p,plan,expires_at:expiry(plan)}));}}>{Object.entries(plans).map(([p,label])=><option key={p} value={p}>{label}</option>)}</select></td>
+ <td className="p-3 min-w-[205px]"><input aria-label="วันหมดอายุ" type="datetime-local" className={inputClass} value={edit.expires_at} disabled={readOnly||busy||edit.plan==='lifetime'} onChange={e=>setEdit(p=>({...p,expires_at:e.target.value}))}/></td>
+ <td className="p-3"><label className="flex gap-2 items-center whitespace-nowrap"><input type="checkbox" checked={edit.active} disabled={readOnly||busy} onChange={e=>setEdit(p=>({...p,active:e.target.checked}))}/>เปิดใช้งาน</label></td>
+ <td className="p-3 min-w-[110px]"><button type="button" disabled={readOnly||busy} onClick={save} className="bg-blue-700 text-white rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-40">{readOnly?'Admin':busy?'กำลังบันทึก':'บันทึกสิทธิ์'}</button>{error&&<p role="alert" className="text-xs text-red-700 mt-1">{error}</p>}</td>
+ </tr>;
+}
+export function AdminLicensePanel({rpc,onClose}:{rpc:Rpc;onClose:()=>void}){
+ const [users,setUsers]=useState<Account[]>([]),[loading,setLoading]=useState(true),[message,setMessage]=useState(''),[error,setError]=useState(''),[query,setQuery]=useState('');
+ const rpcRef=useRef(rpc);rpcRef.current=rpc;
+ const alive=useRef(false);
+ async function load(saved=false){
+   if(!alive.current)return;
+   setLoading(true);setError('');setMessage('');
+   try{
+     // Database RPC revalidates the caller's current admin license, independently of the UI.
+     const data=await rpcRef.current('inspection_admin_list_users');
+     if(!Array.isArray(data))throw Error('ไม่พบข้อมูลบัญชี');
+     if(alive.current){setUsers(data as Account[]);if(saved)setMessage('บันทึกสิทธิ์เรียบร้อยแล้ว');}
+   }catch(e){if(alive.current){setUsers([]);setError(e instanceof Error?e.message:'ไม่สามารถเรียกดูบัญชีได้');}}
+   finally{if(alive.current)setLoading(false);}
+ }
+ useEffect(()=>{alive.current=true;void load();return()=>{alive.current=false;};},[]);
+ useEffect(()=>{const listener=(e:KeyboardEvent)=>{if(e.key==='Escape')onClose();};window.addEventListener('keydown',listener);return()=>window.removeEventListener('keydown',listener);},[onClose]);
+ const rows=users.filter(u=>((u.email||'')+' '+(u.display_name||'')).toLowerCase().includes(query.trim().toLowerCase()));
+ return <div className="fixed inset-0 z-[120] bg-slate-900/60 flex items-center justify-center p-3" role="dialog" aria-modal="true" aria-labelledby="admin-license-title">
+ <section className="bg-white rounded-2xl shadow-xl max-w-6xl w-full max-h-[90vh] overflow-auto">
+ <header className="sticky top-0 bg-slate-900 text-white p-4 flex items-center justify-between gap-3"><div><h2 id="admin-license-title" className="font-bold text-lg">จัดการบัญชีผู้ใช้และ License</h2><p className="text-xs text-slate-300">ผู้ดูแลระบบ · TEAM INSPECTION PRO ELITE</p></div><button type="button" onClick={onClose} className="border border-slate-500 rounded-lg px-3 py-2 text-sm">ปิด</button></header>
+ <div className="p-4 space-y-4">
+ <div className="grid grid-cols-3 gap-2 text-sm"><div className="bg-slate-100 p-3 rounded-xl">บัญชีทั้งหมด<strong className="block text-xl">{users.length}</strong></div><div className="bg-emerald-50 p-3 rounded-xl">ใช้งานได้<strong className="block text-xl">{users.filter(u=>state(u)==='ใช้งานได้').length}</strong></div><div className="bg-amber-50 p-3 rounded-xl">ยังไม่มีสิทธิ์ / ระงับ<strong className="block text-xl">{users.filter(u=>state(u)!=='ใช้งานได้').length}</strong></div></div>
+ <div className="flex flex-wrap items-center gap-2"><input aria-label="ค้นหาบัญชี" placeholder="ค้นหาอีเมลหรือชื่อ" value={query} onChange={e=>setQuery(e.target.value)} className="border rounded-lg p-2 flex-1 min-w-[160px] text-sm"/><button type="button" onClick={()=>void load()} disabled={loading} className="border rounded-lg px-3 py-2 text-sm">รีเฟรช</button><a className="bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-semibold" href="https://supabase.com/dashboard/project/geleptwbxjoumxyxbhqa/auth/users" target="_blank" rel="noopener noreferrer">สร้างบัญชีใหม่ใน Supabase</a></div>
+ <p className="text-xs text-slate-500">สร้างอีเมลลูกค้าผ่าน Supabase Authentication ก่อน แล้วรีเฟรชเพื่อกำหนดสิทธิ์ในหน้านี้ ไม่จัดเก็บไฟล์งานของลูกค้า</p>
+ {error&&<p role="alert" className="text-red-700 text-sm">{error}</p>}{message&&<p role="status" className="text-emerald-700 text-sm">{message}</p>}
+ {loading?<p className="text-sm text-slate-500">กำลังโหลดรายชื่อ...</p>:<div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-100 text-left"><tr>{['อีเมล / ชื่อ','สิทธิ์ / สถานะ','แพ็กเกจ','หมดอายุ (เวลาท้องถิ่น)','การใช้งาน','จัดการ'].map(x=><th className="p-3 whitespace-nowrap" key={x}>{x}</th>)}</tr></thead><tbody>{rows.map(u=><AccountRow key={u.user_id} u={u} rpc={rpcRef.current} onSaved={()=>load(true)}/>)}</tbody></table>{!rows.length&&!error&&<p className="p-4 text-slate-500">ไม่พบบัญชี</p>}</div>}
+ </div></section></div>;
+}
