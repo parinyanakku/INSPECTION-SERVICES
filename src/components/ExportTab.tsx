@@ -547,6 +547,11 @@ export const ExportTab: React.FC<ExportTabProps> = ({
                       onChange={(e) => {
                         if (e.target.value === '__custom__') {
                           setIsCustomCondition(true);
+                          // Do not carry the selected preset into a new custom entry.
+                          updateBook((prev) => ({
+                            ...prev,
+                            propertyCondition: '',
+                          }));
                           setTimeout(() => customConditionInputRef.current?.focus(), 0);
                         } else {
                           setIsCustomCondition(false);
@@ -564,23 +569,26 @@ export const ExportTab: React.FC<ExportTabProps> = ({
                         </option>
                       ))}
                       <option value="__custom__">
-                        {lang === 'en' ? 'Custom...' : 'กำหนดเอง...'}
+                        {lang === 'en' ? 'Custom' : 'กำหนดเอง'}
                       </option>
                     </select>
                     <input
                       ref={customConditionInputRef}
                       type="text"
                       value={reportBook.propertyCondition}
+                      readOnly={!isCustomCondition && conditionPresets.includes(reportBook.propertyCondition)}
+                      aria-label={t.coverConditionLabel}
                       onChange={(e) => {
+                        if(!isCustomCondition && conditionPresets.includes(reportBook.propertyCondition))return;
                         const val = e.target.value;
-                        setIsCustomCondition(!conditionPresets.includes(val));
+                        setIsCustomCondition(true);
                         updateBook((prev) => ({
                           ...prev,
                           propertyCondition: val,
                         }));
                       }}
-                      placeholder={t.coverConditionCustomPlaceholder}
-                      className="flex-1 min-w-0 px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder={lang === 'en' ? 'Custom' : 'กำหนดเอง'}
+                      className="flex-1 min-w-0 px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500 read-only:bg-slate-100 read-only:text-slate-600 read-only:cursor-default"
                     />
                   </div>
                 </div>
