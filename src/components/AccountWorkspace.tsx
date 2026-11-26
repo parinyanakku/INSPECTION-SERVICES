@@ -33,8 +33,10 @@ export default function AccountWorkspace(){
    try{
      if(!await flushWorkspace())throw Error('ยังบันทึกข้อมูลไม่สำเร็จ โปรดสำรองข้อมูลลงเครื่องก่อน');
      const s=live.current;live.current=null;
-     await closeWorkspace();setSession(null);setBlocked(false);
-     if(s)void fetch(API+'/auth/v1/logout?scope=local',{method:'POST',headers:{apikey:PUBLIC_KEY,Authorization:'Bearer '+s.access_token},signal:AbortSignal.timeout(5000)}).catch(()=>{});
+     await closeWorkspace();
+     if(s)try{await fetch(API+'/auth/v1/logout?scope=local',{method:'POST',headers:{apikey:PUBLIC_KEY,Authorization:'Bearer '+s.access_token},signal:AbortSignal.timeout(5000)});}catch{/* local session is closed */}
+     // Reload the entire runtime so late async callbacks cannot write into a different account.
+     window.location.reload();
    }catch(e){setError(e instanceof Error?e.message:'ออกจากระบบไม่สำเร็จ');}
    finally{setBusy(false);}
  }
