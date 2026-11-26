@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.52",
+  "latest": "v1.0.53",
   "releases": [
+    {
+      "version": "v1.0.53",
+      "build": 53,
+      "storageSchema": 2,
+      "date": "2026-11-26T17:02:02.735Z",
+      "notes": "Fix DNG black imports using validated full-size embedded JPEG and RAW fallback",
+      "commit": "bb4a40c2a4003cddcc18b445c2e6d6bf844730fc"
+    },
     {
       "version": "v1.0.52",
       "build": 52,
