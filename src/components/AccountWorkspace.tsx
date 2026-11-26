@@ -74,6 +74,10 @@ export default function AccountWorkspace(){
  {error&&<p role="alert" className="bg-red-100 text-red-900 p-3 text-sm">{error}</p>}
  {storage.failed&&<p role="alert" className="bg-red-100 text-red-900 p-3 text-sm">บันทึก IndexedDB ไม่สำเร็จ กรุณาบันทึกเป็นไฟล์ JSON ก่อนปิดหน้า</p>}
  {blocked?<div className="p-6">ระงับการเปิดพื้นที่งานจนกว่าจะเข้าสู่ระบบใหม่</div>:<App key={session.user.id}/>}
- {adminOpen&&isAdmin&&!blocked&&<AdminLicensePanel key={session.user.id} rpc={(name,body={})=>request('/rest/v1/rpc/'+name,session.access_token,body)} onClose={()=>setAdminOpen(false)}/>}
+ {adminOpen&&isAdmin&&!blocked&&<AdminLicensePanel key={session.user.id} rpc={(name,body={})=>request('/rest/v1/rpc/'+name,session.access_token,body)} createCustomer={async body=>{
+   const r=await fetch(API+'/functions/v1/inspection-create-customer',{method:'POST',headers:{apikey:PUBLIC_KEY,Authorization:'Bearer '+session.access_token,'Content-Type':'application/json'},body:JSON.stringify(body),cache:'no-store',signal:AbortSignal.timeout(35000)});
+   if(!r.ok)throw Error(r.status===409?'อีเมลนี้มีบัญชีอยู่แล้วหรือข้อมูลไม่ถูกต้อง':r.status===401||r.status===403?'ไม่มีสิทธิ์สร้างบัญชี กรุณาเข้าสู่ระบบใหม่':r.status===400?'ตรวจสอบชื่อ อีเมล และรหัสผ่าน':'สร้างบัญชีไม่สำเร็จ กรุณารีเฟรชรายชื่อก่อนลองใหม่');
+   return await r.json();
+ }} onClose={()=>setAdminOpen(false)}/>}
  </>;
 }

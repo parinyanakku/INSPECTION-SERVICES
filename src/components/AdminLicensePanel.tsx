@@ -71,7 +71,25 @@ function AccountRow({u,rpc,onSaved}:{u:Account;rpc:Rpc;onSaved:()=>Promise<void>
  {error&&<p role="alert" className="text-xs text-red-700 mt-1">{error}</p>}</td>
  </tr>;
 }
-export function AdminLicensePanel({rpc,onClose}:{rpc:Rpc;onClose:()=>void}){
+type CustomerInput={email:string;display_name:string;password:string};
+type CreateResult={user_id:string;email:string;license_initialized:boolean};
+export function AdminLicensePanel({rpc,onClose,createCustomer}:{rpc:Rpc;onClose:()=>void;createCustomer:(input:CustomerInput)=>Promise<CreateResult>}){
+ const [createOpen,setCreateOpen]=useState(false),[createBusy,setCreateBusy]=useState(false);
+ const [customerName,setCustomerName]=useState(''),[customerEmail,setCustomerEmail]=useState(''),[customerPassword,setCustomerPassword]=useState(''),[showPassword,setShowPassword]=useState(false),[createError,setCreateError]=useState('');
+ function closeCreate(){if(createBusy)return;setCreateOpen(false);setCustomerPassword('');setShowPassword(false);setCreateError('');}
+ function generatePassword(){const bytes=crypto.getRandomValues(new Uint8Array(18));setCustomerPassword('Aa7!'+Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join(''));setShowPassword(true);}
+ async function submitCustomer(e:React.FormEvent){
+   e.preventDefault();if(createBusy)return;
+   const email=customerEmail.trim().toLowerCase(),name=customerName.trim();
+   if(!name||!email||customerPassword.length<12||!/[A-Za-z]/.test(customerPassword)||!/[0-9]/.test(customerPassword)){setCreateError('กรุณากรอกข้อมูลครบถ้วน รหัสผ่านอย่างน้อย 12 ตัว มีตัวอักษรอังกฤษและตัวเลข');return;}
+   setCreateBusy(true);setCreateError('');
+   try{
+     const result=await createCustomer({email,display_name:name,password:customerPassword});
+     if(!result?.user_id)throw Error('ไม่พบผลยืนยัน กรุณารีเฟรชรายชื่อก่อนลองใหม่');
+     setCustomerPassword('');setShowPassword(false);setCustomerName('');setCustomerEmail('');setCreateOpen(false);setQuery('');
+     await load();if(alive.current)setMessage(result.license_initialized?'สร้างบัญชี '+email+' สำเร็จ — ยังไม่มีสิทธิ์ใช้งาน กรุณาสร้าง License ให้ลูกค้า':'สร้างบัญชี '+email+' สำเร็จ แต่ยังไม่ได้บันทึกข้อมูลสิทธิ์ กรุณาเลือกบัญชีและกำหนด License');
+   }catch(e){setCreateError(e instanceof Error?e.message:'สร้างบัญชีไม่สำเร็จ กรุณารีเฟรชรายชื่อก่อนลองใหม่');}finally{setCreateBusy(false);}
+ }
  const [users,setUsers]=useState<Account[]>([]),[loading,setLoading]=useState(true),[message,setMessage]=useState(''),[error,setError]=useState(''),[query,setQuery]=useState('');
  const rpcRef=useRef(rpc);rpcRef.current=rpc;
  const alive=useRef(false);
@@ -94,9 +112,19 @@ export function AdminLicensePanel({rpc,onClose}:{rpc:Rpc;onClose:()=>void}){
  <header className="sticky top-0 bg-slate-900 text-white p-4 flex items-center justify-between gap-3"><div><h2 id="admin-license-title" className="font-bold text-lg">จัดการบัญชีผู้ใช้และ License</h2><p className="text-xs text-slate-300">ผู้ดูแลระบบ · TEAM INSPECTION PRO ELITE</p></div><button type="button" onClick={onClose} className="border border-slate-500 rounded-lg px-3 py-2 text-sm">ปิด</button></header>
  <div className="p-4 space-y-4">
  <div className="grid grid-cols-3 gap-2 text-sm"><div className="bg-slate-100 p-3 rounded-xl">บัญชีทั้งหมด<strong className="block text-xl">{users.length}</strong></div><div className="bg-emerald-50 p-3 rounded-xl">ใช้งานได้<strong className="block text-xl">{users.filter(u=>state(u)==='ใช้งานได้').length}</strong></div><div className="bg-amber-50 p-3 rounded-xl">ยังไม่มีสิทธิ์ / ระงับ<strong className="block text-xl">{users.filter(u=>state(u)!=='ใช้งานได้').length}</strong></div></div>
- <div className="flex flex-wrap items-center gap-2"><input aria-label="ค้นหาบัญชี" placeholder="ค้นหาอีเมลหรือชื่อ" value={query} onChange={e=>setQuery(e.target.value)} className="border rounded-lg p-2 flex-1 min-w-[160px] text-sm"/><button type="button" onClick={()=>void load()} disabled={loading} className="border rounded-lg px-3 py-2 text-sm">รีเฟรช</button><a className="bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-semibold" href="https://supabase.com/dashboard/project/geleptwbxjoumxyxbhqa/auth/users" target="_blank" rel="noopener noreferrer">สร้างบัญชีใหม่ใน Supabase</a></div>
- <p className="text-xs text-slate-500">สร้างและยืนยันบัญชีลูกค้าผ่าน Supabase Authentication ก่อน แล้วรีเฟรช เลือกแพ็กเกจและจำนวนวัน จากนั้นสร้างรหัส License เพื่อส่งลูกค้า หรือบันทึกสิทธิ์โดยตรง รหัสใช้ได้ครั้งเดียว ไม่จัดเก็บไฟล์งานลูกค้า</p>
+ <div className="flex flex-wrap items-center gap-2"><input aria-label="ค้นหาบัญชี" placeholder="ค้นหาอีเมลหรือชื่อ" value={query} onChange={e=>setQuery(e.target.value)} className="border rounded-lg p-2 flex-1 min-w-[160px] text-sm"/><button type="button" onClick={()=>void load()} disabled={loading} className="border rounded-lg px-3 py-2 text-sm">รีเฟรช</button><button type="button" onClick={()=>{setCreateError('');setCreateOpen(true);}} className="bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-semibold">+ สร้างบัญชีลูกค้า</button></div>
+ <p className="text-xs text-slate-500">สร้างบัญชีลูกค้าในหน้านี้ แล้วเลือกแพ็กเกจและจำนวนวันเพื่อออกรหัส License หรือบันทึกสิทธิ์โดยตรง รหัสใช้ได้ครั้งเดียว ไม่จัดเก็บไฟล์งานลูกค้า</p>
  {error&&<p role="alert" className="text-red-700 text-sm">{error}</p>}{message&&<p role="status" className="text-emerald-700 text-sm">{message}</p>}
  {loading?<p className="text-sm text-slate-500">กำลังโหลดรายชื่อ...</p>:<div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-100 text-left"><tr>{['อีเมล / ชื่อ','สิทธิ์ / สถานะ','แพ็กเกจ','หมดอายุ (เวลาท้องถิ่น)','การใช้งาน','จัดการ'].map(x=><th className="p-3 whitespace-nowrap" key={x}>{x}</th>)}</tr></thead><tbody>{rows.map(u=><AccountRow key={u.user_id} u={u} rpc={rpcRef.current} onSaved={()=>load(true)}/>)}</tbody></table>{!rows.length&&!error&&<p className="p-4 text-slate-500">ไม่พบบัญชี</p>}</div>}
+ {createOpen&&<div className="fixed inset-0 z-[140] bg-slate-900/60 flex items-center justify-center p-3" role="dialog" aria-modal="true" aria-labelledby="create-customer-title"><form onSubmit={submitCustomer} className="bg-white w-full max-w-md max-h-[90vh] overflow-auto rounded-2xl p-5 shadow-xl space-y-3">
+ <h3 id="create-customer-title" className="text-lg font-bold">สร้างบัญชีลูกค้าใหม่</h3><p className="text-sm text-slate-500">บัญชีใหม่จะยังไม่เปิดสิทธิ์ใช้งาน จนกว่าจะได้รับ License</p>
+ <label className="block text-sm font-semibold">ชื่อ-นามสกุล<input required maxLength={150} value={customerName} onChange={e=>setCustomerName(e.target.value)} disabled={createBusy} className="block w-full border border-slate-300 rounded-lg p-2 mt-1"/></label>
+ <label className="block text-sm font-semibold">อีเมล<input required type="email" maxLength={254} autoComplete="off" value={customerEmail} onChange={e=>setCustomerEmail(e.target.value)} disabled={createBusy} className="block w-full border border-slate-300 rounded-lg p-2 mt-1"/></label>
+ <label className="block text-sm font-semibold">รหัสผ่านเริ่มต้น<input required type={showPassword?'text':'password'} autoComplete="new-password" minLength={12} maxLength={128} value={customerPassword} onChange={e=>setCustomerPassword(e.target.value)} disabled={createBusy} className="block w-full border border-slate-300 rounded-lg p-2 mt-1"/></label>
+ <div className="flex gap-2 flex-wrap"><button type="button" disabled={createBusy} onClick={generatePassword} className="border rounded-lg px-2 py-1 text-xs">สุ่มรหัสผ่านปลอดภัย</button><button type="button" onClick={()=>setShowPassword(v=>!v)} className="border rounded-lg px-2 py-1 text-xs">{showPassword?'ซ่อนรหัสผ่าน':'แสดงรหัสผ่าน'}</button></div>
+ <p className="text-xs text-slate-500">อย่างน้อย 12 ตัว มีตัวอักษรอังกฤษและตัวเลข โปรดเก็บรหัสไว้เพื่อส่งให้ลูกค้าอย่างปลอดภัย ระบบไม่แสดงรหัสเดิมหลังสร้างบัญชี ตรวจสอบอีเมลกับลูกค้าก่อนสร้าง</p>
+ {createError&&<p className="text-sm text-red-700" role="alert">{createError}</p>}
+ <div className="flex justify-end gap-2"><button type="button" disabled={createBusy} onClick={closeCreate} className="border rounded-lg px-3 py-2">ยกเลิก</button><button type="submit" disabled={createBusy} className="bg-blue-700 text-white rounded-lg px-3 py-2 font-semibold disabled:opacity-50">{createBusy?'กำลังสร้างบัญชี…':'สร้างบัญชีลูกค้า'}</button></div>
+ </form></div>}
  </div></section></div>;
 }
