@@ -1,0 +1,125 @@
+@import "tailwindcss";
+
+:root {
+  --brand-color: #1e3a8a;
+}
+
+body {
+  font-family: 'Sarabun', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: #f8fafc;
+  color: #0f172a;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.font-mono-num {
+  font-family: 'JetBrains Mono', 'Sarabun', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.brand-bg {
+  background-color: var(--brand-color);
+}
+.brand-text {
+  color: var(--brand-color);
+}
+.brand-border {
+  border-color: var(--brand-color);
+}
+
+.pin-marker {
+  touch-action: none;
+  user-select: none;
+  transition: transform 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.pin-marker:hover {
+  transform: translate(-50%, -50%) scale(1.18);
+  z-index: 35 !important;
+}
+
+.zone-box {
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.zone-setup-active .zone-box {
+  cursor: move;
+  pointer-events: auto !important;
+  touch-action: none;
+}
+.zone-setup-active .zone-box:hover {
+  box-shadow: 0 0 0 2px #1d4ed8, 0 8px 18px -4px rgba(15, 23, 42, 0.2);
+  z-index: 25 !important;
+}
+.zone-box-selected {
+  box-shadow: 0 0 0 3px #1e3a8a, 0 10px 24px -4px rgba(30, 58, 138, 0.35) !important;
+  z-index: 28 !important;
+}
+.zone-resize-handle {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: #1e3a8a;
+  color: #fff;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: nwse-resize;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  z-index: 32;
+  touch-action: none;
+}
+.floor-drop-active {
+  outline: 3px dashed #2563eb;
+  outline-offset: -4px;
+  background-color: #eff6ff !important;
+}
+#markupCanvas {
+  touch-action: none;
+}
+
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: 'Sarabun', sans-serif !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  #printArea {
+    display: block !important;
+  }
+  .print-break-inside-avoid {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .print-page-break {
+    break-before: page;
+    page-break-before: always;
+  }
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+}

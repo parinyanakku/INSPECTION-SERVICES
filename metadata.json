@@ -1,0 +1,6 @@
+{
+  "name": "TEAM INSPECTION SERVICES — ระบบตรวจรับบ้าน & AI วิเคราะห์ Defect",
+  "description": "แพลตฟอร์มตรวจรับบ้านแบบ White-Label พร้อมแปลนบ้านแบบ Interactive กระดานมาร์ครูปภาพ วิเคราะห์ Defect ด้วย AI เปรียบเทียบรูป Before-After และส่งออกรายงาน PDF / Word / Excel",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
