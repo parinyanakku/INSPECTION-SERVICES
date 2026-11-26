@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.27",
+  "latest": "v1.0.28",
   "releases": [
+    {
+      "version": "v1.0.28",
+      "build": 28,
+      "storageSchema": 2,
+      "date": "2026-11-26T07:57:06.671Z",
+      "notes": "Preserve native photo detail in PDF and reuse front house photo on cover",
+      "commit": "1d554467d0b841f03399e96ae223970759924d7f"
+    },
     {
       "version": "v1.0.27",
       "build": 27,
