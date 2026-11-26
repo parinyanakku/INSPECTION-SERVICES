@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.31",
+  "latest": "v1.0.32",
   "releases": [
+    {
+      "version": "v1.0.32",
+      "build": 32,
+      "storageSchema": 2,
+      "date": "2026-11-26T08:16:17.802Z",
+      "notes": "Improve Thai report text baseline and table cell spacing across exports",
+      "commit": "50bb6d594d8e9ca124ded87f3bbb37a02b261964"
+    },
     {
       "version": "v1.0.31",
       "build": 31,
