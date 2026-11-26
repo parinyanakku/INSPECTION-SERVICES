@@ -42,6 +42,8 @@ export async function appendPrintableExcelReport(workbook:ExcelJS.Workbook,pages
  if(roots.length!==pages.length)throw Error('Report page count mismatch');
  const groups=new Map<string,{sheet:ExcelJS.Worksheet;count:number;cols:number;rows:number}>();
  const imageIds=new Map<string,number>();
+ const pageCounts=new Map<string,number>();
+ for(const page of pages){const key=groupKey(page);pageCounts.set(key,(pageCounts.get(key)||0)+1);}
  for(let pi=0;pi<pages.length;pi++){
  const page=pages[pi],root=roots[pi],landscape=page.orientation==='landscape';
  const W=landscape?1123:794,H=landscape?794:1123;
@@ -51,9 +53,19 @@ export async function appendPrintableExcelReport(workbook:ExcelJS.Workbook,pages
  if(!group){
    const names=sectionNames.find(n=>n[0]===key);
    const name=(names?.[lang==='en'?2:1]||'Report').slice(0,31);
+   const singlePage=pageCounts.get(key)===1;
+   // Excel's printer font metrics can make the real grid wider than the CSS
+   // grid. Fit single-page sections on both axes. For multipage sections,
+   // retain manual horizontal breaks (Excel may ignore them in fit-to-page
+   // mode) and leave a conservative margin for printer/Normal font variation.
    const sheet=workbook.addWorksheet(name,{
     views:[{state:'normal',style:'pageBreakPreview',showGridLines:false,zoomScale:75,zoomScaleNormal:100}],
-    pageSetup:{paperSize:9,orientation:landscape?'landscape':'portrait',fitToPage:false,scale:90,horizontalCentered:true,verticalCentered:true,margins:{left:0.25,right:0.25,top:0.25,bottom:0.25,header:0,footer:0},pageOrder:'downThenOver'},
+    pageSetup:{
+      paperSize:9,orientation:landscape?'landscape':'portrait',
+      ...(singlePage?{fitToPage:true,fitToWidth:1,fitToHeight:1}:{fitToPage:false,scale:78}),
+      horizontalCentered:true,verticalCentered:singlePage,
+      margins:{left:0.25,right:0.25,top:0.25,bottom:0.25,header:0,footer:0},pageOrder:'downThenOver'
+    },
    });
    // OOXML column width is measured in maximum digit widths, not CSS pixels.
    // Calibri 11 (Excel's default) has a 7px digit; 1.43 units is ~10px.
@@ -193,7 +205,7 @@ export async function appendPrintableExcelReport(workbook:ExcelJS.Workbook,pages
  }
 
  // Explicit break at the end of each report page in the same section.
- if(pi+1<pages.length&&groupKey(pages[pi+1])===key)ws.getRow(offset+rows).addPageBreak();
+ if(pi+1<pages.length&&groupKey(pages[pi+1])===key)ws.getRow(offset+rows).addPageBreak(0,cols-1);
  ws.pageSetup.printArea='A1:'+colName(cols)+(offset+rows);
  }
  }finally{iframe.remove();}
