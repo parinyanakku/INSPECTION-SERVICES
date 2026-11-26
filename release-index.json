@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.53",
+  "latest": "v1.0.54",
   "releases": [
+    {
+      "version": "v1.0.54",
+      "build": 54,
+      "storageSchema": 2,
+      "date": "2026-11-26T17:18:17.571Z",
+      "notes": "Simplify floor plan editor with direct resize, undo, zoom and Gemini sketch-to-editable-plan preview",
+      "commit": "14bc2c9f155289eb30fe4338301ab0db7c623105"
+    },
     {
       "version": "v1.0.53",
       "build": 53,
