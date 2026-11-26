@@ -1,0 +1,12 @@
+{
+  "latest": "v1.0.9",
+  "releases": [
+    {
+      "version": "v1.0.9",
+      "build": 9,
+      "date": "2026-11-26T06:52:58.418Z",
+      "notes": "Add optional version updates with archived builds and project backup",
+      "commit": "96be9cfb527c253f08813fe97d9218fb64b7fbf3"
+    }
+  ]
+}
