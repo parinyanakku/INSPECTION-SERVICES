@@ -105,7 +105,7 @@ export async function appendPrintableExcelReport(workbook:ExcelJS.Workbook,pages
      const old=ws.getCell(b.r1,b.c1);const cell=old.isMerged?old.master:old;
      cell.value=[String(cell.value??''),content].filter(Boolean).join('\n');cell.alignment={...cell.alignment,wrapText:true};return;
    }
-   const edge=(r:number,c:number)=>ws.getCell(r,c).border;
+   const edge=(r:number,c:number)=>ws.getCell(r,c).border||{};
    const border={top:edge(r1,c1).top,bottom:edge(r2,c1).bottom,left:edge(r1,c1).left,right:edge(r1,c2).right};
    if(r1!==r2||c1!==c2)ws.mergeCells(r1,c1,r2,c2);
    for(let r=r1;r<=r2;r++)for(let c=c1;c<=c2;c++)occupied.add(r+':'+c);
@@ -136,6 +136,7 @@ export async function appendPrintableExcelReport(workbook:ExcelJS.Workbook,pages
    const w=img.naturalWidth*ratio,h=img.naturalHeight*ratio;
    if(w<=0||h<=0)continue;
    const x=Math.max(0,r.left-origin.left+(r.width-w)/2),y=Math.max(0,r.top-origin.top+(r.height-h)/2);
+   if(x>=W||y>=H)throw Error('Report photo exceeds page boundary');
    const raw=img.getAttribute('src')||'';
    let id=imageIds.get(raw);if(id===undefined){id=workbook.addImage(getImageData(img));imageIds.set(raw,id);}
    ws.addImage(id,{tl:{col:x/GRID,row:offset+y/GRID},ext:{width:Math.min(w,W-x),height:Math.min(h,H-y)},editAs:'oneCell'});
