@@ -142,8 +142,8 @@ function loadWorkspaceView(projects:ProjectFile[]):WorkspaceView {
   }catch{return empty;}
 }
 
-export default function App({isAdmin=false,language,onLanguageChange}:{isAdmin?:boolean;language?:AppLanguage;onLanguageChange?:(lang:AppLanguage)=>void}) {
-  const [localLang, setLang] = useState<AppLanguage>(loadInitialLang);
+export default function App({isAdmin=false,language}:{isAdmin?:boolean;language?:AppLanguage}) {
+  const [localLang] = useState<AppLanguage>(loadInitialLang);
   const lang=language??localLang;
   const t = UI_TEXT[lang];
 
@@ -201,16 +201,6 @@ export default function App({isAdmin=false,language,onLanguageChange}:{isAdmin?:
   useEffect(() => {
     document.documentElement.style.setProperty('--brand-color', brand.accentColor || '#1e3a8a');
   }, [brand.accentColor]);
-
-  const handleChangeLang = (nextLang: AppLanguage) => {
-    setLang(nextLang);
-    onLanguageChange?.(nextLang);
-    try {
-      workspaceStorage.setItem(STORAGE_KEY_LANG, nextLang);
-    } catch {
-      // ignore storage errors
-    }
-  };
 
   const notify = useCallback(
     (message: string, type: ToastItem['type'] = 'success') => {
@@ -1016,35 +1006,6 @@ export default function App({isAdmin=false,language,onLanguageChange}:{isAdmin?:
                 </button>
               )}
 
-              {/* TH / EN Language Switcher at top-right */}
-              <div
-                className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-100 p-0.5 shrink-0"
-                role="group"
-                aria-label="Language switcher"
-              >
-                <button
-                  type="button"
-                  onClick={() => handleChangeLang('th')}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
-                    lang === 'th'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  🇹🇭 TH
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleChangeLang('en')}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
-                    lang === 'en'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  🇺🇸 EN
-                </button>
-              </div>
             </div>
           </div>
 
