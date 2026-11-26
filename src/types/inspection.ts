@@ -139,7 +139,7 @@ export interface ReportCustomExportSettings {
   includeStepsAndZones: boolean;
   includeDefectTable: boolean;
   includeSummaryTable2: boolean;
-  defectsPerPage: 2 | 3 | 4;
+  defectsPerPage: 2 | 3 | 4 | 5 | 'auto';
   defectStatusFilter: 'all' | 'pending_only' | 'fixed_only';
   defectSeverityFilter: 'all' | 'urgent_only';
   defectSelectionMode: 'filter' | 'manual';

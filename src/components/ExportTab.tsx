@@ -1275,7 +1275,7 @@ export const ExportTab: React.FC<ExportTabProps> = ({
                       {t.customPerPageLabel}
                     </label>
                     <div className="flex gap-2">
-                      {([2, 3, 4] as const).map((n) => (
+                      {(['auto', 2, 3, 4, 5] as const).map((n) => (
                         <button
                           key={n}
                           type="button"
@@ -1288,7 +1288,7 @@ export const ExportTab: React.FC<ExportTabProps> = ({
                               : 'bg-slate-50 border-slate-300 text-slate-700 hover:bg-slate-100'
                           }`}
                         >
-                          {n} {lang === 'en' ? 'items' : 'ข้อ'}
+                          {n==='auto'?(lang==='en'?'Auto':'อัตโนมัติ'):`${n} ${lang==='en'?'items':'ข้อ'}`}
                         </button>
                       ))}
                     </div>
@@ -1519,8 +1519,8 @@ export const ExportTab: React.FC<ExportTabProps> = ({
                 <div>
                   <strong>{t.customPreviewSummaryLabel}</strong>{' '}
                   {lang === 'en'
-                    ? `${enabledSectionsCount} sections · ${customFilteredDefects.length} defects (${customSettings.defectsPerPage}/page)`
-                    : `เปิดใช้งาน ${enabledSectionsCount} ส่วน · รายการ Defect ${customFilteredDefects.length} ข้อ (${customSettings.defectsPerPage} ข้อ/หน้า)`}
+                    ? `${enabledSectionsCount} sections · ${customFilteredDefects.length} defects (${customSettings.defectsPerPage==='auto'?'auto':customSettings.defectsPerPage}/page)`
+                    : `เปิดใช้งาน ${enabledSectionsCount} ส่วน · รายการ Defect ${customFilteredDefects.length} ข้อ (${customSettings.defectsPerPage==='auto'?'อัตโนมัติ สูงสุด 5':customSettings.defectsPerPage} ข้อ/หน้า)`}
                 </div>
                 <span className="font-semibold text-blue-700">
                   {lang === 'en'

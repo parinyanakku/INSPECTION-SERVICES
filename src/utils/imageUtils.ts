@@ -326,7 +326,7 @@ export async function renderFloorplanZonesToPng(floor: FloorPlan): Promise<strin
     ctx.stroke();
     ctx.setLineDash([]);
 
-    ctx.font = `bold ${13 * dpiScale}px Sarabun, sans-serif`;
+    ctx.font = `bold ${13 * dpiScale}px 'TH Sarabun New', sans-serif`;
     const labelText = z.name || '';
     const textW = ctx.measureText(labelText).width;
     const badgeW = Math.min(zw - 12 * dpiScale, textW + 18 * dpiScale);
@@ -531,7 +531,7 @@ function estimateDefectRowHeight(
 
 /**
  * Builds the complete 5-part A4 Engineering Report Book (Cover, TOC, Intro, Steps & Zones,
- * 7-column Table 1 at up to 4 defects per page with auto-fit pagination, Summary & Table 2, and anchored Page Footer).
+ * 7-column Table 1 at up to 5 defects per page with auto-fit pagination, Summary & Table 2, and anchored Page Footer).
  * Pure inline CSS with Hex/RGB colors only (safe for both Word .doc and html2canvas PDF).
  */
 export function buildSharedReportPages(
@@ -685,14 +685,14 @@ export function buildSharedReportPages(
         projectLabel: 'โครงการ',
       };
 
-  const perPage = custom.defectsPerPage === 2 || custom.defectsPerPage === 3 ? custom.defectsPerPage : 4;
+  const perPage = custom.defectsPerPage === 'auto' ? 5 : custom.defectsPerPage;
   const defectChunks: DefectItem[][] = [];
   if (filteredDefects.length === 0) {
     defectChunks.push([]);
   } else {
     let currentChunk: DefectItem[] = [];
     let currentHeight = 0;
-    const getPageBudget = (chunkIndex: number) => (chunkIndex === 0 ? 810 : 842);
+    const getPageBudget = (chunkIndex: number) => (chunkIndex === 0 ? 835 : 865);
 
     filteredDefects.forEach((d) => {
       const flName = getFloorNameById(proj, d.floorId);
@@ -793,11 +793,11 @@ export function buildSharedReportPages(
           }
         </td>
         <td style="vertical-align:middle; padding-left:8px; padding-bottom:6px;">
-          <div style="font-size:12px; font-weight:800; color:${accentHex}; line-height:1.2;">${escapeHtml(brand.companyName)}</div>
-          <div style="font-size:9.5px; color:#475569;">${escapeHtml(rb.coverTitle)}</div>
+          <div style="font-size:15px; font-weight:800; color:${accentHex}; line-height:1.2;">${escapeHtml(brand.companyName)}</div>
+          <div style="font-size:11.9px; color:#475569;">${escapeHtml(rb.coverTitle)}</div>
         </td>
         <td style="vertical-align:middle; text-align:right; padding-bottom:6px;">
-          <span style="display:inline-block; padding:3px 9px; border-radius:4px; background:#eff6ff; border:1px solid #bfdbfe; color:${accentHex}; font-size:10px; font-weight:700;">
+          <span style="display:inline-block; padding:3px 10px 5px; text-align:center; vertical-align:middle; line-height:1.4; border-radius:4px; background:#eff6ff; border:1px solid #bfdbfe; color:${accentHex}; font-size:12.5px; font-weight:700;">
             ${escapeHtml(sectionTag)}
           </span>
         </td>
@@ -806,21 +806,21 @@ export function buildSharedReportPages(
   `;
 
   const customFooterNoteHtml = custom.customFooterNote.trim()
-    ? `<div style="margin-top:2px; font-size:9.5px; color:#64748b;">${escapeHtml(custom.customFooterNote.trim())}</div>`
+    ? `<div style="margin-top:2px; font-size:11.9px; color:#64748b;">${escapeHtml(custom.customFooterNote.trim())}</div>`
     : '';
 
   const renderStandardFooter = (pageLabel: string) => `
     <div style="margin-top:auto; padding-top:10px; border-top:1px solid #e2e8f0;">
       <table style="width:100%; border-collapse:collapse;">
         <tr>
-          <td style="vertical-align:bottom; text-align:left; font-size:10px; color:#475569;">
+          <td style="vertical-align:bottom; text-align:left; font-size:12.5px; color:#475569;">
             <div>${escapeHtml(brand.companyName)} | ${escapeHtml(brand.contactInfo)}</div>
             ${customFooterNoteHtml}
-            <div style="margin-top:2px; font-weight:700; color:${accentHex}; font-size:11px;">
+            <div style="margin-top:2px; font-weight:700; color:${accentHex}; font-size:13.8px;">
               ${L.pageWord} ${escapeHtml(pageLabel)}
             </div>
           </td>
-          <td style="vertical-align:bottom; text-align:right; font-size:10.5px; color:#0f172a; line-height:1.35;">
+          <td style="vertical-align:bottom; text-align:right; font-size:13.1px; color:#0f172a; line-height:1.35;">
             <div style="font-weight:700;">( ${escapeHtml(brand.inspectorName)} )</div>
             <div style="color:#334155;">${escapeHtml(brand.licenseNo)} &nbsp; ${L.inspectorWord}</div>
           </td>
@@ -836,10 +836,10 @@ export function buildSharedReportPages(
     isCover = false
   ): BuiltReportPage => {
     const inner = isCover
-      ? `<div class="report-page report-a4-page" style="width:794px; height:1123px; padding:34px 38px 28px 38px; box-sizing:border-box; display:flex; flex-direction:column; overflow:hidden; background:#ffffff; color:#0f172a; font-family:'Sarabun', Tahoma, sans-serif;">
+      ? `<div class="report-page report-a4-page" style="width:794px; height:1123px; padding:34px 38px 28px 38px; box-sizing:border-box; display:flex; flex-direction:column; overflow:hidden; background:#ffffff; color:#0f172a; font-family:'TH Sarabun New', Tahoma, sans-serif;">
           ${bodyHtml}
         </div>`
-      : `<div class="report-page report-a4-page" style="width:794px; height:1123px; padding:34px 38px 28px 38px; box-sizing:border-box; display:flex; flex-direction:column; overflow:hidden; background:#ffffff; color:#0f172a; font-family:'Sarabun', Tahoma, sans-serif;">
+      : `<div class="report-page report-a4-page" style="width:794px; height:1123px; padding:34px 38px 28px 38px; box-sizing:border-box; display:flex; flex-direction:column; overflow:hidden; background:#ffffff; color:#0f172a; font-family:'TH Sarabun New', Tahoma, sans-serif;">
           <div style="flex:0 0 auto;">${bodyHtml}</div>
           ${renderStandardFooter(pageLabel)}
         </div>`;
@@ -860,13 +860,13 @@ export function buildSharedReportPages(
             ? `<div style="margin-bottom:8px;"><img src="${logoImgSrc}" width="88" height="88" style="width:88px; height:88px; object-fit:contain; display:inline-block;" /></div>`
             : ''
         }
-        <div style="font-size:23px; font-weight:800; color:${accentHex}; letter-spacing:0.5px;">
+        <div style="font-size:28.8px; font-weight:800; color:${accentHex}; letter-spacing:0.5px;">
           ${escapeHtml(brand.companyName)}
         </div>
-        <div style="font-size:12px; color:#334155; margin-top:4px;">
+        <div style="font-size:15px; color:#334155; margin-top:4px;">
           ${escapeHtml(brand.tagline)}
         </div>
-        <div style="font-size:11px; color:#64748b; margin-top:3px;">
+        <div style="font-size:13.8px; color:#64748b; margin-top:3px;">
           ${escapeHtml(brand.contactInfo)}
         </div>
       </div>
@@ -877,14 +877,14 @@ export function buildSharedReportPages(
             ? `<div style="margin:0 auto 18px auto;"><img data-pdf-photo="true" src="${coverGraphicSrc}" style="max-width:460px; max-height:300px; width:auto; height:auto; object-fit:contain; display:inline-block;" /></div>`
             : ''
         }
-        <div style="font-size:26px; font-weight:800; color:#0f172a; line-height:1.3; margin-bottom:10px;">
+        <div style="font-size:32.5px; font-weight:800; color:#0f172a; line-height:1.3; margin-bottom:10px;">
           ${escapeHtml(rb.coverTitle)}
         </div>
-        <div style="display:inline-block; padding:6px 18px; border-radius:6px; background:#eff6ff; border:1.5px solid ${accentHex}; color:${accentHex}; font-size:13.5px; font-weight:700; margin-bottom:20px;">
+        <div style="display:inline-block; padding:5px 18px 8px; text-align:center; vertical-align:middle; line-height:1.4; border-radius:6px; background:#eff6ff; border:1.5px solid ${accentHex}; color:${accentHex}; font-size:16.9px; font-weight:700; margin-bottom:20px;">
           ${escapeHtml(rb.propertyCondition)}
         </div>
 
-        <table style="width:94%; margin:0 auto; border-collapse:collapse; table-layout:fixed; text-align:left; font-size:12.5px; background:#f8fafc;">
+        <table style="width:94%; margin:0 auto; border-collapse:collapse; table-layout:fixed; text-align:left; font-size:15.6px; background:#f8fafc;">
           <colgroup>
             <col style="width:34%;" />
             <col style="width:66%;" />
@@ -917,10 +917,10 @@ export function buildSharedReportPages(
       </div>
 
       <div style="border-top:2px solid #cbd5e1; padding-top:14px; text-align:center;">
-        <div style="font-size:14px; font-weight:800; color:#0f172a;">
+        <div style="font-size:17.5px; font-weight:800; color:#0f172a;">
           ${L.preparedBy} &nbsp; ${escapeHtml(brand.inspectorName)}
         </div>
-        <div style="font-size:11.5px; color:#475569; margin-top:3px;">
+        <div style="font-size:14.4px; color:#475569; margin-top:3px;">
           ${escapeHtml(brand.licenseNo)} &nbsp;|&nbsp; ${escapeHtml(brand.companyName)}
         </div>
       </div>
@@ -956,19 +956,19 @@ export function buildSharedReportPages(
   const tocBody = `
     ${renderPageHeaderStrip(L.tocTitle)}
     <div style="padding:8px 2px;">
-      <h2 style="font-size:21px; font-weight:800; color:${accentHex}; text-align:center; margin:6px 0 18px 0; border-bottom:2px solid ${accentHex}; padding-bottom:10px;">
+      <h2 style="font-size:26.3px; font-weight:800; color:${accentHex}; text-align:center; margin:6px 0 18px 0; border-bottom:2px solid ${accentHex}; padding-bottom:10px;">
         ${L.tocTitle}
       </h2>
 
-      <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:13px; margin-bottom:22px;">
+      <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:16.3px; margin-bottom:22px;">
         <colgroup>
           <col style="width:82%;" />
           <col style="width:18%;" />
         </colgroup>
         <thead>
           <tr style="background:${accentHex}; color:#ffffff;">
-            <th style="border:1px solid #cbd5e1; padding:10px 14px; text-align:left; color:#ffffff; background:${accentHex};">${L.tocColTopic}</th>
-            <th style="border:1px solid #cbd5e1; padding:10px 14px; text-align:center; color:#ffffff; background:${accentHex};">${L.tocColPage}</th>
+            <th style="border:1px solid #cbd5e1; padding:7px 14px 10px; text-align:center; vertical-align:middle; line-height:1.4; color:#ffffff; background:${accentHex};">${L.tocColTopic}</th>
+            <th style="border:1px solid #cbd5e1; padding:7px 14px 10px; text-align:center; vertical-align:middle; line-height:1.4; color:#ffffff; background:${accentHex};">${L.tocColPage}</th>
           </tr>
         </thead>
         <tbody>
@@ -977,10 +977,10 @@ export function buildSharedReportPages(
       </table>
 
       <div style="border:1px solid #bfdbfe; border-radius:8px; background:#eff6ff; padding:14px 16px;">
-        <div style="font-size:13px; font-weight:800; color:${accentHex}; margin-bottom:8px;">
+        <div style="font-size:16.3px; font-weight:800; color:${accentHex}; margin-bottom:8px;">
           ${L.projectLabel}: ${escapeHtml(rb.coverTitle)}
         </div>
-        <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:12px; background:#ffffff;">
+        <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:15px; background:#ffffff;">
           <colgroup>
             <col style="width:25%;" />
             <col style="width:25%;" />
@@ -989,20 +989,20 @@ export function buildSharedReportPages(
           </colgroup>
           <tr>
             <td style="border:1px solid #cbd5e1; padding:8px; text-align:center;">
-              <div style="color:#64748b; font-size:10.5px;">${L.statTotal}</div>
-              <div style="font-size:18px; font-weight:800; color:#0f172a;">${total}</div>
+              <div style="color:#64748b; font-size:13.1px;">${L.statTotal}</div>
+              <div style="font-size:22.5px; font-weight:800; color:#0f172a;">${total}</div>
             </td>
             <td style="border:1px solid #cbd5e1; padding:8px; text-align:center;">
-              <div style="color:#64748b; font-size:10.5px;">${L.statUrgent}</div>
-              <div style="font-size:18px; font-weight:800; color:#dc2626;">${urgent}</div>
+              <div style="color:#64748b; font-size:13.1px;">${L.statUrgent}</div>
+              <div style="font-size:22.5px; font-weight:800; color:#dc2626;">${urgent}</div>
             </td>
             <td style="border:1px solid #cbd5e1; padding:8px; text-align:center;">
-              <div style="color:#64748b; font-size:10.5px;">${L.statPending}</div>
-              <div style="font-size:18px; font-weight:800; color:#d97706;">${pending}</div>
+              <div style="color:#64748b; font-size:13.1px;">${L.statPending}</div>
+              <div style="font-size:22.5px; font-weight:800; color:#d97706;">${pending}</div>
             </td>
             <td style="border:1px solid #cbd5e1; padding:8px; text-align:center;">
-              <div style="color:#64748b; font-size:10.5px;">${L.statFixed}</div>
-              <div style="font-size:18px; font-weight:800; color:#059669;">${fixed}</div>
+              <div style="color:#64748b; font-size:13.1px;">${L.statFixed}</div>
+              <div style="font-size:22.5px; font-weight:800; color:#059669;">${fixed}</div>
             </td>
           </tr>
         </table>
@@ -1026,9 +1026,9 @@ export function buildSharedReportPages(
           ? `<div style="width:100%; height:242px; background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; display:flex; align-items:center; justify-content:center; overflow:hidden; margin:0 auto;">
               <img data-pdf-photo="true" src="${src}" width="310" style="max-width:100%; max-height:240px; width:auto; height:auto; object-fit:contain; display:block; margin:0 auto;" />
             </div>`
-          : `<div style="width:100%; height:180px; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:4px; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:11.5px; padding:20px;">${escapeHtml(emptyText)}</div>`
+          : `<div style="width:100%; height:180px; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:4px; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:14.4px; padding:20px;">${escapeHtml(emptyText)}</div>`
       }
-      <div style="font-size:11px; font-weight:700; color:#334155; margin-top:6px;">
+      <div style="font-size:13.8px; font-weight:700; color:#334155; margin-top:6px;">
         ${escapeHtml(caption)}
       </div>
     </div>
@@ -1036,10 +1036,10 @@ export function buildSharedReportPages(
 
   const sec1Body = `
     ${renderPageHeaderStrip(L.sec1Title)}
-    <h2 style="font-size:17px; font-weight:800; color:${accentHex}; margin:0 0 8px 0;">
+    <h2 style="font-size:21.3px; font-weight:800; color:${accentHex}; margin:0 0 8px 0;">
       ${L.sec1Title}
     </h2>
-    <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:11.5px; margin-bottom:10px; background:#f8fafc;">
+    <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:14.4px; margin-bottom:10px; background:#f8fafc;">
       <colgroup>
         <col style="width:54%;" />
         <col style="width:46%;" />
@@ -1069,7 +1069,7 @@ export function buildSharedReportPages(
       </tr>
     </table>
 
-    <div style="border:1px solid #e2e8f0; border-radius:6px; background:#f8fafc; padding:11px 14px; font-size:12px; line-height:1.65; color:#0f172a; white-space:pre-line; text-align:justify;">
+    <div style="border:1px solid #e2e8f0; border-radius:6px; background:#f8fafc; padding:11px 14px; font-size:15px; line-height:1.65; color:#0f172a; white-space:pre-line; text-align:justify;">
       ${escapeHtml(rb.introContent)}
     </div>
   `;
@@ -1111,7 +1111,7 @@ export function buildSharedReportPages(
                 (card) => `
                   <td style="width:50%; vertical-align:top; padding:4px;">
                     <div style="border:1px solid #cbd5e1; border-radius:6px; padding:7px; background:#ffffff; text-align:center;">
-                      <div style="font-size:11px; font-weight:700; color:#0f172a; margin-bottom:5px;">${escapeHtml(card.title)}</div>
+                      <div style="font-size:13.8px; font-weight:700; color:#0f172a; margin-bottom:5px;">${escapeHtml(card.title)}</div>
                       <div style="width:100%; height:${zoneImgBoxH}px; background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; display:flex; align-items:center; justify-content:center; overflow:hidden; margin:0 auto;">
                         <img data-pdf-photo="true" src="${card.imgSrc}" width="320" style="max-width:100%; max-height:${zoneImgBoxH - 2}px; width:auto; height:auto; object-fit:contain; display:block; margin:0 auto;" />
                       </div>
@@ -1129,17 +1129,17 @@ export function buildSharedReportPages(
         zIdx === 0
           ? `
             ${renderPageHeaderStrip(L.sec2Title)}
-            <h2 style="font-size:17px; font-weight:800; color:${accentHex}; margin:0 0 8px 0;">
+            <h2 style="font-size:21.3px; font-weight:800; color:${accentHex}; margin:0 0 8px 0;">
               ${L.sec2Title}
             </h2>
 
             <div style="border:1px solid #e2e8f0; border-radius:6px; background:#f8fafc; padding:9px 13px; margin-bottom:12px;">
-              <table style="width:100%; border-collapse:collapse; font-size:11.5px;">
+              <table style="width:100%; border-collapse:collapse; font-size:14.4px;">
                 <tbody>${stepsHtml}</tbody>
               </table>
             </div>
 
-            <div style="font-size:12px; font-weight:800; color:${accentHex}; margin-bottom:6px; text-align:center;">
+            <div style="font-size:15px; font-weight:800; color:${accentHex}; margin-bottom:6px; text-align:center;">
               ${escapeHtml(L.fig3Caption)}
             </div>
             <table style="width:100%; border-collapse:collapse; table-layout:fixed;">
@@ -1152,7 +1152,7 @@ export function buildSharedReportPages(
           `
           : `
             ${renderPageHeaderStrip(L.sec2Cont)}
-            <div style="font-size:12.5px; font-weight:800; color:${accentHex}; margin-bottom:8px; text-align:center;">
+            <div style="font-size:15.6px; font-weight:800; color:${accentHex}; margin-bottom:8px; text-align:center;">
               ${escapeHtml(L.fig3Caption)}
             </div>
             <table style="width:100%; border-collapse:collapse; table-layout:fixed;">
@@ -1176,6 +1176,10 @@ export function buildSharedReportPages(
       const pageNumStr = String(sec3StartPage + chunkIdx);
       const heading = chunkIdx === 0 ? L.sec3Title : L.sec3Cont;
       const caption = chunkIdx === 0 ? L.t1Caption : L.t1CaptionCont;
+      const available=chunkIdx===0?835:865;
+      const estimated=chunk.reduce((sum,d)=>sum+estimateDefectRowHeight(d,getFloorNameById(proj,d.floorId),custom.showCauseDetails,custom.showSolutionDetails,L.causePrefix,L.solutionPrefix),0);
+      // Expand photo rows into unused page area without forcing extra rows or cutting off long notes.
+      const photoBoxH=chunk.length>=3?Math.min(205,150+Math.max(0,Math.floor((available-estimated-25)/chunk.length))):150;
 
       const rowsHtml =
         chunk.length === 0
@@ -1214,66 +1218,66 @@ export function buildSharedReportPages(
 
                 return `
                   <tr style="break-inside:avoid; page-break-inside:avoid; height:auto; background:${rowBg};">
-                    <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; vertical-align:middle; font-weight:800; font-size:11.5px; color:#0f172a; background:${rowBg}; height:auto;">
+                    <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; vertical-align:middle; font-weight:800; font-size:14.4px; color:#0f172a; background:${rowBg}; height:auto;">
                       ${d.number}
                     </td>
                     <td style="border:1px solid #cbd5e1; padding:6px 8px; text-align:center; vertical-align:middle; background:${rowBg}; height:auto;">
                       ${
                         beforeSrc
-                          ? `<div style="width:100%; height:150px; background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; display:flex; align-items:center; justify-content:center; overflow:hidden; margin:0 auto;">
-                              <img data-pdf-photo="true" src="${beforeSrc}" width="174" style="max-width:100%; max-height:148px; width:auto; height:auto; object-fit:contain; display:block; margin:0 auto;" />
+                          ? `<div style="width:100%; height:${photoBoxH}px; background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; display:flex; align-items:center; justify-content:center; overflow:hidden; margin:0 auto;">
+                              <img data-pdf-photo="true" src="${beforeSrc}" width="174" style="max-width:100%; max-height:${photoBoxH-2}px; width:auto; height:auto; object-fit:contain; display:block; margin:0 auto;" />
                             </div>`
-                          : `<div style="width:100%; height:150px; background-color:#f8fafc; border:1px dashed #cbd5e1; border-radius:4px; display:flex; align-items:center; justify-content:center; margin:0 auto; color:#94a3b8; font-size:10px;">${L.noImg}</div>`
+                          : `<div style="width:100%; height:${photoBoxH}px; background-color:#f8fafc; border:1px dashed #cbd5e1; border-radius:4px; display:flex; align-items:center; justify-content:center; margin:0 auto; color:#94a3b8; font-size:12.5px;">${L.noImg}</div>`
                       }
                     </td>
                     <td style="border:1px solid #cbd5e1; padding:6px 8px; vertical-align:top; text-align:left; line-height:1.45; background:${rowBg}; height:auto; word-break:break-word;">
-                      <div style="font-weight:800; font-size:10.5px; color:${accentHex}; line-height:1.35; margin-bottom:2px;">
+                      <div style="font-weight:800; font-size:13.1px; color:${accentHex}; line-height:1.35; margin-bottom:2px;">
                         ${escapeHtml(zoneLabel)}
                       </div>
-                      <div style="font-size:9.5px; color:#64748b; line-height:1.3; margin-bottom:3px;">
+                      <div style="font-size:11.9px; color:#64748b; line-height:1.3; margin-bottom:3px;">
                         ${escapeHtml(flName)} · ${escapeHtml(translateSeverity(d.severity, lang))}
                       </div>
-                      <div style="font-weight:700; font-size:10.5px; color:#0f172a; line-height:1.45;">
+                      <div style="font-weight:700; font-size:13.1px; color:#0f172a; line-height:1.45;">
                         ${escapeHtml(cleanTitle)}
                       </div>
                       ${
                         showCause
-                          ? `<div style="font-size:9.5px; color:#334155; margin-top:3px; line-height:1.4;"><strong>${L.causePrefix}</strong> ${escapeHtml(cleanCause)}</div>`
+                          ? `<div style="font-size:11.9px; color:#334155; margin-top:3px; line-height:1.4;"><strong>${L.causePrefix}</strong> ${escapeHtml(cleanCause)}</div>`
                           : ''
                       }
                       ${
                         showSolution
-                          ? `<div style="font-size:9.5px; color:#065f46; margin-top:3px; line-height:1.4;"><strong>${L.solutionPrefix}</strong> ${escapeHtml(cleanSolution)}</div>`
+                          ? `<div style="font-size:11.9px; color:#065f46; margin-top:3px; line-height:1.4;"><strong>${L.solutionPrefix}</strong> ${escapeHtml(cleanSolution)}</div>`
                           : ''
                       }
                     </td>
                     <td style="border:1px solid #cbd5e1; padding:6px 8px; text-align:center; vertical-align:middle; background:${rowBg}; height:auto;">
                       ${
                         afterSrc
-                          ? `<div style="width:100%; height:150px; background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; display:flex; align-items:center; justify-content:center; overflow:hidden; margin:0 auto;">
-                              <img data-pdf-photo="true" src="${afterSrc}" width="140" style="max-width:100%; max-height:148px; width:auto; height:auto; object-fit:contain; display:block; margin:0 auto;" />
+                          ? `<div style="width:100%; height:${photoBoxH}px; background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; display:flex; align-items:center; justify-content:center; overflow:hidden; margin:0 auto;">
+                              <img data-pdf-photo="true" src="${afterSrc}" width="140" style="max-width:100%; max-height:${photoBoxH-2}px; width:auto; height:auto; object-fit:contain; display:block; margin:0 auto;" />
                             </div>`
-                          : `<div style="width:100%; height:150px; background-color:#f8fafc; border:1px dashed #e2e8f0; border-radius:4px; display:flex; align-items:center; justify-content:center; margin:0 auto; color:#94a3b8; font-size:11px;">${L.pendingImg}</div>`
+                          : `<div style="width:100%; height:${photoBoxH}px; background-color:#f8fafc; border:1px dashed #e2e8f0; border-radius:4px; display:flex; align-items:center; justify-content:center; margin:0 auto; color:#94a3b8; font-size:13.8px;">${L.pendingImg}</div>`
                       }
                     </td>
                     <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; vertical-align:middle; background:${isFixed ? '#f0fdf4' : rowBg}; height:auto;">
                       ${
                         isFixed
-                          ? '<span style="color:#059669; font-size:17px; font-weight:800; line-height:1;">✓</span>'
+                          ? '<span style="color:#059669; font-size:21.3px; font-weight:800; line-height:1;">✓</span>'
                           : ''
                       }
                     </td>
                     <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; vertical-align:middle; background:${isPartial ? '#fffbeb' : rowBg}; height:auto;">
                       ${
                         isPartial
-                          ? '<span style="color:#d97706; font-size:17px; font-weight:800; line-height:1;">✓</span>'
+                          ? '<span style="color:#d97706; font-size:21.3px; font-weight:800; line-height:1;">✓</span>'
                           : ''
                       }
                     </td>
                     <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; vertical-align:middle; background:${isUnfixed ? '#fef2f2' : rowBg}; height:auto;">
                       ${
                         isUnfixed
-                          ? '<span style="color:#dc2626; font-size:17px; font-weight:800; line-height:1;">✓</span>'
+                          ? '<span style="color:#dc2626; font-size:21.3px; font-weight:800; line-height:1;">✓</span>'
                           : ''
                       }
                     </td>
@@ -1286,14 +1290,15 @@ export function buildSharedReportPages(
         ${renderPageHeaderStrip(heading)}
         ${
           chunkIdx === 0
-            ? `<h2 style="font-size:17px; font-weight:800; color:${accentHex}; margin:0 0 4px 0;">${L.sec3Title}</h2>`
+            ? `<h2 style="font-size:21.3px; font-weight:800; color:${accentHex}; margin:0 0 4px 0;">${L.sec3Title}</h2>`
             : ''
         }
-        <div style="font-size:11.5px; font-weight:700; color:#334155; margin-bottom:6px;">
+        <div style="font-size:14.4px; font-weight:700; color:#334155; margin-bottom:6px;">
           ${escapeHtml(caption)}
         </div>
+        <div style="text-align:right; font-size:12px; font-weight:700; color:${accentHex}; line-height:1.2; margin-bottom:3px;">${escapeHtml(L.colStatusGroup)}</div>
 
-        <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:10px; height:auto;">
+        <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:12.5px; height:auto;">
           <colgroup>
             <col style="width:5%;" />
             <col style="width:27%;" />
@@ -1304,17 +1309,8 @@ export function buildSharedReportPages(
             <col style="width:6%;" />
           </colgroup>
           <thead>
-            <tr style="background:${accentHex}; color:#ffffff;">
-              <th rowspan="2" width="5%" style="border:1px solid #cbd5e1; padding:6px 3px; text-align:center; vertical-align:middle; color:#ffffff; background:${accentHex}; font-size:10px; line-height:1.2;">${L.colSeq}</th>
-              <th rowspan="2" width="27%" style="border:1px solid #cbd5e1; padding:6px 6px; text-align:center; vertical-align:middle; color:#ffffff; background:${accentHex}; font-size:10.5px; line-height:1.2;">${L.colCheck1}</th>
-              <th rowspan="2" width="28%" style="border:1px solid #cbd5e1; padding:6px 8px; text-align:center; vertical-align:middle; color:#ffffff; background:${accentHex}; font-size:10.5px; line-height:1.2;">${L.colProblem}</th>
-              <th rowspan="2" width="22%" style="border:1px solid #cbd5e1; padding:6px 6px; text-align:center; vertical-align:middle; color:#ffffff; background:${accentHex}; font-size:10.5px; line-height:1.2;">${L.colCheck2}</th>
-              <th colspan="3" width="18%" style="border:1px solid #cbd5e1; padding:5px 4px; text-align:center; vertical-align:middle; color:#ffffff; background:${accentHex}; font-size:10px; line-height:1.2;">${L.colStatusGroup}</th>
-            </tr>
-            <tr style="background:#1e40af; color:#ffffff;">
-              <th width="6%" style="border:1px solid #cbd5e1; padding:4px 2px; font-size:10px; line-height:1.2; text-align:center; vertical-align:middle; word-break:break-word; color:#ffffff; background:#1e40af;">${L.colFixed}</th>
-              <th width="6%" style="border:1px solid #cbd5e1; padding:4px 2px; font-size:10px; line-height:1.2; text-align:center; vertical-align:middle; word-break:break-word; color:#ffffff; background:#1e40af;">${L.colPartial}</th>
-              <th width="6%" style="border:1px solid #cbd5e1; padding:4px 2px; font-size:10px; line-height:1.2; text-align:center; vertical-align:middle; word-break:break-word; color:#ffffff; background:#1e40af;">${L.colUnfixed}</th>
+            <tr>
+              ${[L.colSeq,L.colCheck1,L.colProblem,L.colCheck2,L.colFixed,L.colPartial,L.colUnfixed].map((label,index)=>`<th style="border:1px solid #cbd5e1; height:52px; padding:4px 3px 7px; text-align:center; vertical-align:middle; color:#ffffff; background:${index<4?accentHex:'#1e40af'}; font-size:${index<4?15:13}px; font-weight:700; line-height:1.15; overflow-wrap:break-word;">${escapeHtml(label)}</th>`).join('')}
             </tr>
           </thead>
           <tbody>
@@ -1351,17 +1347,17 @@ export function buildSharedReportPages(
 
   const sec4Body = `
     ${renderPageHeaderStrip(L.sec4Title)}
-    <h2 style="font-size:17px; font-weight:800; color:${accentHex}; margin:0 0 8px 0;">
+    <h2 style="font-size:21.3px; font-weight:800; color:${accentHex}; margin:0 0 8px 0;">
       ${L.sec4Title}
     </h2>
-    <p style="font-size:12px; color:#334155; margin:0 0 10px 0; line-height:1.55;">
+    <p style="font-size:15px; color:#334155; margin:0 0 10px 0; line-height:1.55;">
       ${escapeHtml(L.sec4Lead)}
     </p>
 
-    <div style="font-size:12px; font-weight:700; color:${accentHex}; margin-bottom:6px;">
+    <div style="font-size:15px; font-weight:700; color:${accentHex}; margin-bottom:6px;">
       ${escapeHtml(L.t2Caption)}
     </div>
-    <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:11px; margin-bottom:14px; height:auto;">
+    <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:13.8px; margin-bottom:14px; height:auto;">
       <colgroup>
         <col style="width:8%;" />
         <col style="width:58%;" />
@@ -1380,13 +1376,13 @@ export function buildSharedReportPages(
     </table>
 
     <div style="border:1px solid #bfdbfe; border-radius:8px; background:#eff6ff; padding:12px 14px;">
-      <div style="font-size:12px; font-weight:800; color:${accentHex}; margin-bottom:6px;">
+      <div style="font-size:15px; font-weight:800; color:${accentHex}; margin-bottom:6px;">
         ${L.statTotal}: ${total} ${L.itemsUnit} &nbsp;|&nbsp;
         ${L.statUrgent}: <span style="color:#dc2626;">${urgent}</span> ${L.itemsUnit} &nbsp;|&nbsp;
         ${L.statPending}: <span style="color:#d97706;">${pending}</span> ${L.itemsUnit} &nbsp;|&nbsp;
         ${L.statFixed}: <span style="color:#059669;">${fixed}</span> ${L.itemsUnit}
       </div>
-      <div style="font-size:12px; line-height:1.65; color:#0f172a; white-space:pre-line; text-align:justify;">
+      <div style="font-size:15px; line-height:1.65; color:#0f172a; white-space:pre-line; text-align:justify;">
         ${escapeHtml(rb.closingSummary)}
       </div>
     </div>
@@ -1490,8 +1486,9 @@ export async function exportProjectPDF(
 <html>
   <head>
     <meta charset="utf-8" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" />
     <style>
+      @font-face { font-family:'TH Sarabun New'; font-style:normal; font-weight:400; src:local('TH Sarabun New'),local('TH SarabunNew'),local('THSarabunNew'),url('https://cdn.jsdelivr.net/gh/Phonbopit/sarabun-webfont@8d6f2f4223d025670b70aa344462971678516216/fonts/thsarabunnew-webfont.woff') format('woff'); }
+      @font-face { font-family:'TH Sarabun New'; font-style:normal; font-weight:600 900; src:local('TH Sarabun New Bold'),local('TH SarabunNew Bold'),local('THSarabunNew-Bold'),url('https://cdn.jsdelivr.net/gh/Phonbopit/sarabun-webfont@8d6f2f4223d025670b70aa344462971678516216/fonts/thsarabunnew_bold-webfont.woff') format('woff'); }
       * { box-sizing: border-box; }
       html, body {
         margin: 0;
@@ -1499,7 +1496,7 @@ export async function exportProjectPDF(
         width: 794px;
         background: #ffffff;
         color: #0f172a;
-        font-family: 'Sarabun', Tahoma, sans-serif;
+        font-family: 'TH Sarabun New', Tahoma, sans-serif;
       }
       table { border-collapse: collapse; }
       tr { break-inside: avoid; page-break-inside: avoid; }
@@ -1513,6 +1510,8 @@ export async function exportProjectPDF(
       await document.fonts.ready;
     }
     if (iframeDoc.fonts?.ready) {
+      const loaded=await Promise.all([iframeDoc.fonts.load("400 16px 'TH Sarabun New'",'ภาษาไทย'),iframeDoc.fonts.load("700 16px 'TH Sarabun New'",'ภาษาไทย')]);
+      if(loaded.some(f=>!f.length))throw Error('TH Sarabun New font is unavailable; check your connection or installed fonts');
       await iframeDoc.fonts.ready;
     }
     await waitForImagesInDoc(iframeDoc);
@@ -1631,8 +1630,8 @@ export async function exportProjectWord(
       <meta charset='utf-8'>
       <title>${escapeHtml(rb.coverTitle || proj.name)}</title>
       <style>
-        @page { size: A4 portrait; margin: 12mm; }
-        body { font-family: 'Sarabun', Tahoma, sans-serif; color: #0f172a; background: #ffffff; margin: 0; padding: 0; }
+        @page { size: A4 portrait; margin: 0; }
+        body { font-family: 'TH Sarabun New', Tahoma, sans-serif; color: #0f172a; background: #ffffff; margin: 0; padding: 0; }
         table { border-collapse: collapse; }
         tr { page-break-inside: avoid; }
       </style>
@@ -1687,6 +1686,7 @@ export async function exportProjectExcel(
 
     const ws = workbook.addWorksheet('Defect List', {
       views: [{ state: 'frozen', ySplit: 6 }],
+      pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '1:6', horizontalCentered: true },
     });
 
     // Exact 10 column widths matching spec
@@ -1699,7 +1699,7 @@ export async function exportProjectExcel(
     ws.mergeCells('A1:J1');
     const r1 = ws.getCell('A1');
     r1.value = brand.companyName;
-    r1.font = { name: 'Sarabun', size: 16, bold: true, color: { argb: 'FF1E3A8A' } };
+    r1.font = { name: 'TH Sarabun New', size: 16, bold: true, color: { argb: 'FF1E3A8A' } };
     r1.alignment = { vertical: 'middle', horizontal: 'left' };
     ws.getRow(1).height = 28;
 
@@ -1709,7 +1709,7 @@ export async function exportProjectExcel(
     r2.value = isEn
       ? `Project: ${proj.name}  |  House No.: ${proj.houseNo}  |  Client: ${proj.clientName}`
       : `โครงการ: ${proj.name}  |  บ้านเลขที่: ${proj.houseNo}  |  ลูกค้า: ${proj.clientName}`;
-    r2.font = { name: 'Sarabun', size: 11, bold: true, color: { argb: 'FF0F172A' } };
+    r2.font = { name: 'TH Sarabun New', size: 14, bold: true, color: { argb: 'FF0F172A' } };
     r2.alignment = { vertical: 'middle', horizontal: 'left' };
     ws.getRow(2).height = 22;
 
@@ -1719,7 +1719,7 @@ export async function exportProjectExcel(
     r3.value = isEn
       ? `Inspector: ${brand.inspectorName} (${brand.licenseNo})  |  Inspection Date: ${proj.inspectionDate}  |  ${brand.contactInfo}`
       : `ผู้ตรวจสอบ: ${brand.inspectorName} (${brand.licenseNo})  |  วันที่ตรวจรับ: ${proj.inspectionDate}  |  ${brand.contactInfo}`;
-    r3.font = { name: 'Sarabun', size: 10, color: { argb: 'FF475569' } };
+    r3.font = { name: 'TH Sarabun New', size: 13, color: { argb: 'FF475569' } };
     r3.alignment = { vertical: 'middle', horizontal: 'left' };
     ws.getRow(3).height = 20;
 
@@ -1729,7 +1729,7 @@ export async function exportProjectExcel(
     r4.value = isEn
       ? `Summary: Total ${total} items  |  Urgent: ${urgentCount}  |  Pending: ${pendingCount}  |  Fixed: ${fixedCount}`
       : `สรุปผลการตรวจสอบ: ทั้งหมด ${total} ข้อ  |  เร่งด่วน: ${urgentCount} ข้อ  |  รอแก้ไข: ${pendingCount} ข้อ  |  แก้ไขแล้ว: ${fixedCount} ข้อ`;
-    r4.font = { name: 'Sarabun', size: 11, bold: true, color: { argb: 'FF1E3A8A' } };
+    r4.font = { name: 'TH Sarabun New', size: 14, bold: true, color: { argb: 'FF1E3A8A' } };
     r4.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
     r4.alignment = { vertical: 'middle', horizontal: 'left' };
     r4.border = {
@@ -1771,7 +1771,7 @@ export async function exportProjectExcel(
         ];
 
     const headerRow = ws.getRow(6);
-    headerRow.height = 28;
+    headerRow.height = 32;
     const thinSlateBorder: Partial<ExcelJS.Borders> = {
       top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
       bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
@@ -1782,7 +1782,7 @@ export async function exportProjectExcel(
     headers.forEach((title, idx) => {
       const cell = headerRow.getCell(idx + 1);
       cell.value = title;
-      cell.font = { name: 'Sarabun', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.font = { name: 'TH Sarabun New', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } };
       cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
       cell.border = thinSlateBorder;
@@ -1832,12 +1832,12 @@ export async function exportProjectExcel(
       ]);
 
       row.eachCell((cell, colNumber) => {
-        cell.font = { name: 'Sarabun', size: 10.5, color: { argb: 'FF0F172A' } };
+        cell.font = { name: 'TH Sarabun New', size: 14, color: { argb: 'FF0F172A' } };
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: zebraArgb } };
         cell.border = thinSlateBorder;
         const centerCols = colNumber === 1 || colNumber >= 7;
         cell.alignment = {
-          vertical: 'top',
+          vertical: 'middle',
           horizontal: centerCols ? 'center' : 'left',
           wrapText: true,
         };
@@ -1847,26 +1847,26 @@ export async function exportProjectExcel(
       const sevCell = row.getCell(7);
       if (d.severity === 'เร่งด่วน') {
         sevCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
-        sevCell.font = { name: 'Sarabun', size: 10.5, bold: true, color: { argb: 'FF991B1B' } };
+        sevCell.font = { name: 'TH Sarabun New', size: 14, bold: true, color: { argb: 'FF991B1B' } };
       } else if (d.severity === 'เล็กน้อย') {
         sevCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } };
-        sevCell.font = { name: 'Sarabun', size: 10.5, bold: true, color: { argb: 'FF1E40AF' } };
+        sevCell.font = { name: 'TH Sarabun New', size: 14, bold: true, color: { argb: 'FF1E40AF' } };
       } else {
         sevCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
-        sevCell.font = { name: 'Sarabun', size: 10.5, bold: true, color: { argb: 'FF92400E' } };
+        sevCell.font = { name: 'TH Sarabun New', size: 14, bold: true, color: { argb: 'FF92400E' } };
       }
 
       // Highlight Status column (Col 8)
       const statusCell = row.getCell(8);
       if (d.status === 'แก้ไขแล้ว') {
         statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } };
-        statusCell.font = { name: 'Sarabun', size: 10.5, bold: true, color: { argb: 'FF166534' } };
+        statusCell.font = { name: 'TH Sarabun New', size: 14, bold: true, color: { argb: 'FF166534' } };
       } else if (d.status === 'กำลังแก้ไข') {
         statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } };
-        statusCell.font = { name: 'Sarabun', size: 10.5, bold: true, color: { argb: 'FF1E40AF' } };
+        statusCell.font = { name: 'TH Sarabun New', size: 14, bold: true, color: { argb: 'FF1E40AF' } };
       } else {
         statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
-        statusCell.font = { name: 'Sarabun', size: 10.5, bold: true, color: { argb: 'FF92400E' } };
+        statusCell.font = { name: 'TH Sarabun New', size: 14, bold: true, color: { argb: 'FF92400E' } };
       }
     });
 

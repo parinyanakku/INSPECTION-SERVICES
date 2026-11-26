@@ -30,7 +30,7 @@ export function createDefaultCustomExportSettings(): ReportCustomExportSettings 
     includeStepsAndZones: true,
     includeDefectTable: true,
     includeSummaryTable2: true,
-    defectsPerPage: 4,
+    defectsPerPage: 'auto',
     defectStatusFilter: 'all',
     defectSeverityFilter: 'all',
     defectSelectionMode: 'filter',
@@ -294,7 +294,9 @@ export function loadReportBookData(
       defectsPerPage:
         rawCustom.defectsPerPage === 2 ||
         rawCustom.defectsPerPage === 3 ||
-        rawCustom.defectsPerPage === 4
+        rawCustom.defectsPerPage === 4 ||
+        rawCustom.defectsPerPage === 5 ||
+        rawCustom.defectsPerPage === 'auto'
           ? rawCustom.defectsPerPage
           : defaultCustom.defectsPerPage,
       defectStatusFilter:
