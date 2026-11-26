@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.36",
+  "latest": "v1.0.37",
   "releases": [
+    {
+      "version": "v1.0.37",
+      "build": 37,
+      "storageSchema": 2,
+      "date": "2026-11-26T08:42:37.864Z",
+      "notes": "Prevent Excel A4 right-edge page splits with fit-to-page and safe print scale",
+      "commit": "367de69ee3d88692ac299bcd0d457eba1298fbbc"
+    },
     {
       "version": "v1.0.36",
       "build": 36,
