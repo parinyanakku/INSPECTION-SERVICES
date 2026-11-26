@@ -14,7 +14,6 @@ import { customFloorSvg } from './customFloorSvg';
 import { translateDefectStatus, translateSeverity } from '../i18n/translations';
 import {
   createDefaultCustomExportSettings,
-  ENGINEER_COVER_SVG,
   loadReportBookData,
   sanitizeReportImageUrl,
 } from './reportBook';
@@ -375,7 +374,7 @@ export async function prepareSharedReportAssets(
     ? Promise.resolve(brand.customLogoDataUrl)
     : svgToPngDataUrl(DEFAULT_GEAR_LOGO_SVG, 440, 440);
 
-  const coverGraphicPromise = svgToPngDataUrl(ENGINEER_COVER_SVG, 1260, 780);
+  const coverGraphicPromise = Promise.resolve(null);
 
   const floorEntriesPromise = Promise.all(
     proj.floors.map(async (fl) => {
@@ -575,7 +574,7 @@ export function buildSharedReportPages(
     : '#1e3a8a';
 
   const logoImgSrc = brand.customLogoDataUrl || assets?.logoPngDataUrl || '';
-  const coverGraphicSrc = assets?.coverGraphicPngDataUrl || '';
+  const coverGraphicSrc = sanitizeReportImageUrl(rb.frontHouseImg);
 
   const L = isEn
     ? {
@@ -874,7 +873,7 @@ export function buildSharedReportPages(
       <div style="text-align:center; padding:14px 8px;">
         ${
           coverGraphicSrc
-            ? `<div style="margin:0 auto 18px auto;"><img src="${coverGraphicSrc}" width="370" height="229" style="width:370px; max-width:100%; height:auto; display:inline-block;" /></div>`
+            ? `<div style="margin:0 auto 18px auto;"><img data-pdf-photo="true" src="${coverGraphicSrc}" style="max-width:460px; max-height:300px; width:auto; height:auto; object-fit:contain; display:inline-block;" /></div>`
             : ''
         }
         <div style="font-size:26px; font-weight:800; color:#0f172a; line-height:1.3; margin-bottom:10px;">
@@ -1024,7 +1023,7 @@ export function buildSharedReportPages(
       ${
         src
           ? `<div style="width:100%; height:242px; background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; display:flex; align-items:center; justify-content:center; overflow:hidden; margin:0 auto;">
-              <img src="${src}" width="310" style="max-width:100%; max-height:240px; width:auto; height:auto; object-fit:contain; display:block; margin:0 auto;" />
+              <img data-pdf-photo="true" src="${src}" width="310" style="max-width:100%; max-height:240px; width:auto; height:auto; object-fit:contain; display:block; margin:0 auto;" />
             </div>`
           : `<div style="width:100%; height:180px; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:4px; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:11.5px; padding:20px;">${escapeHtml(emptyText)}</div>`
       }
@@ -1113,7 +1112,7 @@ export function buildSharedReportPages(
                     <div style="border:1px solid #cbd5e1; border-radius:6px; padding:7px; background:#ffffff; text-align:center;">
                       <div style="font-size:11px; font-weight:700; color:#0f172a; margin-bottom:5px;">${escapeHtml(card.title)}</div>
                       <div style="width:100%; height:${zoneImgBoxH}px; background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; display:flex; align-items:center; justify-content:center; overflow:hidden; margin:0 auto;">
-                        <img src="${card.imgSrc}" width="320" style="max-width:100%; max-height:${zoneImgBoxH - 2}px; width:auto; height:auto; object-fit:contain; display:block; margin:0 auto;" />
+                        <img data-pdf-photo="true" src="${card.imgSrc}" width="320" style="max-width:100%; max-height:${zoneImgBoxH - 2}px; width:auto; height:auto; object-fit:contain; display:block; margin:0 auto;" />
                       </div>
                     </div>
                   </td>
@@ -1221,7 +1220,7 @@ export function buildSharedReportPages(
                       ${
                         beforeSrc
                           ? `<div style="width:100%; height:150px; background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; display:flex; align-items:center; justify-content:center; overflow:hidden; margin:0 auto;">
-                              <img src="${beforeSrc}" width="174" style="max-width:100%; max-height:148px; width:auto; height:auto; object-fit:contain; display:block; margin:0 auto;" />
+                              <img data-pdf-photo="true" src="${beforeSrc}" width="174" style="max-width:100%; max-height:148px; width:auto; height:auto; object-fit:contain; display:block; margin:0 auto;" />
                             </div>`
                           : `<div style="width:100%; height:150px; background-color:#f8fafc; border:1px dashed #cbd5e1; border-radius:4px; display:flex; align-items:center; justify-content:center; margin:0 auto; color:#94a3b8; font-size:10px;">${L.noImg}</div>`
                       }
@@ -1251,7 +1250,7 @@ export function buildSharedReportPages(
                       ${
                         afterSrc
                           ? `<div style="width:100%; height:150px; background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; display:flex; align-items:center; justify-content:center; overflow:hidden; margin:0 auto;">
-                              <img src="${afterSrc}" width="140" style="max-width:100%; max-height:148px; width:auto; height:auto; object-fit:contain; display:block; margin:0 auto;" />
+                              <img data-pdf-photo="true" src="${afterSrc}" width="140" style="max-width:100%; max-height:148px; width:auto; height:auto; object-fit:contain; display:block; margin:0 auto;" />
                             </div>`
                           : `<div style="width:100%; height:150px; background-color:#f8fafc; border:1px dashed #e2e8f0; border-radius:4px; display:flex; align-items:center; justify-content:center; margin:0 auto; color:#94a3b8; font-size:11px;">${L.pendingImg}</div>`
                       }
@@ -1449,8 +1448,8 @@ async function waitForImagesInDoc(doc: Document): Promise<void> {
 
 /**
  * Renders the 5-part A4 Engineering Report Book inside an isolated <iframe> (zero Tailwind oklch),
- * capturing each .report-page cleanly one-by-one at High-DPI (scale 2.5) so Thai typography
- * and annotated site photos render print-sharp without clipping or blank pages.
+ * capturing each .report-page one-by-one at approximately 300 DPI, then embedding
+ * the stored photographs at native resolution in their report positions.
  */
 export async function exportProjectPDF(
   proj: ProjectFile,
@@ -1539,8 +1538,28 @@ export async function exportProjectPDF(
 
     for (let i = 0; i < pageNodes.length; i++) {
       const node = pageNodes[i];
+      const pageRect = node.getBoundingClientRect();
+      // Keep the raster page as fallback. Overlay native image objects at the
+      // measured contain-fit position; never crop or stretch the evidence photo.
+      const photos = Array.from(node.querySelectorAll<HTMLImageElement>('img[data-pdf-photo]')).flatMap(img=>{
+        if(!img.complete||!img.naturalWidth||!img.naturalHeight)return [];
+        const rect=img.getBoundingClientRect();
+        const ratio=Math.min(rect.width/img.naturalWidth,rect.height/img.naturalHeight);
+        const w=img.naturalWidth*ratio,h=img.naturalHeight*ratio;
+        const x=rect.left-pageRect.left+(rect.width-w)/2,y=rect.top-pageRect.top+(rect.height-h)/2;
+        if(w<=0||h<=0||x<0||y<0||x+w>794.5||y+h>1123.5)return [];
+        // Do not overlay content that was clipped by an overflow-hidden ancestor.
+        for(let parent=img.parentElement;parent&&parent!==node;parent=parent.parentElement){
+          const style=iframe.contentWindow?.getComputedStyle(parent);
+          if(style&&(/hidden|clip|scroll|auto/.test(style.overflowX)||/hidden|clip|scroll|auto/.test(style.overflowY))){
+            const b=parent.getBoundingClientRect();
+            if(pageRect.left+x<b.left-0.5||pageRect.top+y<b.top-0.5||pageRect.left+x+w>b.right+0.5||pageRect.top+y+h>b.bottom+0.5)return [];
+          }
+        }
+        return [{img,x,y,w,h}];
+      });
       const canvas = await html2canvas(node, {
-        scale: 2.5,
+        scale: 3.125,
         useCORS: true,
         allowTaint: true,
         imageTimeout: 0,
@@ -1556,8 +1575,36 @@ export async function exportProjectPDF(
         pdf.addPage('a4', 'portrait');
       }
 
-      const imgData = canvas.toDataURL('image/jpeg', 0.95);
-      pdf.addImage(imgData, 'JPEG', 0, 0, pageWidthMm, pageHeightMm);
+      try {
+        const imgData = canvas.toDataURL('image/jpeg', 0.98);
+        pdf.addImage(imgData, 'JPEG', 0, 0, pageWidthMm, pageHeightMm);
+        for(const {img,x,y,w,h} of photos){
+          let nativeCanvas:HTMLCanvasElement|null=null;
+          try{
+            let source=img.getAttribute('src')||'';
+            let format='JPEG';
+            if(/^data:image\/png;base64,/i.test(source)){format='PNG';}
+            else if(/^data:image\/jpeg;base64,/i.test(source)){
+              // Camera JPEGs can contain EXIF orientation that the PDF renderer
+              // does not apply. Use the browser's oriented pixels in that case.
+              const header=atob(source.split(',')[1].slice(0,Math.min(88000,source.split(',')[1].length)));
+              if(header.includes('Exif\x00\x00'))format='';
+            }else format='';
+            if(!format){
+              // Convert unsupported encodings without reducing image dimensions.
+              // Bound temporary canvas size on memory-constrained devices.
+              if(img.naturalWidth*img.naturalHeight>24000000)continue;
+              nativeCanvas=document.createElement('canvas');
+              nativeCanvas.width=img.naturalWidth;nativeCanvas.height=img.naturalHeight;
+              const ctx=nativeCanvas.getContext('2d');if(!ctx)continue;
+              ctx.drawImage(img,0,0);
+              source=nativeCanvas.toDataURL('image/png');format='PNG';
+            }
+            pdf.addImage(source,format,x/794*pageWidthMm,y/1123*pageHeightMm,w/794*pageWidthMm,h/1123*pageHeightMm);
+          }catch(error){console.warn('Native report photo unavailable; using high-resolution page fallback',error);}
+          finally{if(nativeCanvas){nativeCanvas.width=0;nativeCanvas.height=0;}}
+        }
+      }finally{canvas.width=0;canvas.height=0;}
     }
 
     pdf.save(fileName);

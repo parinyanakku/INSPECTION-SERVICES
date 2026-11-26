@@ -66,55 +66,15 @@ async function prepareReportPhoto(file: File): Promise<string> {
     return rawDataUrl;
   }
 
-  return await new Promise<string>((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      try {
-        if (!(img.naturalWidth > 0 && img.naturalHeight > 0)) {
-          resolve(rawDataUrl);
-          return;
-        }
-        const natW = img.naturalWidth;
-        const natH = img.naturalHeight;
-        const maxWidth = 2000;
-        let w = Math.max(1, Math.round(natW));
-        let h = Math.max(1, Math.round(natH));
-        if (w > maxWidth) {
-          h = Math.max(1, Math.round((natH * maxWidth) / natW));
-          w = maxWidth;
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve(rawDataUrl);
-          return;
-        }
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, w, h);
-        ctx.drawImage(img, 0, 0, w, h);
-        const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.95);
-        if (
-          !jpegDataUrl ||
-          jpegDataUrl === 'data:,' ||
-          !jpegDataUrl.startsWith('data:image/')
-        ) {
-          resolve(rawDataUrl);
-          return;
-        }
-        resolve(jpegDataUrl);
-      } catch {
-        resolve(rawDataUrl);
-      }
-    };
-    img.onerror = () => {
-      resolve(rawDataUrl);
-    };
-    img.src = rawDataUrl;
+  // Store the original file instead of resizing/re-encoding report photos.
+  // The AI path has its own independent thumbnail preparation.
+  await new Promise<void>((resolve,reject)=>{
+    const img=new Image();
+    img.onload=()=>img.naturalWidth&&img.naturalHeight?resolve():reject(new Error('Invalid image'));
+    img.onerror=()=>reject(new Error('Unsupported image'));
+    img.src=rawDataUrl;
   });
+  return rawDataUrl;
 }
 
 interface ExportTabProps {
