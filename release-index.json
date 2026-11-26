@@ -1,13 +1,23 @@
 {
-  "latest": "v1.0.37",
+  "latest": "v1.0.38",
   "releases": [
+    {
+      "version": "v1.0.38",
+      "build": 38,
+      "storageSchema": 2,
+      "date": "2026-11-26T08:47:32.504Z",
+      "notes": "Synchronize Thai and English from sign-in through workspace and release notes",
+      "commit": "dfed66b803335b8251031ee7b73271d5f18cd95b",
+      "notesTh": "เพิ่มสวิตช์ภาษาไทยและอังกฤษตั้งแต่หน้าเข้าสู่ระบบ เชื่อมภาษาแถบบัญชี เปลี่ยนรหัสผ่าน ลืมรหัสผ่าน และรายละเอียดอัปเดต"
+    },
     {
       "version": "v1.0.37",
       "build": 37,
       "storageSchema": 2,
       "date": "2026-11-26T08:42:37.864Z",
       "notes": "Prevent Excel A4 right-edge page splits with fit-to-page and safe print scale",
-      "commit": "367de69ee3d88692ac299bcd0d457eba1298fbbc"
+      "commit": "367de69ee3d88692ac299bcd0d457eba1298fbbc",
+      "notesTh": "แก้กรอบรายงาน Excel ขนาด A4 ถูกตัดด้านขวา โดยปรับให้พอดีกระดาษและกำหนดสเกลพิมพ์"
     },
     {
       "version": "v1.0.36",
