@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.32",
+  "latest": "v1.0.33",
   "releases": [
+    {
+      "version": "v1.0.33",
+      "build": 33,
+      "storageSchema": 2,
+      "date": "2026-11-26T08:22:01.165Z",
+      "notes": "Export native editable DOCX with A4 sections and fixed-width tables",
+      "commit": "5b1ad5b50bec976ce93dc0f65ce5d9af4d5a3cc0"
+    },
     {
       "version": "v1.0.32",
       "build": 32,
