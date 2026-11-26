@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.25",
+  "latest": "v1.0.26",
   "releases": [
+    {
+      "version": "v1.0.26",
+      "build": 26,
+      "storageSchema": 2,
+      "date": "2026-11-26T07:46:54.475Z",
+      "notes": "Restore current project, floor and workspace tab after refresh or update",
+      "commit": "11a1f255358368babbd6bd619751684a876c5968"
+    },
     {
       "version": "v1.0.25",
       "build": 25,
