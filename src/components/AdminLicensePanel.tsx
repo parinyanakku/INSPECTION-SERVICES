@@ -92,9 +92,14 @@ type CustomerInput={email:string;display_name:string;password:string};
 type CreateResult={user_id:string;email:string;license_initialized:boolean};
 export function AdminLicensePanel({rpc,onClose,createCustomer,deleteCustomer}:{rpc:Rpc;onClose:()=>void;createCustomer:(input:CustomerInput)=>Promise<CreateResult>;deleteCustomer:DeleteCustomer}){
  const [createOpen,setCreateOpen]=useState(false),[createBusy,setCreateBusy]=useState(false);
+ const [initialCredentials,setInitialCredentials]=useState<{email:string;name:string;password:string}|null>(null),[credentialsVisible,setCredentialsVisible]=useState(false),[credentialsMessage,setCredentialsMessage]=useState('');
  const [customerName,setCustomerName]=useState(''),[customerEmail,setCustomerEmail]=useState(''),[customerPassword,setCustomerPassword]=useState(''),[showPassword,setShowPassword]=useState(false),[createError,setCreateError]=useState('');
  function closeCreate(){if(createBusy)return;setCreateOpen(false);setCustomerPassword('');setShowPassword(false);setCreateError('');}
- function generatePassword(){const bytes=crypto.getRandomValues(new Uint8Array(18));setCustomerPassword('Aa7!'+Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join(''));setShowPassword(true);}
+ function generatePassword(){const bytes=crypto.getRandomValues(new Uint8Array(12));setCustomerPassword('Aa7!'+Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join(''));setShowPassword(false);}
+ function openCreate(){setCustomerName('');setCustomerEmail('');generatePassword();setCreateError('');setCreateOpen(true);}
+ function dismissCredentials(){if(!window.confirm('ปิดข้อมูลรหัสผ่านเริ่มต้น? ระบบจะไม่สามารถเรียกดูรหัสผ่านนี้ย้อนหลังได้'))return;setInitialCredentials(null);setCredentialsVisible(false);setCredentialsMessage('');}
+ async function copyCredentials(){if(!initialCredentials)return;const c=initialCredentials;try{await navigator.clipboard.writeText(['TEAM INSPECTION PRO ELITE — ข้อมูลบัญชีเริ่มต้น','ชื่อ: '+c.name,'อีเมล: '+c.email,'รหัสผ่านเริ่มต้น: '+c.password,'เว็บไซต์: https://teaminspectionproelite.github.io/INSPECTION-SERVICES/auth-preview.html','หากยังไม่มีสิทธิ์ กรุณาใช้รหัส License ที่ได้รับแยกต่างหาก'].join('\n'));setCredentialsMessage('คัดลอกแล้ว กรุณาส่งให้ลูกค้าผ่านช่องทางส่วนตัวที่ปลอดภัย');}catch{setCredentialsVisible(true);setCredentialsMessage('คัดลอกอัตโนมัติไม่ได้ กรุณาคัดลอกข้อมูลด้วยตนเอง');}}
+
  async function submitCustomer(e:React.FormEvent){
    e.preventDefault();if(createBusy)return;
    const email=customerEmail.trim().toLowerCase(),name=customerName.trim();
@@ -103,6 +108,7 @@ export function AdminLicensePanel({rpc,onClose,createCustomer,deleteCustomer}:{r
    try{
      const result=await createCustomer({email,display_name:name,password:customerPassword});
      if(!result?.user_id)throw Error('ไม่พบผลยืนยัน กรุณารีเฟรชรายชื่อก่อนลองใหม่');
+     if(alive.current){setInitialCredentials({email,name,password:customerPassword});setCredentialsVisible(false);setCredentialsMessage('');}
      setCustomerPassword('');setShowPassword(false);setCustomerName('');setCustomerEmail('');setCreateOpen(false);setQuery('');
      await load();if(alive.current)setMessage(result.license_initialized?'สร้างบัญชี '+email+' สำเร็จ — ยังไม่มีสิทธิ์ใช้งาน กรุณาสร้าง License ให้ลูกค้า':'สร้างบัญชี '+email+' สำเร็จ แต่ยังไม่ได้บันทึกข้อมูลสิทธิ์ กรุณาเลือกบัญชีและกำหนด License');
    }catch(e){setCreateError(e instanceof Error?e.message:'สร้างบัญชีไม่สำเร็จ กรุณารีเฟรชรายชื่อก่อนลองใหม่');}finally{setCreateBusy(false);}
@@ -122,14 +128,14 @@ export function AdminLicensePanel({rpc,onClose,createCustomer,deleteCustomer}:{r
    finally{if(alive.current)setLoading(false);}
  }
  useEffect(()=>{alive.current=true;void load();return()=>{alive.current=false;};},[]);
- useEffect(()=>{const listener=(e:KeyboardEvent)=>{if(e.key==='Escape')onClose();};window.addEventListener('keydown',listener);return()=>window.removeEventListener('keydown',listener);},[onClose]);
+ useEffect(()=>{const listener=(e:KeyboardEvent)=>{if(e.key==='Escape'&&!createOpen&&!initialCredentials)onClose();};window.addEventListener('keydown',listener);return()=>window.removeEventListener('keydown',listener);},[onClose,createOpen,initialCredentials]);
  const rows=users.filter(u=>((u.email||'')+' '+(u.display_name||'')).toLowerCase().includes(query.trim().toLowerCase()));
  return <div className="fixed inset-0 z-[120] bg-slate-900/60 flex items-center justify-center p-3" role="dialog" aria-modal="true" aria-labelledby="admin-license-title">
  <section className="bg-white rounded-2xl shadow-xl max-w-6xl w-full max-h-[90vh] overflow-auto">
  <header className="sticky top-0 bg-slate-900 text-white p-4 flex items-center justify-between gap-3"><div><h2 id="admin-license-title" className="font-bold text-lg">จัดการบัญชีผู้ใช้และ License</h2><p className="text-xs text-slate-300">ผู้ดูแลระบบ · TEAM INSPECTION PRO ELITE</p></div><button type="button" onClick={onClose} className="border border-slate-500 rounded-lg px-3 py-2 text-sm">ปิด</button></header>
  <div className="p-4 space-y-4">
  <div className="grid grid-cols-3 gap-2 text-sm"><div className="bg-slate-100 p-3 rounded-xl">บัญชีทั้งหมด<strong className="block text-xl">{users.length}</strong></div><div className="bg-emerald-50 p-3 rounded-xl">ใช้งานได้<strong className="block text-xl">{users.filter(u=>state(u)==='ใช้งานได้').length}</strong></div><div className="bg-amber-50 p-3 rounded-xl">ยังไม่มีสิทธิ์ / ระงับ<strong className="block text-xl">{users.filter(u=>state(u)!=='ใช้งานได้').length}</strong></div></div>
- <div className="flex flex-wrap items-center gap-2"><input aria-label="ค้นหาบัญชี" placeholder="ค้นหาอีเมลหรือชื่อ" value={query} onChange={e=>setQuery(e.target.value)} className="border rounded-lg p-2 flex-1 min-w-[160px] text-sm"/><button type="button" onClick={()=>void load()} disabled={loading} className="border rounded-lg px-3 py-2 text-sm">รีเฟรช</button><button type="button" onClick={()=>{setCreateError('');setCreateOpen(true);}} className="bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-semibold">+ สร้างบัญชีลูกค้า</button></div>
+ <div className="flex flex-wrap items-center gap-2"><input aria-label="ค้นหาบัญชี" placeholder="ค้นหาอีเมลหรือชื่อ" value={query} onChange={e=>setQuery(e.target.value)} className="border rounded-lg p-2 flex-1 min-w-[160px] text-sm"/><button type="button" onClick={()=>void load()} disabled={loading} className="border rounded-lg px-3 py-2 text-sm">รีเฟรช</button><button type="button" onClick={openCreate} className="bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-semibold">+ สร้างบัญชีลูกค้า</button></div>
  <p className="text-xs text-slate-500">สร้างบัญชีลูกค้าในหน้านี้ แล้วเลือกแพ็กเกจและจำนวนวันเพื่อออกรหัส License หรือบันทึกสิทธิ์โดยตรง รหัสใช้ได้ครั้งเดียว ไม่จัดเก็บไฟล์งานลูกค้า</p>
  {error&&<p role="alert" className="text-red-700 text-sm">{error}</p>}{message&&<p role="status" className="text-emerald-700 text-sm">{message}</p>}
  {loading?<p className="text-sm text-slate-500">กำลังโหลดรายชื่อ...</p>:<div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-100 text-left"><tr>{['อีเมล / ชื่อ','สิทธิ์ / สถานะ','แพ็กเกจ','หมดอายุ (เวลาท้องถิ่น)','การใช้งาน','จัดการ'].map(x=><th className="p-3 whitespace-nowrap" key={x}>{x}</th>)}</tr></thead><tbody>{rows.map(u=><AccountRow key={u.user_id} u={u} rpc={rpcRef.current} onSaved={()=>load(true)} deleteCustomer={deleteCustomer} onDeleted={async()=>{await load();if(alive.current)setMessage('ลบบัญชีผู้ใช้สำเร็จ');}}/>)}</tbody></table>{!rows.length&&!error&&<p className="p-4 text-slate-500">ไม่พบบัญชี</p>}</div>}
@@ -139,9 +145,18 @@ export function AdminLicensePanel({rpc,onClose,createCustomer,deleteCustomer}:{r
  <label className="block text-sm font-semibold">อีเมล<input required type="email" maxLength={254} autoComplete="off" value={customerEmail} onChange={e=>setCustomerEmail(e.target.value)} disabled={createBusy} className="block w-full border border-slate-300 rounded-lg p-2 mt-1"/></label>
  <label className="block text-sm font-semibold">รหัสผ่านเริ่มต้น<input required type={showPassword?'text':'password'} autoComplete="new-password" minLength={12} maxLength={128} value={customerPassword} onChange={e=>setCustomerPassword(e.target.value)} disabled={createBusy} className="block w-full border border-slate-300 rounded-lg p-2 mt-1"/></label>
  <div className="flex gap-2 flex-wrap"><button type="button" disabled={createBusy} onClick={generatePassword} className="border rounded-lg px-2 py-1 text-xs">สุ่มรหัสผ่านปลอดภัย</button><button type="button" onClick={()=>setShowPassword(v=>!v)} className="border rounded-lg px-2 py-1 text-xs">{showPassword?'ซ่อนรหัสผ่าน':'แสดงรหัสผ่าน'}</button></div>
- <p className="text-xs text-slate-500">อย่างน้อย 12 ตัว มีตัวอักษรอังกฤษและตัวเลข โปรดเก็บรหัสไว้เพื่อส่งให้ลูกค้าอย่างปลอดภัย ระบบไม่แสดงรหัสเดิมหลังสร้างบัญชี ตรวจสอบอีเมลกับลูกค้าก่อนสร้าง</p>
+ <p className="text-xs text-slate-500">ระบบสุ่มรหัสผ่านเฉพาะบัญชีให้อัตโนมัติ แก้ไขเองได้ (อย่างน้อย 12 ตัว มีตัวอักษรอังกฤษและตัวเลข) หลังสร้างจะแสดงข้อมูลให้คัดลอกได้ครั้งเดียว ตรวจสอบอีเมลกับลูกค้าก่อนสร้าง</p>
  {createError&&<p className="text-sm text-red-700" role="alert">{createError}</p>}
  <div className="flex justify-end gap-2"><button type="button" disabled={createBusy} onClick={closeCreate} className="border rounded-lg px-3 py-2">ยกเลิก</button><button type="submit" disabled={createBusy} className="bg-blue-700 text-white rounded-lg px-3 py-2 font-semibold disabled:opacity-50">{createBusy?'กำลังสร้างบัญชี…':'สร้างบัญชีลูกค้า'}</button></div>
  </form></div>}
+ {initialCredentials&&<div className="fixed inset-0 z-[155] bg-slate-900/65 flex items-center justify-center p-3" role="dialog" aria-modal="true" aria-labelledby="initial-credentials-title"><div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-3 shadow-xl">
+ <h3 id="initial-credentials-title" className="text-lg font-bold text-emerald-800">สร้างบัญชีสำเร็จ — ข้อมูลเข้าสู่ระบบ</h3>
+ <p className="text-sm">ชื่อ: {initialCredentials.name}</p><p className="text-sm break-all">อีเมล: {initialCredentials.email}</p>
+ <label className="block text-sm font-semibold">รหัสผ่านเริ่มต้น<input readOnly type={credentialsVisible?'text':'password'} value={initialCredentials.password} className="block w-full border rounded-lg p-2 mt-1"/></label>
+ <button type="button" onClick={()=>setCredentialsVisible(v=>!v)} className="text-sm text-blue-700 underline">{credentialsVisible?'ซ่อนรหัสผ่าน':'แสดงรหัสผ่าน'}</button>
+ <p className="text-xs text-slate-600">ข้อมูลนี้แสดงครั้งเดียวในหน้านี้ ไม่บันทึกไว้ให้เรียกดูย้อนหลัง โปรดส่งให้ลูกค้าทางช่องทางที่ปลอดภัย และออกรหัส License แยกต่างหาก</p>
+ {credentialsMessage&&<p role="status" className="text-xs text-slate-700">{credentialsMessage}</p>}
+ <div className="flex flex-wrap gap-2 justify-end"><button type="button" onClick={dismissCredentials} className="border rounded-lg px-3 py-2 text-sm">ปิด</button><button type="button" onClick={()=>void copyCredentials()} className="bg-blue-700 text-white rounded-lg px-3 py-2 text-sm font-semibold">คัดลอกข้อมูลส่งลูกค้า</button></div>
+ </div></div>}
  </div></section></div>;
 }
