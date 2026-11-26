@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.50",
+  "latest": "v1.0.51",
   "releases": [
+    {
+      "version": "v1.0.51",
+      "build": 51,
+      "storageSchema": 2,
+      "date": "2026-11-26T16:09:15.616Z",
+      "notes": "Allow fine resizing of narrow floor plan zones",
+      "commit": "7ca4a29b1d9c004a1110b8723642156f7606f115",
+      "notesTh": "ลดขนาดขั้นต่ำกรอบโซนเหลือ 0.5% ปรับตำแหน่งและขนาดได้ละเอียดขึ้น พร้อมจุดจับมุมสำหรับโซนขนาดเล็ก"
+    },
     {
       "version": "v1.0.50",
       "build": 50,
