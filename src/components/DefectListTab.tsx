@@ -299,7 +299,7 @@ export const DefectListTab: React.FC<DefectListTabProps> = ({
                         <span>{t.addBeforePhotoBtn}</span>
                         <input
                           type="file"
-                          accept="image/*"
+
                           className="hidden"
                           onChange={(e) => handleQuickPhoto(e, d.id, 'beforeImg')}
                         />
@@ -349,7 +349,7 @@ export const DefectListTab: React.FC<DefectListTabProps> = ({
                         <span>{t.addAfterPhotoBtn}</span>
                         <input
                           type="file"
-                          accept="image/*"
+
                           className="hidden"
                           onChange={(e) => handleQuickPhoto(e, d.id, 'afterImg')}
                         />

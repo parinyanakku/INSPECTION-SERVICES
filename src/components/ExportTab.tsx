@@ -577,7 +577,7 @@ export const ExportTab: React.FC<ExportTabProps> = ({
                     {coverPreview?<img src={coverPreview} alt={lang==='en'?'Cover photo preview':'ตัวอย่างภาพหน้าปก'} className="mx-auto max-h-56 max-w-full object-contain rounded"/>:<div className="flex min-h-24 items-center justify-center text-xs text-slate-500">{lang==='en'?'No photo selected yet':'ยังไม่มีรูปภาพหน้าปก'}</div>}
                     {coverMode==='custom'&&<div className="flex flex-wrap items-center gap-2 mt-3">
                       <label className="inline-flex items-center gap-2 cursor-pointer border border-slate-300 rounded-lg px-3 py-2 bg-white text-xs font-semibold"><Upload className="w-4 h-4"/>{lang==='en'?'Upload / replace photo':'อัปโหลด / เปลี่ยนรูป'}
-                        <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={ev=>void handlePhotoUpload(ev,'coverCustomImg')}/>
+                        <input type="file" className="sr-only" onChange={ev=>void handlePhotoUpload(ev,'coverCustomImg')}/>
                       </label>
                       {reportBook.coverCustomImg&&<button type="button" onClick={()=>updateBook(prev=>({...prev,coverCustomImg:''}))} className="inline-flex items-center gap-1 text-xs text-rose-700 rounded-lg px-3 py-2 bg-rose-50"><Trash2 className="w-4 h-4"/>{lang==='en'?'Remove custom photo':'ลบรูปที่อัปโหลดเอง'}</button>}
                     </div>}
@@ -700,7 +700,7 @@ export const ExportTab: React.FC<ExportTabProps> = ({
                         {t.figChangeBtn}
                         <input
                           type="file"
-                          accept="image/*"
+
                           className="hidden"
                           onChange={(e) => handlePhotoUpload(e, 'locationMapImg')}
                         />
@@ -715,7 +715,7 @@ export const ExportTab: React.FC<ExportTabProps> = ({
                       </span>
                       <input
                         type="file"
-                        accept="image/*"
+
                         className="hidden"
                         onChange={(e) => handlePhotoUpload(e, 'locationMapImg')}
                       />
@@ -769,7 +769,7 @@ export const ExportTab: React.FC<ExportTabProps> = ({
                         {t.figChangeBtn}
                         <input
                           type="file"
-                          accept="image/*"
+
                           className="hidden"
                           onChange={(e) => handlePhotoUpload(e, 'frontHouseImg')}
                         />
@@ -784,7 +784,7 @@ export const ExportTab: React.FC<ExportTabProps> = ({
                       </span>
                       <input
                         type="file"
-                        accept="image/*"
+
                         className="hidden"
                         onChange={(e) => handlePhotoUpload(e, 'frontHouseImg')}
                       />
@@ -956,7 +956,7 @@ export const ExportTab: React.FC<ExportTabProps> = ({
                       {t.fig3ExtraAddBtn}
                       <input
                         type="file"
-                        accept="image/*"
+
                         className="hidden"
                         onChange={(e) => handlePhotoUpload(e, 'extraZone')}
                       />

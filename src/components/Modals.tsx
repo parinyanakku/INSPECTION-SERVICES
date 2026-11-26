@@ -117,7 +117,7 @@ export const BrandSettingsModal: React.FC<BrandSettingsModalProps> = ({
               <div className="flex flex-wrap justify-center sm:justify-start gap-2 mt-2.5">
                 <label className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold cursor-pointer">
                   {t.uploadLogoBtn}
-                  <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                  <input type="file" className="hidden" onChange={handleLogoUpload} />
                 </label>
                 <button
                   type="button"
@@ -757,7 +757,7 @@ export const DefectEditModal: React.FC<DefectEditModalProps> = ({
                         {t.uploadOrChangeBtn}
                         <input
                           type="file"
-                          accept="image/*"
+
                           className="hidden"
                           onChange={(e) => handlePhotoUpload(e, 'before')}
                         />
@@ -804,7 +804,7 @@ export const DefectEditModal: React.FC<DefectEditModalProps> = ({
                         {t.uploadOrChangeBtn}
                         <input
                           type="file"
-                          accept="image/*"
+
                           className="hidden"
                           onChange={(e) => handlePhotoUpload(e, 'after')}
                         />

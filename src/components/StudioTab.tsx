@@ -573,7 +573,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
             {t.uploadFloorBtn}
             <input
               type="file"
-              accept="image/*"
+
               className="hidden"
               onChange={(e) => {
                 handleFloorImageUpload(e.target.files?.[0]);
@@ -874,7 +874,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
             <label className="text-xs px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold cursor-pointer flex items-center gap-1.5 whitespace-nowrap">
               <Upload className="w-3.5 h-3.5" />
               {t.uploadFieldPhotoBtn}
-              <input type="file" accept="image/*" className="hidden" onChange={handleMarkupUpload} />
+              <input type="file" className="hidden" onChange={handleMarkupUpload} />
             </label>
           </div>
 

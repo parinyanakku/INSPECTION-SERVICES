@@ -741,7 +741,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
               <Upload className="w-3.5 h-3.5" />
               {t.uploadFieldPhotoBtn}
             </span>
-            <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
+            <input type="file" className="hidden" onChange={handleFileUpload} />
           </label>
         )}
       </div>
