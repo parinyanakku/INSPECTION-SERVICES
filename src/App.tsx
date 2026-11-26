@@ -878,6 +878,7 @@ export default function App({isAdmin=false}:{isAdmin?:boolean}) {
 
   const handleExportExcel = async () => {
     if (!activeProject) return;
+    try {
     const kind = await exportProjectExcel(activeProject, brand, lang);
     notify(
       kind === 'xlsx'
@@ -889,6 +890,10 @@ export default function App({isAdmin=false}:{isAdmin?:boolean}) {
         : 'ดาวน์โหลดรายงานเป็นไฟล์ CSV สำรองเรียบร้อยแล้ว',
       kind === 'xlsx' ? 'success' : 'info'
     );
+    } catch(err) {
+      console.error(err);
+      notify(lang==='en'?'Excel report export failed. Please try again.':'สร้างเล่มรายงาน Excel ไม่สำเร็จ กรุณาลองใหม่','danger');
+    }
   };
 
   // Filtered projects in Hub

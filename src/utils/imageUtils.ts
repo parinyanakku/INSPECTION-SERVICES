@@ -1,3 +1,4 @@
+import { appendPrintableExcelReport } from './excelReport';
 import { downloadNativeWordReport } from './wordReport';
 import ExcelJS from 'exceljs';
 import html2canvas from 'html2canvas';
@@ -1681,6 +1682,11 @@ export async function exportProjectExcel(
     workbook.creator = brand.companyName || 'TEAM INSPECTION SERVICES';
     workbook.created = new Date();
 
+    const rb=loadReportBookData(proj,lang);
+    const assets=await prepareSharedReportAssets(proj,brand);
+    const pages=buildSharedReportPages(proj,brand,lang,assets,rb);
+    await appendPrintableExcelReport(workbook,pages,lang);
+
     const ws = workbook.addWorksheet('Defect List', {
       views: [{ state: 'frozen', ySplit: 6 }],
       pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '1:6', horizontalCentered: true },
@@ -1874,6 +1880,9 @@ export async function exportProjectExcel(
       to: `J${lastRowNumber}`,
     };
 
+    // Keep the editable source list separate from the formatted report.
+    ws.state='hidden';
+    workbook.views=[{firstSheet:0,activeTab:0,visibility:'visible',x:0,y:0,width:18000,height:10000}];
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -1888,37 +1897,8 @@ export async function exportProjectExcel(
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     return 'xlsx';
   } catch (err) {
-    console.warn('ExcelJS export fallback to CSV:', err);
-    const headers = isEn
-      ? ['No.', 'Floor', 'Zone', 'Defect Item', 'Engineering Cause', 'Solution', 'Severity', 'Status', 'Before Photo', 'After Photo']
-      : ['ข้อที่', 'ชั้น', 'โซน', 'รายการ Defect', 'สาเหตุทางวิศวกรรม', 'วิธีแก้ไข', 'ความรุนแรง', 'สถานะ', 'รูปก่อนแก้ไข', 'รูปหลังแก้ไข'];
-    const csvRows = sorted.map((d) => [
-      d.number,
-      getFloorNameById(proj, d.floorId),
-      d.zone,
-      d.title,
-      d.hideCause ? '' : d.cause || '',
-      d.hideSolution ? '' : d.solution || '',
-      translateSeverity(d.severity, lang),
-      translateDefectStatus(d.status, lang),
-      d.beforeImg ? (isEn ? 'Attached' : 'มีรูปภาพ') : isEn ? 'None' : 'ไม่มี',
-      d.afterImg ? (isEn ? 'Attached' : 'มีรูปภาพ') : isEn ? 'None' : 'ไม่มี',
-    ]);
-    const csvLines = [
-      headers.join(','),
-      ...csvRows.map((row) =>
-        row.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(',')
-      ),
-    ];
-    const blob = new Blob(['\ufeff' + csvLines.join('\n')], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Inspection_Report_${safeSlug}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    return 'csv';
+    console.error('Printable Excel report export failed:',err);
+    throw err;
+
   }
 }

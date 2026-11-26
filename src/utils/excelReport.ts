@@ -1,0 +1,148 @@
+import type ExcelJS from 'exceljs';
+
+type Page={id:string;html:string;orientation?:'portrait'|'landscape'};
+const GRID=10; // 10 CSS px / 7.5 pt per grid row
+const sectionNames=[
+ ['page-cover','หน้าปก','Cover'],['page-toc','สารบัญ','Contents'],
+ ['page-sec1','บทนำ','Introduction'],['page-sec2','การดำเนินการ','Operations'],
+ ['page-sec3','รายการ Defect','Defect Report'],['page-sec4','สรุปและข้อเสนอแนะ','Summary'],
+];
+function color(value:string):string|undefined{
+ if(!value||value==='transparent')return;
+ const m=value.match(/^rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\s*\)$/);
+ if(m){if(m[4]!==undefined&&Number(m[4])===0)return;return 'FF'+m.slice(1,4).map(n=>Number(n).toString(16).padStart(2,'0')).join('').toUpperCase();}
+ if(/^#[0-9a-f]{6}$/i.test(value))return 'FF'+value.slice(1).toUpperCase();
+}
+function colName(n:number){let s='';while(n){n--;s=String.fromCharCode(65+n%26)+s;n=Math.floor(n/26);}return s;}
+function groupKey(page:Page){return sectionNames.find(([id])=>page.id===id||page.id.startsWith(id+'-'))?.[0]||page.id;}
+function getImageData(img:HTMLImageElement):{base64:string;extension:'png'|'jpeg'}{
+ const raw=img.getAttribute('src')||'';
+ if(/^data:image\/png;base64,/i.test(raw))return {base64:raw,extension:'png'};
+ if(/^data:image\/jpeg;base64,/i.test(raw)){
+   try{if(!atob(raw.split(',')[1].slice(0,88000)).includes('Exif\x00\x00'))return {base64:raw,extension:'jpeg'};}catch{}
+ }
+ if(!img.naturalWidth||!img.naturalHeight||img.naturalWidth*img.naturalHeight>24000000)throw Error('Report image cannot be converted');
+ const canvas=document.createElement('canvas');canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;
+ try{const ctx=canvas.getContext('2d');if(!ctx)throw Error('Image conversion unavailable');ctx.drawImage(img,0,0);return {base64:canvas.toDataURL('image/png'),extension:'png'};}
+ finally{canvas.width=0;canvas.height=0;}
+}
+export async function appendPrintableExcelReport(workbook:ExcelJS.Workbook,pages:Page[],lang:'th'|'en'){
+ if(!pages.length)throw Error('No report pages');
+ const iframe=document.createElement('iframe');
+ iframe.setAttribute('aria-hidden','true');
+ Object.assign(iframe.style,{position:'fixed',left:'0',top:'0',width:'1123px',height:'1123px',border:'0',opacity:'0',pointerEvents:'none'});
+ document.body.appendChild(iframe);
+ try{
+ const doc=iframe.contentDocument,win=iframe.contentWindow;if(!doc||!win)throw Error('Report layout unavailable');
+ doc.open();doc.write('<!doctype html><html><head><meta charset="utf-8"><style>@font-face{font-family:"TH Sarabun New";font-weight:400;src:local("TH Sarabun New"),url("https://cdn.jsdelivr.net/gh/Phonbopit/sarabun-webfont@8d6f2f4223d025670b70aa344462971678516216/fonts/thsarabunnew-webfont.woff")} @font-face{font-family:"TH Sarabun New";font-weight:600 900;src:local("TH Sarabun New Bold"),url("https://cdn.jsdelivr.net/gh/Phonbopit/sarabun-webfont@8d6f2f4223d025670b70aa344462971678516216/fonts/thsarabunnew_bold-webfont.woff")} *{box-sizing:border-box}body{margin:0;width:1123px;background:white;font-family:"TH Sarabun New",Tahoma,sans-serif}table{border-collapse:collapse}</style></head><body>'+pages.map(p=>p.html).join('')+'</body></html>');doc.close();
+ if(doc.fonts?.ready){await Promise.all([doc.fonts.load('400 16px "TH Sarabun New"','ภาษาไทย'),doc.fonts.load('700 16px "TH Sarabun New"','ภาษาไทย')]);await doc.fonts.ready;}
+ const imgs=Array.from(doc.images);
+ await Promise.all(imgs.map(async img=>{try{await img.decode();}catch{if(!img.complete||!img.naturalWidth)throw Error('Report image failed to load');}}));
+ const roots=Array.from(doc.querySelectorAll<HTMLElement>('.report-page'));
+ if(roots.length!==pages.length)throw Error('Report page count mismatch');
+ const groups=new Map<string,{sheet:ExcelJS.Worksheet;count:number;cols:number;rows:number}>();
+ const imageIds=new Map<string,number>();
+ for(let pi=0;pi<pages.length;pi++){
+ const page=pages[pi],root=roots[pi],landscape=page.orientation==='landscape';
+ const W=landscape?1123:794,H=landscape?794:1123;
+ const cols=Math.ceil(W/GRID),rows=Math.ceil(H/GRID);
+ const key=groupKey(page);
+ let group=groups.get(key);
+ if(!group){
+   const names=sectionNames.find(n=>n[0]===key);
+   const name=(names?.[lang==='en'?2:1]||'Report').slice(0,31);
+   const sheet=workbook.addWorksheet(name,{
+    views:[{state:'normal',style:'pageBreakPreview',showGridLines:false,zoomScale:75,zoomScaleNormal:100}],
+    pageSetup:{paperSize:9,orientation:landscape?'landscape':'portrait',fitToPage:false,scale:90,horizontalCentered:true,margins:{left:0.25,right:0.25,top:0.25,bottom:0.25,header:0,footer:0},pageOrder:'downThenOver'},
+   });
+   for(let c=1;c<=cols;c++)sheet.getColumn(c).width=0.83;
+   sheet.properties.defaultRowHeight=7.5;
+   group={sheet,count:0,cols,rows};groups.set(key,group);
+ }
+ const ws=group.sheet,offset=group.count*rows;group.count++;
+ const origin=root.getBoundingClientRect();
+ for(let r=1;r<=rows;r++)ws.getRow(offset+r).height=7.5;
+ type Rect={r1:number;c1:number;r2:number;c2:number};
+ function bounds(el:Element):Rect|null{
+   const r=el.getBoundingClientRect();
+   if(r.width<=0||r.height<=0)return null;
+   const c1=Math.max(1,Math.min(cols,Math.round((r.left-origin.left)/GRID)+1));
+   const c2=Math.max(c1,Math.min(cols,Math.round((r.right-origin.left)/GRID)));
+   const r1=Math.max(1,Math.min(rows,Math.round((r.top-origin.top)/GRID)+1));
+   const r2=Math.max(r1,Math.min(rows,Math.round((r.bottom-origin.top)/GRID)));
+   return {r1:offset+r1,r2:offset+r2,c1,c2};
+ }
+ function decorate(el:HTMLElement,b:Rect){
+   const st=win!.getComputedStyle(el),fill=color(st.backgroundColor);
+   const sides=['top','bottom','left','right'] as const;
+   const edges=sides.filter(side=>parseFloat(st.getPropertyValue('border-'+side+'-width'))>0&&st.getPropertyValue('border-'+side+'-style')!=='none');
+   if(fill&&fill!=='FFFFFFFF'){
+     for(let r=b.r1;r<=b.r2;r++)for(let c=b.c1;c<=b.c2;c++)ws.getCell(r,c).fill={type:'pattern',pattern:'solid',fgColor:{argb:fill}};
+   }
+   for(const side of edges){
+    const argb=color(st.getPropertyValue('border-'+side+'-color'))||'FFCBD5E1';
+    const paint=(r:number,c:number)=>{const cell=ws.getCell(r,c);cell.border={...cell.border,[side]:{style:parseFloat(st.getPropertyValue('border-'+side+'-width'))>=2?'medium':'thin',color:{argb}}};};
+    if(side==='top'||side==='bottom')for(let c=b.c1;c<=b.c2;c++)paint(side==='top'?b.r1:b.r2,c);
+    else for(let r=b.r1;r<=b.r2;r++)paint(r,side==='left'?b.c1:b.c2);
+   }
+ }
+ // Paint outer panels and cell boundaries before merging the editable text.
+ for(const el of Array.from(root.querySelectorAll<HTMLElement>('div,table,td,th,h1,h2,h3,span'))){
+   const b=bounds(el);if(b)decorate(el,b);
+ }
+ const occupied=new Set<string>();
+ function writeText(el:HTMLElement,b:Rect,content:string){
+   const st=win!.getComputedStyle(el);
+   if(!content.trim())return;
+   // Adjacent layout boxes can round to the same grid line. Keep them disjoint.
+   let r1=b.r1,r2=b.r2,c1=b.c1,c2=b.c2;
+   const free=(r:number,c:number)=>!occupied.has(r+':'+c);
+   const allFree=()=>{for(let r=r1;r<=r2;r++)for(let c=c1;c<=c2;c++)if(!free(r,c))return false;return true;};
+   while(!allFree()&&r1<r2)r1++;
+   while(!allFree()&&c1<c2)c1++;
+   if(!allFree()){
+     // Preserve content rather than silently dropping text in a tiny rounded box.
+     const old=ws.getCell(b.r1,b.c1);const cell=old.isMerged?old.master:old;
+     cell.value=[String(cell.value??''),content].filter(Boolean).join('\n');cell.alignment={...cell.alignment,wrapText:true};return;
+   }
+   const edge=(r:number,c:number)=>ws.getCell(r,c).border;
+   const border={top:edge(r1,c1).top,bottom:edge(r2,c1).bottom,left:edge(r1,c1).left,right:edge(r1,c2).right};
+   if(r1!==r2||c1!==c2)ws.mergeCells(r1,c1,r2,c2);
+   for(let r=r1;r<=r2;r++)for(let c=c1;c<=c2;c++)occupied.add(r+':'+c);
+   const cell=ws.getCell(r1,c1);cell.value=content;
+   const size=Math.max(10,Math.min(26,Math.round(parseFloat(st.fontSize)*0.75)));
+   const bold=Number(st.fontWeight)>=600||st.fontWeight==='bold';
+   cell.font={name:'TH Sarabun New',size,bold,color:{argb:color(st.color)||'FF0F172A'}};
+   const align=st.textAlign==='center'?'center':st.textAlign==='right'?'right':'left';
+   cell.alignment={horizontal:align,vertical:st.verticalAlign==='top'?'top':'middle',wrapText:true,indent:align==='left'&&c2-c1>8?1:0};
+   cell.border=border;
+ }
+ function visit(el:HTMLElement){
+   const tag=el.tagName;if(tag==='IMG'||tag==='COLGROUP'||tag==='COL'||tag==='BR')return;
+   const children=Array.from(el.children) as HTMLElement[];
+   const hasImage=!!el.querySelector('img'),hasTable=!!el.querySelector('table');
+   const isCell=tag==='TD'||tag==='TH';
+   const blockChild=children.some(ch=>/^(DIV|P|H[1-6]|TABLE|SECTION|UL|OL|LI|THEAD|TBODY|TR|TD|TH)$/.test(ch.tagName));
+   if(!hasImage&&!hasTable&&(isCell||!blockChild)){
+     const content=el.innerText?.trim();const b=bounds(el);
+     if(content&&b){writeText(el,b,content);return;}
+   }
+   for(const child of children)visit(child);
+ }
+ for(const ch of Array.from(root.children))visit(ch as HTMLElement);
+ for(const img of Array.from(root.querySelectorAll<HTMLImageElement>('img'))){
+   if(!img.naturalWidth||!img.naturalHeight)throw Error('Missing report photo');
+   const r=img.getBoundingClientRect(),ratio=Math.min(r.width/img.naturalWidth,r.height/img.naturalHeight);
+   const w=img.naturalWidth*ratio,h=img.naturalHeight*ratio;
+   if(w<=0||h<=0)continue;
+   const x=Math.max(0,r.left-origin.left+(r.width-w)/2),y=Math.max(0,r.top-origin.top+(r.height-h)/2);
+   const raw=img.getAttribute('src')||'';
+   let id=imageIds.get(raw);if(id===undefined){id=workbook.addImage(getImageData(img));imageIds.set(raw,id);}
+   ws.addImage(id,{tl:{col:x/GRID,row:offset+y/GRID},ext:{width:Math.min(w,W-x),height:Math.min(h,H-y)},editAs:'oneCell'});
+ }
+ // Explicit break at the end of each report page in the same section.
+ if(pi+1<pages.length&&groupKey(pages[pi+1])===key)ws.getRow(offset+rows).addPageBreak();
+ ws.pageSetup.printArea='A1:'+colName(cols)+(offset+rows);
+ }
+ }finally{iframe.remove();}
+}
