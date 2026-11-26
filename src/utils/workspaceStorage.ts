@@ -55,6 +55,18 @@ export const workspaceStorage={
  setItem(key:string,value:string){change(key,String(value));},
  removeItem(key:string){change(key,null);},
 };
+export async function writeWorkspaceBatch(records:Record<string,string>){
+ const connection=db;if(!connection)throw Error('Local workspace is not open');
+ await pending;if(failures.size)throw Error('Existing local writes failed');
+ // Used only before mounting the app: all legacy records and the marker commit together.
+ await new Promise<void>((resolve,reject)=>{
+  const tx=connection.transaction('records','readwrite');
+  tx.oncomplete=()=>resolve();tx.onabort=tx.onerror=()=>reject(tx.error||Error('Legacy migration failed'));
+  const objectStore=tx.objectStore('records');for(const [key,value] of Object.entries(records))objectStore.put({key,value});
+ });
+ for(const [key,value] of Object.entries(records))cache.set(key,value);
+ status();
+}
 export async function flushWorkspace(){await pending;return failures.size===0;}
 export async function closeWorkspace(){
  await pending;

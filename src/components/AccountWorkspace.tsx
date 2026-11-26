@@ -1,5 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
 import App from '../App';
+import { importLegacyAdminProjects } from '../utils/legacyAdminProjects';
 import { PasswordChangeDialog } from './PasswordChangeDialog';
 import { AdminLicensePanel } from './AdminLicensePanel';
 import {openWorkspace,closeWorkspace,flushWorkspace,workspaceStatus} from '../utils/workspaceStorage';
@@ -17,6 +18,7 @@ async function allowed(token:string){return (await request<boolean>('/rest/v1/rp
 export default function AccountWorkspace(){
  const [session,setSession]=useState<Session|null>(null),[blocked,setBlocked]=useState(false),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[storage,setStorage]=useState(workspaceStatus);
  const [activationCode,setActivationCode]=useState('');
+ const [legacyNotice,setLegacyNotice]=useState('');
  const [changePasswordOpen,setChangePasswordOpen]=useState(false);
  const resetUrl='https://teaminspectionproelite.github.io/INSPECTION-SERVICES/reset-password.html';
  const [isAdmin,setIsAdmin]=useState(false),[adminOpen,setAdminOpen]=useState(false);
@@ -35,6 +37,7 @@ export default function AccountWorkspace(){
      if(!await allowed(s.access_token))throw Error('บัญชียังไม่ได้รับสิทธิ์ หรือสิทธิ์หมดอายุ/ถูกระงับ กรุณาติดต่อผู้ดูแลเพื่อรับรหัสลงทะเบียน');
      const admin = (await request<boolean>('/rest/v1/rpc/inspection_is_admin',s.access_token,{}))===true;
      await openWorkspace(s.user.id);
+     if(admin){try{const count=await importLegacyAdminProjects(s.user.id,admin);if(count>0)setLegacyNotice('นำเข้าแฟ้มก่อนมีระบบ Login จำนวน '+count+' แฟ้ม เข้าพื้นที่ Admin แล้ว');}catch{setLegacyNotice('ยังนำเข้าแฟ้มเก่าไม่สำเร็จ ข้อมูลต้นฉบับยังอยู่ กรุณาสำรองข้อมูลหรือติดต่อผู้ดูแล');}}
      live.current=s;setSession(s);setBlocked(false);setIsAdmin(admin);setAdminOpen(false);
    }catch(e){setError(e instanceof Error?e.message:'เข้าสู่ระบบไม่สำเร็จ');}
    finally{setBusy(false);setPassword('');}
@@ -89,8 +92,9 @@ export default function AccountWorkspace(){
  {error&&<p className="text-sm text-red-700" role="alert">{error}</p>}<p className="text-xs text-slate-500">ไฟล์งานเก็บในเบราว์เซอร์นี้เท่านั้น ไม่ซิงก์ระหว่างเครื่อง โปรดสำรอง JSON เป็นประจำ รูปที่กดวิเคราะห์จะส่งไปยัง Google Gemini เพื่อวิเคราะห์</p></section></main>;
  return <><div className="bg-slate-900 text-white px-4 py-2 flex flex-wrap items-center gap-3 text-xs"><span>{session.user.email} · พื้นที่งานส่วนตัว {isAdmin&&!blocked&&<strong className="ml-2 text-amber-300">Admin</strong>}</span>{isAdmin&&!blocked&&<button type="button" disabled={busy} onClick={()=>setAdminOpen(true)} className="bg-blue-600 hover:bg-blue-500 rounded-lg px-3 py-1.5 font-semibold">จัดการบัญชีลูกค้า / License</button>}<span className="ml-auto">{storage.failed?'บันทึกไม่สำเร็จ — สำรอง JSON':storage.pending?'กำลังบันทึก…':'ข้อมูลอยู่ในเครื่องนี้'}</span><button type="button" disabled={busy||blocked} onClick={()=>setChangePasswordOpen(true)} className="border rounded px-2 py-1">เปลี่ยนรหัสผ่าน</button><button disabled={busy} onClick={logout} className="border rounded px-2 py-1">ออกจากระบบ</button></div>
  {error&&<p role="alert" className="bg-red-100 text-red-900 p-3 text-sm">{error}</p>}
+ {isAdmin&&!blocked&&legacyNotice&&<div role="status" className="bg-blue-50 text-blue-900 p-3 text-sm flex justify-between gap-3">{legacyNotice}<button type="button" onClick={()=>setLegacyNotice('')}>ปิด</button></div>}
  {storage.failed&&<p role="alert" className="bg-red-100 text-red-900 p-3 text-sm">บันทึก IndexedDB ไม่สำเร็จ กรุณาบันทึกเป็นไฟล์ JSON ก่อนปิดหน้า</p>}
- {blocked?<div className="p-6">ระงับการเปิดพื้นที่งานจนกว่าจะเข้าสู่ระบบใหม่</div>:<App key={session.user.id}/>}
+ {blocked?<div className="p-6">ระงับการเปิดพื้นที่งานจนกว่าจะเข้าสู่ระบบใหม่</div>:<App key={session.user.id} isAdmin={isAdmin}/>}
  {changePasswordOpen&&!blocked&&<PasswordChangeDialog onChangePassword={changePassword} onClose={()=>setChangePasswordOpen(false)}/>}
  {adminOpen&&isAdmin&&!blocked&&<AdminLicensePanel key={session.user.id} rpc={(name,body={})=>request('/rest/v1/rpc/'+name,session.access_token,body)} createCustomer={async body=>{
    const r=await fetch(API+'/functions/v1/inspection-create-customer',{method:'POST',headers:{apikey:PUBLIC_KEY,Authorization:'Bearer '+session.access_token,'Content-Type':'application/json'},body:JSON.stringify(body),cache:'no-store',signal:AbortSignal.timeout(35000)});

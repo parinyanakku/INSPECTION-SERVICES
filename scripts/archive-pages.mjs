@@ -16,11 +16,19 @@ if(!fs.existsSync(dest)){
 }
 releases.sort((a,b)=>b.build-a.build);
 if(!releases.length)throw Error('No releases');
-const manifest={latest:releases[0].version,releases};
+const compatible=releases.filter(r=>r.storageSchema===2);
+if(!compatible.length)throw Error('No authenticated releases');
+const manifest={latest:compatible[0].version,releases};
 fs.writeFileSync(index,JSON.stringify(manifest,null,2)+'\n');
 // Root is a launcher; all program builds remain available at their version-specific paths.
 fs.rmSync('dist',{recursive:true,force:true});
 fs.cpSync(path.join(versions,manifest.latest),'dist',{recursive:true});
-fs.cpSync(versions,'dist/versions',{recursive:true});
-fs.copyFileSync(index,'dist/release-index.json');
+fs.mkdirSync('dist/versions',{recursive:true});
+for(const release of compatible)fs.cpSync(path.join(versions,release.version),path.join('dist/versions',release.version),{recursive:true});
+// Retain old unauthenticated builds in the archive, not the public Pages site.
+for(const release of releases.filter(r=>r.storageSchema!==2)){
+ const oldPath=path.join('dist/versions',release.version);fs.mkdirSync(oldPath,{recursive:true});
+ fs.writeFileSync(path.join(oldPath,'index.html'),'<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=../../"><p>กรุณาเข้าสู่ระบบผ่าน <a href="../../">เว็บไซต์หลัก</a></p>');
+}
+fs.writeFileSync('dist/release-index.json',JSON.stringify({latest:manifest.latest,releases:compatible},null,2)+'\\n');
 fs.copyFileSync('scripts/pages-launcher.html','dist/index.html');

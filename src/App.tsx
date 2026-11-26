@@ -128,7 +128,7 @@ function loadInitialProjects(): ProjectFile[] {
   return [];
 }
 
-export default function App() {
+export default function App({isAdmin=false}:{isAdmin?:boolean}) {
   const [lang, setLang] = useState<AppLanguage>(loadInitialLang);
   const t = UI_TEXT[lang];
 
@@ -347,6 +347,7 @@ export default function App() {
         defects: [],
       };
       nextProjects = [newProj, ...projects];
+      setHubSearch('');
       notify(
         lang === 'en'
           ? `Created project "${data.name}"`
@@ -380,6 +381,7 @@ export default function App() {
   };
 
   const handleResetDemoProject = () => {
+    if(!isAdmin)return;
     setConfirmState({
       title: lang === 'en' ? 'Reset Demo Project' : 'รีเซ็ตแฟ้มตัวอย่างเริ่มต้น',
       message:
@@ -389,7 +391,9 @@ export default function App() {
       confirmText: lang === 'en' ? 'Reset Demo' : 'รีเซ็ตแฟ้มตัวอย่าง',
       confirmStyle: 'primary',
       onConfirm: () => {
+        if(!isAdmin)return;
         const demo = createDefaultSirinaphaProject();
+        setHubSearch('');
         const idx = projects.findIndex((p) => p.id === demo.id);
         const next =
           idx >= 0
@@ -525,6 +529,7 @@ export default function App() {
               const nextProjects = parsed.projects.map(migrateProject);
               const nextBrand = parsed.brand ? { ...DEFAULT_BRAND, ...parsed.brand } : brand;
               setProjects(nextProjects);
+              setHubSearch('');
               setBrand(nextBrand);
               setActiveProjectId(null);
               persistAll(nextBrand, nextProjects, false);
@@ -567,6 +572,7 @@ export default function App() {
               const exists = projects.some((p) => p.id === migrated.id);
               const toAdd = exists ? { ...migrated, id: `proj_${Date.now()}` } : migrated;
               const nextProjects = [toAdd, ...projects];
+              setHubSearch('');
               setProjects(nextProjects);
               persistAll(brand, nextProjects, false);
               setConfirmState(null);
@@ -1088,22 +1094,28 @@ export default function App() {
               <div className="relative flex-1 max-w-md">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
-                  type="text"
+                  type="search"
+                  name="inspection-project-filter"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  aria-label={t.hubSearchPlaceholder}
                   value={hubSearch}
                   onChange={(e) => setHubSearch(e.target.value)}
                   placeholder={t.hubSearchPlaceholder}
-                  className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-slate-300 bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-10 pr-12 py-2.5 text-sm rounded-xl border border-slate-300 bg-white outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                <button type="button" onClick={()=>setHubSearch('')} aria-label={lang==='en'?'Clear project search':'ล้างการค้นหา'} className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-white rounded text-slate-500 hover:text-blue-700 text-xs font-semibold">{lang==='en'?'Clear':'ล้าง'}</button>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <button
+                {isAdmin&&<button
                   type="button"
                   onClick={handleResetDemoProject}
                   className="text-xs sm:text-sm px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
                 >
                   <RotateCcw className="w-4 h-4" />
                   {t.resetDemoBtn}
-                </button>
+                </button>}
                 <button
                   type="button"
                   onClick={() => setProjectModalTarget({ open: true, project: null })}
@@ -1120,6 +1132,7 @@ export default function App() {
               {filteredProjects.length === 0 ? (
                 <div className="col-span-full bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center text-slate-400">
                   <p className="text-sm font-medium">{t.noProjectsFound}</p>
+                  {projects.length>0&&<button type="button" onClick={()=>setHubSearch('')} className="mt-3 text-blue-700 underline text-sm">{lang==='en'?'Show all projects':'แสดงแฟ้มโครงการทั้งหมด'}</button>}
                 </div>
               ) : (
                 filteredProjects.map((p) => {
