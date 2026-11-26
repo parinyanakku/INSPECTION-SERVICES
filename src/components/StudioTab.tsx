@@ -418,8 +418,9 @@ export const StudioTab: React.FC<StudioTabProps> = ({
       return;
     }
 
-    const photoDataUrl = markupEditorRef.current?.exportDataUrl() ?? markupImageSrc;
-    if (!photoDataUrl) {
+    // Capture the high-quality marked photo once. Gemini creates its own temporary reduced copy.
+    const reportPhotoDataUrl = markupEditorRef.current?.exportDataUrl() ?? markupImageSrc;
+    if (!reportPhotoDataUrl) {
       onNotify(
         lang === 'en'
           ? 'Please upload a site photo before running AI analysis'
@@ -434,7 +435,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
       const data = await analyzeDefectWithGeminiClient({
         apiKey: geminiConfig.apiKey,
         preferredModel: geminiConfig.model,
-        imageDataUrl: photoDataUrl,
+        imageDataUrl: reportPhotoDataUrl,
         userNote: aiPrompt.trim(),
         lang,
       });
@@ -449,7 +450,8 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         solution: data.solution || '',
         hideCause: false,
         hideSolution: false,
-        photoDataUrl,
+        // Store the original report-quality snapshot, not the resized AI request.
+        photoDataUrl: reportPhotoDataUrl,
       };
       setDrafts((prev) => [newDraft, ...prev]);
       setActiveDraftId(newDraft.id);

@@ -513,7 +513,11 @@ function parseDefectJson(rawText: string): {
   };
 }
 
-// Reduce only the AI request image; the original marked photo stays in the report.
+// AI request settings are intentionally separate from upload, preview and report quality.
+export const AI_IMAGE_MAX_DIMENSION = 1280;
+export const AI_IMAGE_JPEG_QUALITY = 0.78;
+
+// Work on a temporary canvas only. Never update the inspection image or its annotations.
 function optimizeAnalysisImage(source: string): Promise<string> {
   return new Promise(resolve => {
     const image = new Image();
@@ -521,7 +525,7 @@ function optimizeAnalysisImage(source: string): Promise<string> {
     const finish = (value: string) => { clearTimeout(timer); resolve(value); };
     image.onload = () => {
       try {
-        const ratio = Math.min(1, 1280 / Math.max(image.naturalWidth, image.naturalHeight));
+        const ratio = Math.min(1, AI_IMAGE_MAX_DIMENSION / Math.max(image.naturalWidth, image.naturalHeight));
         const canvas = document.createElement('canvas');
         canvas.width = Math.max(1, Math.round(image.naturalWidth * ratio));
         canvas.height = Math.max(1, Math.round(image.naturalHeight * ratio));
@@ -530,8 +534,9 @@ function optimizeAnalysisImage(source: string): Promise<string> {
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-        const compressed = canvas.toDataURL('image/jpeg', 0.78);
-        finish(compressed.length < source.length ? compressed : source);
+        const compressed = canvas.toDataURL('image/jpeg', AI_IMAGE_JPEG_QUALITY);
+        // Keep the dimension limit for large images even if their original encoding is smaller.
+        finish(ratio < 1 || compressed.length < source.length ? compressed : source);
       } catch { finish(source); }
     };
     image.onerror = () => finish(source);
@@ -566,8 +571,8 @@ export async function analyzeDefectWithGeminiClient(params: {
     'gemini-3.5-flash-lite',
     'gemini-3.8-flash',
   ]));
-  const optimizedImage = await optimizeAnalysisImage(params.imageDataUrl);
-  const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/.exec(optimizedImage);
+  const aiRequestImageDataUrl = await optimizeAnalysisImage(params.imageDataUrl);
+  const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/.exec(aiRequestImageDataUrl);
   if (!match) {
     throw new Error('Invalid image format');
   }
