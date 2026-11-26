@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.34",
+  "latest": "v1.0.35",
   "releases": [
+    {
+      "version": "v1.0.35",
+      "build": 35,
+      "storageSchema": 2,
+      "date": "2026-11-26T08:30:51.973Z",
+      "notes": "Guard optional Excel cell borders and image bounds",
+      "commit": "2f7a7415c2a1e05226aab7cf72a25c702bc8c61c"
+    },
     {
       "version": "v1.0.34",
       "build": 34,
