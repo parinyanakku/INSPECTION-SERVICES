@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.35",
+  "latest": "v1.0.36",
   "releases": [
+    {
+      "version": "v1.0.36",
+      "build": 36,
+      "storageSchema": 2,
+      "date": "2026-11-26T08:38:09.097Z",
+      "notes": "Improve plan zoom and pin controls, correct Excel A4 geometry and cover layout",
+      "commit": "73827ce0e7530bcee5f1532d17306e27193dab47"
+    },
     {
       "version": "v1.0.35",
       "build": 35,
