@@ -61,6 +61,7 @@ import {
   saveJsonFileWithPickerOrDownload,
 } from './utils/imageUtils';
 import { BrandLogo } from './components/BrandLogo';
+import { VersionUpdate } from './components/VersionUpdate';
 import { StudioTab } from './components/StudioTab';
 import { DefectListTab } from './components/DefectListTab';
 import { ExportTab } from './components/ExportTab';
@@ -435,6 +436,22 @@ export default function App() {
     }
   };
 
+  const handleVersionBackup = async (): Promise<boolean> => {
+    // Snapshot live project state, not a potentially stale browser copy.
+    if (!persistAll(brand, projects, false)) return false;
+    const reportBooks: Record<string, unknown> = {};
+    for (const project of projects) {
+      const raw = localStorage.getItem('tis_report_book_v1_' + project.id);
+      if (raw) { try { reportBooks[project.id] = JSON.parse(raw); } catch { /* ignore corrupt report data */ } }
+    }
+    const result = await saveJsonFileWithPickerOrDownload({
+      format: 'TIS_HOME_INSPECTION_BACKUP_V10',
+      exportedAt: new Date().toISOString(),
+      brand, projects, reportBooks,
+    }, getDefaultSaveAsFilename('TIS_BeforeVersionChange'));
+    return result.saved;
+  };
+
   const handleBackupSingleProjectJson = async (proj: ProjectFile) => {
     const payload = {
       format: 'TIS_SINGLE_PROJECT_V10',
@@ -510,6 +527,17 @@ export default function App() {
               setBrand(nextBrand);
               setActiveProjectId(null);
               persistAll(nextBrand, nextProjects, false);
+              if (parsed.reportBooks && typeof parsed.reportBooks === 'object') {
+                try {
+                  for (const project of nextProjects) {
+                    if (Object.prototype.hasOwnProperty.call(parsed.reportBooks, project.id)) {
+                      localStorage.setItem('tis_report_book_v1_' + project.id, JSON.stringify(parsed.reportBooks[project.id]));
+                    }
+                  }
+                } catch {
+                  notify(lang === 'en' ? 'Some report details could not be restored: browser storage is full.' : 'กู้คืนรายละเอียดรายงานบางส่วนไม่สำเร็จ: พื้นที่จัดเก็บไม่เพียงพอ', 'warning');
+                }
+              }
               setConfirmState(null);
               notify(
                 lang === 'en'
@@ -866,6 +894,7 @@ export default function App() {
             </div>
 
             <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+              <VersionUpdate lang={lang} onBackup={handleVersionBackup} />
               <button
                 type="button"
                 onClick={() => setShowBrandModal(true)}

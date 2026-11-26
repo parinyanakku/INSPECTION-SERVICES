@@ -13,6 +13,10 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -20,6 +24,28 @@ jobs:
           node-version: '22'
       - run: npm install --no-package-lock
       - run: npm run build -- --base=./
+      - name: Archive immutable release and assemble Pages site
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ARCHIVE_DIR="$RUNNER_TEMP/pages-versions"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin refs/heads/pages-versions; then
+            git fetch origin refs/heads/pages-versions
+            git worktree add --detach "$ARCHIVE_DIR" FETCH_HEAD
+          else
+            code=$?
+            if [ "$code" -ne 2 ]; then exit "$code"; fi
+            git worktree add --detach "$ARCHIVE_DIR" "$GITHUB_SHA"
+            git -C "$ARCHIVE_DIR" rm -r --quiet -- .
+          fi
+          node scripts/archive-pages.mjs
+          git -C "$ARCHIVE_DIR" add -f versions release-index.json
+          if ! git -C "$ARCHIVE_DIR" diff --cached --quiet; then
+            git -C "$ARCHIVE_DIR" commit -m "Archive Pages build $GITHUB_RUN_NUMBER"
+            git -C "$ARCHIVE_DIR" push origin HEAD:refs/heads/pages-versions
+          fi
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
