@@ -1,5 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Pen, X } from 'lucide-react';
+import {
+  ExternalLink,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Loader2,
+  Pen,
+  Trash2,
+  X,
+} from 'lucide-react';
 import type {
   AppLanguage,
   BrandConfig,
@@ -7,6 +16,8 @@ import type {
   DefectStatus,
   FloorPlan,
   FloorZone,
+  GeminiApiConfig,
+  GeminiModelId,
   ProjectFile,
   ProjectStatus,
   SeverityLevel,
@@ -18,6 +29,12 @@ import {
   translateProjectStatus,
   translateSeverity,
 } from '../i18n/translations';
+import {
+  DEFAULT_GEMINI_MODEL,
+  fetchAvailableGeminiModels,
+  loadCachedGeminiModels,
+  testGeminiConnection,
+} from '../utils/geminiClient';
 import { compressImageFile, getDefaultSaveAsFilename } from '../utils/imageUtils';
 import { DefaultGearLogoSvg } from './BrandLogo';
 import {
@@ -562,7 +579,7 @@ export const DefectEditModal: React.FC<DefectEditModalProps> = ({
     e.target.value = '';
     if (!file) return;
     try {
-      const compressed = await compressImageFile(file, 960, 0.78);
+      const compressed = await compressImageFile(file, 2560, 0.95);
       if (side === 'before') setBeforeImg(compressed);
       else setAfterImg(compressed);
     } catch {
@@ -1209,8 +1226,384 @@ export const LightboxModal: React.FC<LightboxModalProps> = ({
         alt={caption || t.fullscreenDefault}
         referrerPolicy="no-referrer"
         onClick={(e) => e.stopPropagation()}
-        className="max-h-[84vh] max-w-full rounded-xl object-contain border border-white/15 bg-black/30"
+        className="max-w-[92vw] max-h-[84vh] w-auto h-auto object-contain rounded-xl border border-white/15 shadow-2xl"
       />
+    </div>
+  );
+};
+
+/* ============================================================================
+ * 8. GEMINI API KEY SETTINGS MODAL (CLIENT-SIDE / LOCALSTORAGE)
+ * ============================================================================ */
+interface ApiKeySettingsModalProps {
+  lang: AppLanguage;
+  config: GeminiApiConfig;
+  onClose: () => void;
+  onSave: (next: GeminiApiConfig) => void;
+  onDeleteKey: () => void;
+  onOpenGuide: () => void;
+}
+
+export const ApiKeySettingsModal: React.FC<ApiKeySettingsModalProps> = ({
+  lang,
+  config,
+  onClose,
+  onSave,
+  onDeleteKey,
+  onOpenGuide,
+}) => {
+  const t = UI_TEXT[lang];
+  const [apiKey, setApiKey] = useState(config.apiKey);
+  const [model, setModel] = useState<GeminiModelId>(config.model || DEFAULT_GEMINI_MODEL);
+  const [availableModels, setAvailableModels] = useState<string[]>(loadCachedGeminiModels);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [modelsLoadNote, setModelsLoadNote] = useState<string | null>(null);
+  const [showKey, setShowKey] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    status: 'ok' | 'high_demand' | 'error';
+    message: string;
+  } | null>(null);
+
+  const lastFetchedKeyRef = useRef<string>('');
+
+  const loadModelsForKey = async (rawKey: string, force = false) => {
+    const clean = rawKey.trim();
+    if (!clean || clean.length < 20) return;
+    if (!force && lastFetchedKeyRef.current === clean) return;
+    lastFetchedKeyRef.current = clean;
+    setIsLoadingModels(true);
+    setModelsLoadNote(null);
+    try {
+      const list = await fetchAvailableGeminiModels(clean);
+      setAvailableModels(list);
+      setModel((prev) =>
+        prev === 'auto' || list.includes(prev) ? prev : DEFAULT_GEMINI_MODEL
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to load models';
+      setModelsLoadNote(msg);
+      if (force) {
+        lastFetchedKeyRef.current = '';
+      }
+    } finally {
+      setIsLoadingModels(false);
+    }
+  };
+
+  useEffect(() => {
+    const clean = apiKey.trim();
+    if (clean.length < 25) return;
+    if (lastFetchedKeyRef.current === clean) return;
+
+    const timer = window.setTimeout(() => {
+      void loadModelsForKey(clean, false);
+    }, 450);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [apiKey]);
+
+  const handleTest = async () => {
+    const clean = apiKey.trim();
+    if (!clean) {
+      setTestResult({
+        status: 'error',
+        message: t.apiKeyRequiredNotice,
+      });
+      return;
+    }
+    setIsTesting(true);
+    setTestResult(null);
+    try {
+      const res = await testGeminiConnection(clean, model, availableModels);
+      if (res.status === 'ok') {
+        setTestResult({
+          status: 'ok',
+          message: `${t.apiKeyTestSuccess} (${res.modelUsed})`,
+        });
+      } else if (res.status === 'high_demand') {
+        setTestResult({
+          status: 'high_demand',
+          message: t.apiKeyTestHighDemand,
+        });
+      } else {
+        setTestResult({
+          status: 'error',
+          message: `${t.apiKeyTestFailPrefix} ${res.message}`,
+        });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Network error';
+      setTestResult({
+        status: 'error',
+        message: `${t.apiKeyTestFailPrefix} ${msg}`,
+      });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="bg-white rounded-2xl border border-slate-200 max-w-lg w-full overflow-hidden max-h-[92vh] flex flex-col">
+        <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <KeyRound className="w-4 h-4 text-amber-400" />
+            <h3 className="font-bold text-sm sm:text-base">{t.apiKeyModalTitle}</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-slate-300 hover:text-white p-1 cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4 overflow-y-auto">
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <label className="block text-xs font-bold text-slate-700">
+                {t.apiKeyInputLabel}
+              </label>
+              <button
+                type="button"
+                onClick={onOpenGuide}
+                className="text-xs font-semibold text-blue-600 hover:underline cursor-pointer"
+              >
+                {t.apiKeyGuideBtn}
+              </button>
+            </div>
+            <div className="relative flex items-center">
+              <input
+                type={showKey ? 'text' : 'password'}
+                value={apiKey}
+                onChange={(e) => {
+                  setApiKey(e.target.value);
+                  setTestResult(null);
+                  setModelsLoadNote(null);
+                }}
+                placeholder={t.apiKeyInputPlaceholder}
+                autoComplete="off"
+                spellCheck={false}
+                className="w-full pl-3.5 pr-11 py-2.5 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500 font-mono-num"
+              />
+              <button
+                type="button"
+                onClick={() => setShowKey((prev) => !prev)}
+                className="absolute right-2.5 p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 cursor-pointer"
+                title={showKey ? 'Hide' : 'Show'}
+              >
+                {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              {t.apiKeyModelLabel}
+            </label>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <select
+                value={model}
+                onChange={(e) => {
+                  setModel(e.target.value as GeminiModelId);
+                  setTestResult(null);
+                }}
+                className="flex-1 min-w-0 px-3 py-2.5 text-xs sm:text-sm rounded-xl border border-slate-300 bg-white outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="auto">{t.apiKeyAutoModelOpt}</option>
+                {availableModels.map((modelId) => (
+                  <option key={modelId} value={modelId}>
+                    {modelId}
+                  </option>
+                ))}
+                {model !== 'auto' && !availableModels.includes(model) && (
+                  <option value={model}>{model}</option>
+                )}
+              </select>
+              <button
+                type="button"
+                disabled={isLoadingModels || !apiKey.trim()}
+                onClick={() => loadModelsForKey(apiKey, true)}
+                className="px-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 border border-slate-300 text-xs font-semibold whitespace-nowrap cursor-pointer shrink-0 flex items-center justify-center gap-1.5"
+              >
+                {isLoadingModels && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {isLoadingModels ? t.apiKeyLoadingModelsBtn : t.apiKeyLoadModelsBtn}
+              </button>
+            </div>
+
+            {modelsLoadNote ? (
+              <p className="text-[11px] text-rose-600 mt-1.5">{modelsLoadNote}</p>
+            ) : availableModels.length > 0 ? (
+              <p className="text-[11px] text-emerald-700 mt-1.5">
+                {t.apiKeyModelsLoadedPrefix} {availableModels.length} {t.apiKeyModelsUnit}
+              </p>
+            ) : (
+              <p className="text-[11px] text-slate-500 mt-1.5">{t.apiKeyNoModelsHint}</p>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={isTesting}
+              onClick={handleTest}
+              className="px-4 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs sm:text-sm font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+            >
+              {isTesting && <Loader2 className="w-4 h-4 animate-spin" />}
+              {isTesting ? t.apiKeyTestingBtn : t.apiKeyTestBtn}
+            </button>
+          </div>
+
+          {testResult && (
+            <div
+              className={`p-3 rounded-xl border text-xs sm:text-sm font-medium leading-relaxed ${
+                testResult.status === 'ok'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : testResult.status === 'high_demand'
+                  ? 'bg-amber-50 border-amber-300 text-amber-900'
+                  : 'bg-rose-50 border-rose-200 text-rose-800'
+              }`}
+            >
+              {testResult.message}
+            </div>
+          )}
+
+          <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-xl p-3 leading-relaxed">
+            {t.apiKeyLocalNote}
+          </p>
+        </div>
+
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2">
+          <div>
+            {(config.apiKey || apiKey.trim()) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setApiKey('');
+                  setAvailableModels([]);
+                  setModel(DEFAULT_GEMINI_MODEL);
+                  setTestResult(null);
+                  setModelsLoadNote(null);
+                  lastFetchedKeyRef.current = '';
+                  onDeleteKey();
+                }}
+                className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {t.apiKeyDeleteBtn}
+              </button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-sm font-semibold cursor-pointer"
+            >
+              {t.cancelBtn}
+            </button>
+            <button
+              type="button"
+              onClick={() => onSave({ apiKey: apiKey.trim(), model })}
+              className="px-5 py-2 rounded-xl brand-bg text-white text-sm font-semibold cursor-pointer"
+            >
+              {t.apiKeySaveBtn}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ============================================================================
+ * 9. HOW TO GET API KEY GUIDE MODAL
+ * ============================================================================ */
+interface ApiKeyGuideModalProps {
+  lang: AppLanguage;
+  onClose: () => void;
+  onGoToSettings: () => void;
+}
+
+export const ApiKeyGuideModal: React.FC<ApiKeyGuideModalProps> = ({
+  lang,
+  onClose,
+  onGoToSettings,
+}) => {
+  const t = UI_TEXT[lang];
+
+  return (
+    <div
+      className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="bg-white rounded-2xl border border-slate-200 max-w-lg w-full overflow-hidden max-h-[92vh] flex flex-col">
+        <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+          <h3 className="font-bold text-sm sm:text-base">{t.apiKeyGuideModalTitle}</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-slate-300 hover:text-white p-1 cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4 overflow-y-auto">
+          <p className="text-xs sm:text-sm text-slate-700 font-medium leading-relaxed">
+            {t.apiKeyGuideIntro}
+          </p>
+
+          <ol className="space-y-2.5">
+            {t.apiKeyGuideSteps.map((step, idx) => (
+              <li
+                key={idx}
+                className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs sm:text-sm text-slate-700 leading-relaxed"
+              >
+                {step}
+              </li>
+            ))}
+          </ol>
+
+          <a
+            href="https://aistudio.google.com/app/apikey"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full py-2.5 px-4 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-colors"
+          >
+            <ExternalLink className="w-4 h-4" />
+            {t.apiKeyGuideOpenLinkBtn}
+          </a>
+        </div>
+
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-sm font-semibold cursor-pointer"
+          >
+            {t.closeBtn}
+          </button>
+          <button
+            type="button"
+            onClick={onGoToSettings}
+            className="px-5 py-2 rounded-xl brand-bg text-white text-sm font-semibold cursor-pointer"
+          >
+            {t.apiKeyGuideGoSettingsBtn}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

@@ -21,6 +21,19 @@ export interface BrandConfig {
   customLogoDataUrl: string | null;
 }
 
+export type FloorElementType = 'door' | 'window' | 'stairs' | 'wall' | 'entrance';
+
+export interface FloorElement {
+  id: string;
+  type: FloorElementType;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  rotation: 0 | 90 | 180 | 270;
+  label?: string;
+}
+
 export interface FloorZone {
   id: string;
   name: string;
@@ -38,7 +51,9 @@ export interface FloorPlan {
   subtitle?: string;
   imageUrl: string | null;
   svgPreset: number;
+  isCustomBuilder?: boolean;
   zones: FloorZone[];
+  elements?: FloorElement[];
 }
 
 export interface DefectItem {
@@ -103,3 +118,50 @@ export interface ToastItem {
   message: string;
   type: 'success' | 'info' | 'warning' | 'danger';
 }
+
+export type GeminiModelId = 'auto' | (string & {});
+
+export interface GeminiApiConfig {
+  apiKey: string;
+  model: GeminiModelId;
+}
+
+export interface ReportTable2Row {
+  id: string;
+  item: string;
+  finding: string;
+}
+
+export interface ReportCustomExportSettings {
+  includeCover: boolean;
+  includeToc: boolean;
+  includeIntro: boolean;
+  includeStepsAndZones: boolean;
+  includeDefectTable: boolean;
+  includeSummaryTable2: boolean;
+  defectsPerPage: 2 | 3 | 4;
+  defectStatusFilter: 'all' | 'pending_only' | 'fixed_only';
+  defectSeverityFilter: 'all' | 'urgent_only';
+  defectSelectionMode: 'filter' | 'manual';
+  selectedDefectIds: string[];
+  showCauseDetails: boolean;
+  showSolutionDetails: boolean;
+  customFooterNote: string;
+}
+
+export interface ReportBookData {
+  coverTitle: string;
+  propertyCondition: string;
+  locationText: string;
+  clientName: string;
+  inspectionDate: string;
+  locationMapImg: string | null;
+  frontHouseImg: string | null;
+  introContent: string;
+  inspectionSteps: string[];
+  extraZonePlanImgs: string[];
+  table2Rows: ReportTable2Row[];
+  closingSummary: string;
+  customExport?: ReportCustomExportSettings;
+}
+

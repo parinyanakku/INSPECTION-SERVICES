@@ -8,6 +8,7 @@ import {
   Sparkles,
   Trash2,
   Upload,
+  X,
 } from 'lucide-react';
 import type {
   AppLanguage,
@@ -19,6 +20,10 @@ import type {
 } from '../types/inspection';
 import { ZONE_COLOR_PRESETS } from '../data/defaultData';
 import { UI_TEXT, translateDefectStatus, translateSeverity } from '../i18n/translations';
+import {
+  analyzeDefectWithGeminiClient,
+  loadGeminiConfig,
+} from '../utils/geminiClient';
 import { compressImageFile } from '../utils/imageUtils';
 import { FloorPlanSvg } from './FloorPlanSvg';
 import {
@@ -36,6 +41,7 @@ interface StudioTabProps {
   onOpenZoneModal: (zoneId: string) => void;
   onConfirmDeleteFloor: (floor: FloorPlan) => void;
   onOpenLightbox: (src: string, caption: string) => void;
+  onRequireApiKey: () => void;
   onNotify: (msg: string, type?: 'success' | 'info' | 'warning' | 'danger') => void;
 }
 
@@ -57,7 +63,8 @@ export const StudioTab: React.FC<StudioTabProps> = ({
   onOpenDefectModal,
   onOpenZoneModal,
   onConfirmDeleteFloor,
-  onOpenLightbox,
+  onOpenLightbox: _onOpenLightbox,
+  onRequireApiKey,
   onNotify,
 }) => {
   const t = UI_TEXT[lang];
@@ -94,7 +101,11 @@ export const StudioTab: React.FC<StudioTabProps> = ({
 
   // Drafts & pin placement
   const [drafts, setDrafts] = useState<DraftDefect[]>([]);
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [placingDraftId, setPlacingDraftId] = useState<string | null>(null);
+
+  const activeDraft =
+    drafts.find((d) => d.id === activeDraftId) || drafts[0] || null;
 
   // Markup canvas state
   const [markupImageSrc, setMarkupImageSrc] = useState<string | null>(null);
@@ -235,7 +246,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
       return;
     }
     try {
-      const compressed = await compressImageFile(file, 1400, 0.8);
+      const compressed = await compressImageFile(file, 2560, 0.95);
       onUpdateProject((prev) => ({
         ...prev,
         floors: prev.floors.map((fl) =>
@@ -344,6 +355,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         ? Math.max(...project.defects.map((d) => d.number || 0)) + 1
         : 1;
 
+    const liveCanvasPhoto = markupEditorRef.current?.exportDataUrl() ?? markupImageSrc;
     const newDefect: DefectItem = {
       id: `def_${Date.now()}`,
       number: nextNum,
@@ -360,7 +372,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
       hideSolution: draft.hideSolution,
       severity: draft.severity,
       status: 'รอแก้ไข',
-      beforeImg: draft.photoDataUrl || null,
+      beforeImg: liveCanvasPhoto || draft.photoDataUrl || null,
       afterImg: null,
       createdAt: new Date().toISOString().split('T')[0],
     };
@@ -369,8 +381,13 @@ export const StudioTab: React.FC<StudioTabProps> = ({
       ...prev,
       defects: [...prev.defects, newDefect],
     }));
-    setDrafts((prev) => prev.filter((d) => d.id !== draft.id));
+    const remainingDrafts = drafts.filter((d) => d.id !== draft.id);
+    setDrafts(remainingDrafts);
+    setActiveDraftId(remainingDrafts[0]?.id || null);
     setPlacingDraftId(null);
+    setAiPrompt('');
+    // Reset canvas so user is ready for the next site photo immediately
+    setMarkupImageSrc(remainingDrafts[0]?.photoDataUrl ?? null);
     onNotify(
       lang === 'en'
         ? `Pinned defect #${nextNum} onto "${activeFloor.name}"`
@@ -384,7 +401,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
     e.target.value = '';
     if (!file) return;
     try {
-      const compressed = await compressImageFile(file, 960, 0.82);
+      const compressed = await compressImageFile(file, 2560, 0.95);
       setMarkupImageSrc(compressed);
     } catch {
       onNotify(
@@ -395,6 +412,13 @@ export const StudioTab: React.FC<StudioTabProps> = ({
   };
 
   const handleAnalyzeWithAI = async () => {
+    const geminiConfig = loadGeminiConfig();
+    if (!geminiConfig.apiKey) {
+      onNotify(t.apiKeyRequiredNotice, 'warning');
+      onRequireApiKey();
+      return;
+    }
+
     const photoDataUrl = markupEditorRef.current?.exportDataUrl() ?? markupImageSrc;
     if (!photoDataUrl) {
       onNotify(
@@ -408,18 +432,13 @@ export const StudioTab: React.FC<StudioTabProps> = ({
 
     setIsAnalyzing(true);
     try {
-      const res = await fetch('/api/analyze-defect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          imageDataUrl: photoDataUrl,
-          userNote: aiPrompt.trim(),
-        }),
+      const data = await analyzeDefectWithGeminiClient({
+        apiKey: geminiConfig.apiKey,
+        preferredModel: geminiConfig.model,
+        imageDataUrl: photoDataUrl,
+        userNote: aiPrompt.trim(),
+        lang,
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || `HTTP ${res.status}`);
-      }
 
       const newDraft: DraftDefect = {
         id: `dr_${Date.now()}`,
@@ -434,10 +453,12 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         photoDataUrl,
       };
       setDrafts((prev) => [newDraft, ...prev]);
+      setActiveDraftId(newDraft.id);
+      setPlacingDraftId(null);
       onNotify(
         lang === 'en'
-          ? 'AI analysis complete! Click "Pin Defect to Floorplan" to save.'
-          : 'AI วิเคราะห์ภาพเสร็จสิ้น! กด "ปักหมุดข้อนี้ลงแปลน" เพื่อบันทึกได้เลย',
+          ? `AI analysis complete (${data.modelUsed})! Click "Pin Defect to Floorplan" to save.`
+          : `AI วิเคราะห์ภาพเสร็จสิ้น (${data.modelUsed})! กด "ปักหมุดข้อนี้ลงแปลน" เพื่อบันทึกได้เลย`,
         'success'
       );
     } catch (err: unknown) {
@@ -458,20 +479,20 @@ export const StudioTab: React.FC<StudioTabProps> = ({
 
   const handleCreateBlankDraft = () => {
     const photo = markupEditorRef.current?.exportDataUrl() ?? markupImageSrc;
-    setDrafts((prev) => [
-      {
-        id: `dr_${Date.now()}`,
-        fromAI: false,
-        title: '',
-        severity: 'ปานกลาง',
-        cause: '',
-        solution: '',
-        hideCause: false,
-        hideSolution: false,
-        photoDataUrl: photo,
-      },
-      ...prev,
-    ]);
+    const newDraft: DraftDefect = {
+      id: `dr_${Date.now()}`,
+      fromAI: false,
+      title: '',
+      severity: 'ปานกลาง',
+      cause: '',
+      solution: '',
+      hideCause: false,
+      hideSolution: false,
+      photoDataUrl: photo,
+    };
+    setDrafts((prev) => [newDraft, ...prev]);
+    setActiveDraftId(newDraft.id);
+    setPlacingDraftId(null);
   };
 
   const getPinColorClass = (d: DefectItem) => {
@@ -781,9 +802,16 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         </div>
       </div>
 
-      {/* RIGHT (5/12): Photo Markup Canvas & AI Defect Analyzer */}
-      <div className="lg:col-span-5 space-y-4">
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+      {/* RIGHT (5/12): Single Unified Card — Photo Markup Canvas + AI Analyzer + Defect Form */}
+      <div className="lg:col-span-5">
+        <div
+          className={`bg-white rounded-2xl border p-4 sm:p-5 transition-colors ${
+            activeDraft && placingDraftId === activeDraft.id
+              ? 'border-blue-500 ring-2 ring-blue-100'
+              : 'border-slate-200'
+          }`}
+        >
+          {/* (1) Header + Upload Photo Button */}
           <div className="flex items-center justify-between gap-2 mb-3">
             <h3 className="font-bold text-slate-900 text-sm sm:text-base">{t.markupTitle}</h3>
             <label className="text-xs px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold cursor-pointer flex items-center gap-1.5 whitespace-nowrap">
@@ -793,6 +821,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
             </label>
           </div>
 
+          {/* (1-2) Drawing/Text Toolbar + Single Site Photo Canvas */}
           <MarkupCanvasEditor
             lang={lang}
             imageSrc={markupImageSrc}
@@ -801,7 +830,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
             editorRef={markupEditorRef}
           />
 
-          {/* Prompt & Analyze Actions */}
+          {/* (3) Optional AI Notes + Analyze / Blank Draft Buttons */}
           <div className="mt-3 space-y-2.5">
             <textarea
               rows={2}
@@ -830,235 +859,267 @@ export const StudioTab: React.FC<StudioTabProps> = ({
               </button>
             </div>
           </div>
-        </div>
 
-        {/* Draft Cards Queue */}
-        <div className="space-y-3">
-          {drafts.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-5 text-center text-xs text-slate-400">
-              {t.draftEmptyHint}
-            </div>
-          ) : (
-            drafts.map((dr) => {
-              const isPlacingThis = placingDraftId === dr.id;
-              return (
-                <div
-                  key={dr.id}
-                  className={`bg-white rounded-2xl border p-4 space-y-3 ${
-                    isPlacingThis ? 'border-blue-500 ring-2 ring-blue-100' : 'border-slate-200'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
+          {/* (4) Divider + Inline Defect Form Directly Below (Zero Duplicate Photos) */}
+          <div className="mt-4 pt-4 border-t border-slate-200">
+            {!activeDraft ? (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-5 text-center text-xs text-slate-500 leading-relaxed">
+                {t.draftEmptyHint}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {/* Multi-draft Tab Pills when more than 1 unpinned draft exists */}
+                {drafts.length > 1 && (
+                  <div className="flex flex-wrap items-center gap-1.5 pb-1">
+                    {drafts.map((dr, idx) => {
+                      const isCurrent = dr.id === activeDraft.id;
+                      return (
+                        <button
+                          key={dr.id}
+                          type="button"
+                          onClick={() => {
+                            setActiveDraftId(dr.id);
+                            setPlacingDraftId(null);
+                            if (dr.photoDataUrl !== undefined) {
+                              setMarkupImageSrc(dr.photoDataUrl);
+                            }
+                          }}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                            isCurrent
+                              ? 'bg-slate-900 text-white'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                          }`}
+                        >
+                          {dr.fromAI && <Sparkles className="w-3 h-3 text-indigo-400" />}
+                          {t.draftTabPrefix} {idx + 1}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Status Badge + Clear Form Button */}
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+                  <div className="flex items-center gap-2 min-w-0">
                     <span
-                      className={`text-xs font-bold ${
-                        dr.fromAI ? 'text-indigo-700' : 'text-slate-700'
+                      className={`text-[11px] font-bold px-2 py-0.5 rounded-md whitespace-nowrap ${
+                        activeDraft.fromAI
+                          ? 'bg-indigo-100 text-indigo-700'
+                          : 'bg-slate-200 text-slate-700'
                       }`}
                     >
-                      {dr.fromAI ? t.draftFromAiBadge : t.draftManualBadge}
+                      {activeDraft.fromAI ? t.draftFromAiBadge : t.draftManualBadge}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDrafts((prev) => prev.filter((item) => item.id !== dr.id));
-                        if (placingDraftId === dr.id) setPlacingDraftId(null);
-                      }}
-                      className="text-xs text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg font-semibold cursor-pointer"
-                    >
-                      {t.removeCardBtn}
-                    </button>
+                    <span className="text-[11px] text-slate-600 font-medium truncate">
+                      {t.autoBeforeFromTopBadge}
+                    </span>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const remaining = drafts.filter((item) => item.id !== activeDraft.id);
+                      setDrafts(remaining);
+                      setActiveDraftId(remaining[0]?.id || null);
+                      if (placingDraftId === activeDraft.id) setPlacingDraftId(null);
+                    }}
+                    className="text-xs text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg font-semibold cursor-pointer flex items-center gap-1 shrink-0"
+                    title={t.clearDraftBtn}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    {t.clearDraftBtn}
+                  </button>
+                </div>
 
-                  {dr.photoDataUrl && (
-                    <div className="relative rounded-xl overflow-hidden border border-slate-200 h-28 bg-slate-100">
-                      <img
-                        src={dr.photoDataUrl}
-                        alt={t.beforeLabel}
-                        referrerPolicy="no-referrer"
-                        onClick={() =>
-                          onOpenLightbox(dr.photoDataUrl!, `${t.beforeLabel} — ${dr.title || 'Draft'}`)
-                        }
-                        className="w-full h-full object-cover cursor-zoom-in"
-                      />
-                      <span className="absolute bottom-1.5 left-1.5 text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-900/75 text-white">
-                        {t.autoBeforeCaption}
-                      </span>
-                    </div>
-                  )}
+                {/* Defect Title & Severity */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                      {t.defectTitleLabel}
+                    </label>
+                    <input
+                      type="text"
+                      value={activeDraft.title}
+                      onChange={(e) =>
+                        setDrafts((prev) =>
+                          prev.map((item) =>
+                            item.id === activeDraft.id
+                              ? { ...item, title: e.target.value }
+                              : item
+                          )
+                        )
+                      }
+                      placeholder={t.defectTitlePlaceholder}
+                      className="w-full px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                      {t.severityLabel}
+                    </label>
+                    <select
+                      value={activeDraft.severity}
+                      onChange={(e) =>
+                        setDrafts((prev) =>
+                          prev.map((item) =>
+                            item.id === activeDraft.id
+                              ? {
+                                  ...item,
+                                  severity: e.target.value as DraftDefect['severity'],
+                                }
+                              : item
+                          )
+                        )
+                      }
+                      className="w-full px-2.5 py-1.5 text-xs sm:text-sm rounded-xl border border-slate-300 bg-white"
+                    >
+                      <option value="เร่งด่วน">{translateSeverity('เร่งด่วน', lang)}</option>
+                      <option value="ปานกลาง">{translateSeverity('ปานกลาง', lang)}</option>
+                      <option value="เล็กน้อย">{translateSeverity('เล็กน้อย', lang)}</option>
+                    </select>
+                  </div>
+                </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <div className="sm:col-span-2">
-                      <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                        {t.defectTitleLabel}
+                {/* Engineering Cause */}
+                {!activeDraft.hideCause ? (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-slate-600">
+                        {t.causeLabel}
                       </label>
-                      <input
-                        type="text"
-                        value={dr.title}
-                        onChange={(e) =>
+                      <button
+                        type="button"
+                        onClick={() =>
                           setDrafts((prev) =>
                             prev.map((item) =>
-                              item.id === dr.id ? { ...item, title: e.target.value } : item
+                              item.id === activeDraft.id ? { ...item, hideCause: true } : item
                             )
                           )
                         }
-                        placeholder={t.defectTitlePlaceholder}
-                        className="w-full px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
-                      />
+                        className="text-[11px] text-rose-500 hover:underline font-semibold cursor-pointer"
+                      >
+                        {t.hideFieldBtn}
+                      </button>
                     </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                        {t.severityLabel}
+                    <textarea
+                      rows={2}
+                      value={activeDraft.cause}
+                      onChange={(e) =>
+                        setDrafts((prev) =>
+                          prev.map((item) =>
+                            item.id === activeDraft.id
+                              ? { ...item, cause: e.target.value }
+                              : item
+                          )
+                        )
+                      }
+                      placeholder={t.causePlaceholder}
+                      className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDrafts((prev) =>
+                        prev.map((item) =>
+                          item.id === activeDraft.id ? { ...item, hideCause: false } : item
+                        )
+                      )
+                    }
+                    className="text-[11px] text-blue-600 hover:underline font-semibold cursor-pointer"
+                  >
+                    {t.addCauseBtn}
+                  </button>
+                )}
+
+                {/* Solution */}
+                {!activeDraft.hideSolution ? (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-slate-600">
+                        {t.solutionLabel}
                       </label>
-                      <select
-                        value={dr.severity}
-                        onChange={(e) =>
+                      <button
+                        type="button"
+                        onClick={() =>
                           setDrafts((prev) =>
                             prev.map((item) =>
-                              item.id === dr.id
-                                ? {
-                                    ...item,
-                                    severity: e.target.value as DraftDefect['severity'],
-                                  }
+                              item.id === activeDraft.id
+                                ? { ...item, hideSolution: true }
                                 : item
                             )
                           )
                         }
-                        className="w-full px-2.5 py-1.5 text-xs sm:text-sm rounded-xl border border-slate-300 bg-white"
+                        className="text-[11px] text-rose-500 hover:underline font-semibold cursor-pointer"
                       >
-                        <option value="เร่งด่วน">{translateSeverity('เร่งด่วน', lang)}</option>
-                        <option value="ปานกลาง">{translateSeverity('ปานกลาง', lang)}</option>
-                        <option value="เล็กน้อย">{translateSeverity('เล็กน้อย', lang)}</option>
-                      </select>
+                        {t.hideFieldBtn}
+                      </button>
                     </div>
+                    <textarea
+                      rows={2}
+                      value={activeDraft.solution}
+                      onChange={(e) =>
+                        setDrafts((prev) =>
+                          prev.map((item) =>
+                            item.id === activeDraft.id
+                              ? { ...item, solution: e.target.value }
+                              : item
+                          )
+                        )
+                      }
+                      placeholder={t.solutionPlaceholder}
+                      className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
-
-                  {!dr.hideCause ? (
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-[11px] font-bold text-slate-600">
-                          {t.causeLabel}
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setDrafts((prev) =>
-                              prev.map((item) =>
-                                item.id === dr.id ? { ...item, hideCause: true } : item
-                              )
-                            )
-                          }
-                          className="text-[11px] text-rose-500 hover:underline font-semibold cursor-pointer"
-                        >
-                          {t.hideFieldBtn}
-                        </button>
-                      </div>
-                      <textarea
-                        rows={2}
-                        value={dr.cause}
-                        onChange={(e) =>
-                          setDrafts((prev) =>
-                            prev.map((item) =>
-                              item.id === dr.id ? { ...item, cause: e.target.value } : item
-                            )
-                          )
-                        }
-                        placeholder={t.causePlaceholder}
-                        className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setDrafts((prev) =>
-                          prev.map((item) =>
-                            item.id === dr.id ? { ...item, hideCause: false } : item
-                          )
-                        )
-                      }
-                      className="text-[11px] text-blue-600 hover:underline font-semibold cursor-pointer"
-                    >
-                      {t.addCauseBtn}
-                    </button>
-                  )}
-
-                  {!dr.hideSolution ? (
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-[11px] font-bold text-slate-600">
-                          {t.solutionLabel}
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setDrafts((prev) =>
-                              prev.map((item) =>
-                                item.id === dr.id ? { ...item, hideSolution: true } : item
-                              )
-                            )
-                          }
-                          className="text-[11px] text-rose-500 hover:underline font-semibold cursor-pointer"
-                        >
-                          {t.hideFieldBtn}
-                        </button>
-                      </div>
-                      <textarea
-                        rows={2}
-                        value={dr.solution}
-                        onChange={(e) =>
-                          setDrafts((prev) =>
-                            prev.map((item) =>
-                              item.id === dr.id ? { ...item, solution: e.target.value } : item
-                            )
-                          )
-                        }
-                        placeholder={t.solutionPlaceholder}
-                        className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setDrafts((prev) =>
-                          prev.map((item) =>
-                            item.id === dr.id ? { ...item, hideSolution: false } : item
-                          )
-                        )
-                      }
-                      className="text-[11px] text-blue-600 hover:underline font-semibold ml-2 cursor-pointer"
-                    >
-                      {t.addSolutionBtn}
-                    </button>
-                  )}
-
+                ) : (
                   <button
                     type="button"
-                    onClick={() => {
-                      setIsZoneSetupMode(false);
-                      const next = placingDraftId === dr.id ? null : dr.id;
-                      setPlacingDraftId(next);
-                      if (next) {
-                        onNotify(
-                          lang === 'en'
-                            ? 'Click anywhere on the active floorplan to place this pin'
-                            : 'คลิกตำแหน่งที่ต้องการบนแปลนชั้นปัจจุบันเพื่อปักหมุด',
-                          'info'
-                        );
-                      }
-                    }}
-                    className={`w-full py-2.5 rounded-xl font-semibold text-xs sm:text-sm transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
-                      isPlacingThis
-                        ? 'bg-amber-500 hover:bg-amber-600 text-white'
-                        : 'brand-bg hover:opacity-95 text-white'
-                    }`}
+                    onClick={() =>
+                      setDrafts((prev) =>
+                        prev.map((item) =>
+                          item.id === activeDraft.id
+                            ? { ...item, hideSolution: false }
+                            : item
+                        )
+                      )
+                    }
+                    className="text-[11px] text-blue-600 hover:underline font-semibold ml-2 cursor-pointer"
                   >
-                    <MapPin className="w-4 h-4" />
-                    {isPlacingThis ? t.pinToPlanActiveBtn : t.pinToPlanBtn}
+                    {t.addSolutionBtn}
                   </button>
-                </div>
-              );
-            })
-          )}
+                )}
+
+                {/* Primary Pin Action Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsZoneSetupMode(false);
+                    const next =
+                      placingDraftId === activeDraft.id ? null : activeDraft.id;
+                    setPlacingDraftId(next);
+                    if (next) {
+                      onNotify(
+                        lang === 'en'
+                          ? 'Click anywhere on the active floorplan to place this pin'
+                          : 'คลิกตำแหน่งที่ต้องการบนแปลนชั้นปัจจุบันเพื่อปักหมุด',
+                        'info'
+                      );
+                    }
+                  }}
+                  className={`w-full py-2.5 rounded-xl font-semibold text-xs sm:text-sm transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
+                    placingDraftId === activeDraft.id
+                      ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                      : 'brand-bg hover:opacity-95 text-white'
+                  }`}
+                >
+                  <MapPin className="w-4 h-4" />
+                  {placingDraftId === activeDraft.id
+                    ? t.pinToPlanActiveBtn
+                    : t.pinToPlanBtn}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

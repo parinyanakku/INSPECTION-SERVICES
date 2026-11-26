@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowUpRight,
   Camera,
   Circle,
   Eraser,
+  Maximize2,
   Pen,
   Square,
   Trash2,
@@ -35,17 +37,52 @@ const STROKE_SIZES = [
   { label: 'L', value: 7.5 },
 ];
 
+/**
+ * Computes the letterboxed/contained draw rectangle (dx, dy, dw, dh) of an image
+ * inside a canvas of size (canW, canH). All MarkupShape coordinates [0..1] are
+ * normalized strictly to (dx, dy, dw, dh) so marks stay 100% aligned between
+ * inline card, fullscreen mode, and exported high-res images.
+ */
+export function getImageDrawRect(
+  imgW: number,
+  imgH: number,
+  canW: number,
+  canH: number
+): { dx: number; dy: number; dw: number; dh: number } {
+  if (imgW <= 0 || imgH <= 0 || canW <= 0 || canH <= 0) {
+    return { dx: 0, dy: 0, dw: canW, dh: canH };
+  }
+  const imgRatio = imgW / imgH;
+  const canRatio = canW / canH;
+  let dw = canW;
+  let dh = canH;
+  let dx = 0;
+  let dy = 0;
+  if (imgRatio > canRatio) {
+    dh = canW / imgRatio;
+    dy = (canH - dh) / 2;
+  } else {
+    dw = canH * imgRatio;
+    dx = (canW - dw) / 2;
+  }
+  return { dx, dy, dw, dh };
+}
+
 export function drawMarkupShape(
   ctx: CanvasRenderingContext2D,
   s: MarkupShape,
   w: number,
-  h: number
+  h: number,
+  offsetX = 0,
+  offsetY = 0
 ) {
-  const x1 = s.x1 * w;
-  const y1 = s.y1 * h;
-  const x2 = s.x2 * w;
-  const y2 = s.y2 * h;
-  const lw = s.lineWidth || 4;
+  const x1 = offsetX + s.x1 * w;
+  const y1 = offsetY + s.y1 * h;
+  const x2 = offsetX + s.x2 * w;
+  const y2 = offsetY + s.y2 * h;
+  const baseLw = s.lineWidth || 4.5;
+  const scale = Math.max(0.3, w / 520);
+  const lw = baseLw * scale;
 
   ctx.save();
   ctx.strokeStyle = s.color || '#ef4444';
@@ -56,9 +93,9 @@ export function drawMarkupShape(
 
   if (s.tool === 'pen' && s.points && s.points.length > 0) {
     ctx.beginPath();
-    ctx.moveTo(s.points[0].x * w, s.points[0].y * h);
+    ctx.moveTo(offsetX + s.points[0].x * w, offsetY + s.points[0].y * h);
     for (let i = 1; i < s.points.length; i++) {
-      ctx.lineTo(s.points[i].x * w, s.points[i].y * h);
+      ctx.lineTo(offsetX + s.points[i].x * w, offsetY + s.points[i].y * h);
     }
     ctx.stroke();
   } else if (s.tool === 'circle') {
@@ -82,7 +119,7 @@ export function drawMarkupShape(
     ctx.lineTo(x2, y2);
     ctx.stroke();
     const angle = Math.atan2(y2 - y1, x2 - x1);
-    const headLen = Math.max(12, lw * 3.2);
+    const headLen = Math.max(12 * scale, lw * 3.2);
     ctx.beginPath();
     ctx.moveTo(x2, y2);
     ctx.lineTo(
@@ -96,29 +133,34 @@ export function drawMarkupShape(
     ctx.closePath();
     ctx.fill();
   } else if (s.tool === 'text' && s.text) {
-    const fontSize = Math.round(13 + lw * 1.4);
+    const fontSize = Math.round((13 + baseLw * 1.4) * scale);
     ctx.font = `700 ${fontSize}px Sarabun, sans-serif`;
     ctx.textBaseline = 'middle';
-    const paddingX = 8;
-    const paddingY = 5;
+    const paddingX = Math.round(8 * scale);
+    const paddingY = Math.round(5 * scale);
     const textWidth = ctx.measureText(s.text).width;
     const boxW = textWidth + paddingX * 2;
     const boxH = fontSize + paddingY * 2;
-    const clampedX = Math.max(4, Math.min(w - boxW - 4, x1));
-    const clampedY = Math.max(boxH / 2 + 4, Math.min(h - boxH / 2 - 4, y1));
+    const margin = Math.max(4, Math.round(4 * scale));
+    const minX = offsetX + margin;
+    const maxX = Math.max(minX, offsetX + w - boxW - margin);
+    const minY = offsetY + boxH / 2 + margin;
+    const maxY = Math.max(minY, offsetY + h - boxH / 2 - margin);
+    const clampedX = Math.max(minX, Math.min(maxX, x1));
+    const clampedY = Math.max(minY, Math.min(maxY, y1));
 
     ctx.fillStyle = 'rgba(15, 23, 42, 0.86)';
     ctx.strokeStyle = s.color || '#ef4444';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = Math.max(1.5, 2 * scale);
     ctx.beginPath();
-    ctx.roundRect(clampedX, clampedY - boxH / 2, boxW, boxH, 6);
+    ctx.roundRect(clampedX, clampedY - boxH / 2, boxW, boxH, Math.max(4, Math.round(6 * scale)));
     ctx.fill();
     ctx.stroke();
 
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(s.text, clampedX + paddingX, clampedY + 1);
+    ctx.fillText(s.text, clampedX + paddingX, clampedY + Math.max(1, Math.round(scale)));
     ctx.fillStyle = s.color || '#ef4444';
-    ctx.fillRect(clampedX, clampedY - boxH / 2, 4, boxH);
+    ctx.fillRect(clampedX, clampedY - boxH / 2, Math.max(3, Math.round(4 * scale)), boxH);
   }
 
   ctx.restore();
@@ -137,25 +179,31 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   const [color, setColor] = useState('#ef4444');
   const [lineWidth, setLineWidth] = useState<number>(4.5);
   const [shapes, setShapes] = useState<MarkupShape[]>([]);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Inline text input popup at clicked coordinates
+  // Inline text input popup at image-normalized coordinates [0..1]
   const [pendingTextPos, setPendingTextPos] = useState<{ x: number; y: number } | null>(null);
   const [pendingTextValue, setPendingTextValue] = useState('');
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const fullscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fullscreenWrapRef = useRef<HTMLDivElement | null>(null);
+
   const loadedImageRef = useRef<HTMLImageElement | null>(null);
   const imageSrcRef = useRef<string | null>(imageSrc);
   const shapesRef = useRef<MarkupShape[]>(shapes);
+  const isFullscreenRef = useRef(isFullscreen);
+  const pendingTextPosRef = useRef(pendingTextPos);
   const isDrawingRef = useRef(false);
   const currentShapeRef = useRef<MarkupShape | null>(null);
 
   imageSrcRef.current = imageSrc;
   shapesRef.current = shapes;
+  isFullscreenRef.current = isFullscreen;
+  pendingTextPosRef.current = pendingTextPos;
 
-  // Pure canvas renderer with zero dependencies on React state
-  const drawCanvas = useCallback(() => {
-    const canvas = canvasRef.current;
+  const paintCanvas = useCallback((canvas: HTMLCanvasElement | null) => {
     const img = loadedImageRef.current;
     if (!canvas || !img || !img.complete) return;
     const ctx = canvas.getContext('2d');
@@ -169,41 +217,51 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     ctx.fillStyle = '#0f172a';
     ctx.fillRect(0, 0, w, h);
 
-    const imgRatio = img.width / img.height;
-    const canRatio = w / h;
-    let dw = w;
-    let dh = h;
-    let dx = 0;
-    let dy = 0;
-    if (imgRatio > canRatio) {
-      dh = w / imgRatio;
-      dy = (h - dh) / 2;
-    } else {
-      dw = h * imgRatio;
-      dx = (w - dw) / 2;
-    }
+    const { dx, dy, dw, dh } = getImageDrawRect(img.width, img.height, w, h);
     ctx.drawImage(img, dx, dy, dw, dh);
 
     const activeShapes = shapesRef.current;
     for (let i = 0; i < activeShapes.length; i++) {
-      drawMarkupShape(ctx, activeShapes[i], w, h);
+      drawMarkupShape(ctx, activeShapes[i], dw, dh, dx, dy);
     }
     if (currentShapeRef.current) {
-      drawMarkupShape(ctx, currentShapeRef.current, w, h);
+      drawMarkupShape(ctx, currentShapeRef.current, dw, dh, dx, dy);
     }
   }, []);
 
+  const drawActiveCanvases = useCallback(() => {
+    paintCanvas(canvasRef.current);
+    if (isFullscreenRef.current) {
+      paintCanvas(fullscreenCanvasRef.current);
+    }
+  }, [paintCanvas]);
+
   // Pure canvas size synchronizer (never calls setState)
   const syncDimensions = useCallback(() => {
-    const canvas = canvasRef.current;
-    const wrap = wrapRef.current;
-    if (!canvas || !wrap || !imageSrcRef.current) return;
-    const targetW = wrap.clientWidth || 520;
-    const targetH = wrap.clientHeight || 390;
-    if (canvas.width !== targetW) canvas.width = targetW;
-    if (canvas.height !== targetH) canvas.height = targetH;
-    drawCanvas();
-  }, [drawCanvas]);
+    if (!imageSrcRef.current) return;
+
+    const inlineCanvas = canvasRef.current;
+    const inlineWrap = wrapRef.current;
+    if (inlineCanvas && inlineWrap && inlineWrap.clientWidth > 0 && inlineWrap.clientHeight > 0) {
+      const targetW = inlineWrap.clientWidth;
+      const targetH = inlineWrap.clientHeight;
+      if (inlineCanvas.width !== targetW) inlineCanvas.width = targetW;
+      if (inlineCanvas.height !== targetH) inlineCanvas.height = targetH;
+      paintCanvas(inlineCanvas);
+    }
+
+    if (isFullscreenRef.current) {
+      const fsCanvas = fullscreenCanvasRef.current;
+      const fsWrap = fullscreenWrapRef.current;
+      if (fsCanvas && fsWrap && fsWrap.clientWidth > 0 && fsWrap.clientHeight > 0) {
+        const targetW = fsWrap.clientWidth;
+        const targetH = fsWrap.clientHeight;
+        if (fsCanvas.width !== targetW) fsCanvas.width = targetW;
+        if (fsCanvas.height !== targetH) fsCanvas.height = targetH;
+        paintCanvas(fsCanvas);
+      }
+    }
+  }, [paintCanvas]);
 
   // Load image ONLY when imageSrc actually changes; guard all state resets
   useEffect(() => {
@@ -216,6 +274,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
 
     if (!imageSrc) {
       loadedImageRef.current = null;
+      setIsFullscreen((prev) => (prev ? false : prev));
       return;
     }
 
@@ -233,11 +292,31 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     };
   }, [imageSrc, syncDimensions]);
 
-  // Redraw canvas whenever shapes state updates (pure canvas draw, no setState)
+  // Redraw canvases whenever shapes state updates (pure canvas draw, no setState)
   useEffect(() => {
     shapesRef.current = shapes;
-    drawCanvas();
-  }, [shapes, drawCanvas]);
+    drawActiveCanvases();
+  }, [shapes, drawActiveCanvases]);
+
+  // Sync dimensions after toggling fullscreen modal (DOM portal mount/unmount)
+  useEffect(() => {
+    if (!imageSrcRef.current) return;
+    const rafId = window.requestAnimationFrame(() => {
+      syncDimensions();
+    });
+    const fsWrap = fullscreenWrapRef.current;
+    let observer: ResizeObserver | null = null;
+    if (isFullscreen && fsWrap && typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(() => {
+        if (imageSrcRef.current) syncDimensions();
+      });
+      observer.observe(fsWrap);
+    }
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      observer?.disconnect();
+    };
+  }, [isFullscreen, syncDimensions]);
 
   // Resize listener (registered once, pure DOM/canvas operation)
   useEffect(() => {
@@ -248,33 +327,68 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     return () => window.removeEventListener('resize', onResize);
   }, [syncDimensions]);
 
-  // Expose imperative export method without re-triggering renders
+  // ESC key handler for fullscreen markup mode (uses refs, registered once)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || !isFullscreenRef.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (pendingTextPosRef.current) {
+        setPendingTextPos(null);
+        setPendingTextValue('');
+      } else {
+        isDrawingRef.current = false;
+        currentShapeRef.current = null;
+        setIsFullscreen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, []);
+
+  // Expose full natural-resolution offscreen export (zero preview downscaling, zero black bars)
   useEffect(() => {
     if (!editorRef) return;
     editorRef.current = {
       exportDataUrl: () => {
         const src = imageSrcRef.current;
         if (!src) return null;
-        const canvas = canvasRef.current;
-        if (canvas && canvas.width > 0 && shapesRef.current.length > 0) {
-          drawCanvas();
-          try {
-            return canvas.toDataURL('image/jpeg', 0.84);
-          } catch {
-            // fallback to original src
+        if (shapesRef.current.length === 0) return src;
+
+        const img = loadedImageRef.current;
+        if (img && img.complete) {
+          const outW = img.naturalWidth || img.width;
+          const outH = img.naturalHeight || img.height;
+          if (outW > 0 && outH > 0) {
+            try {
+              const offscreen = document.createElement('canvas');
+              offscreen.width = outW;
+              offscreen.height = outH;
+              const ctx = offscreen.getContext('2d');
+              if (ctx) {
+                ctx.drawImage(img, 0, 0, outW, outH);
+                const list = shapesRef.current;
+                for (let i = 0; i < list.length; i++) {
+                  drawMarkupShape(ctx, list[i], outW, outH, 0, 0);
+                }
+                return offscreen.toDataURL('image/jpeg', 0.95);
+              }
+            } catch {
+              // fallback to original src
+            }
           }
         }
         return src;
       },
     };
-  }, [editorRef, drawCanvas]);
+  }, [editorRef]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
     try {
-      const compressed = await compressImageFile(file, 960, 0.82);
+      const compressed = await compressImageFile(file, 2560, 0.95);
       onImageChange(compressed);
     } catch {
       onNotify(
@@ -284,19 +398,37 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     }
   };
 
-  const getPos = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current!;
+  // Maps pointer event to normalized coordinates [0..1] strictly inside the rendered image rect
+  const getPos = (
+    e: React.PointerEvent<HTMLCanvasElement>,
+    canvas: HTMLCanvasElement
+  ) => {
     const rect = canvas.getBoundingClientRect();
+    const px = ((e.clientX - rect.left) / Math.max(1, rect.width)) * canvas.width;
+    const py = ((e.clientY - rect.top) / Math.max(1, rect.height)) * canvas.height;
+    const img = loadedImageRef.current;
+    if (!img || !img.complete) {
+      return {
+        nx: Math.max(0, Math.min(1, px / Math.max(1, canvas.width))),
+        ny: Math.max(0, Math.min(1, py / Math.max(1, canvas.height))),
+      };
+    }
+    const { dx, dy, dw, dh } = getImageDrawRect(
+      img.width,
+      img.height,
+      canvas.width,
+      canvas.height
+    );
     return {
-      nx: Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
-      ny: Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height)),
+      nx: Math.max(0, Math.min(1, (px - dx) / Math.max(1, dw))),
+      ny: Math.max(0, Math.min(1, (py - dy) / Math.max(1, dh))),
     };
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
+    const canvas = e.currentTarget;
     if (!canvas) return;
-    const { nx, ny } = getPos(e);
+    const { nx, ny } = getPos(e, canvas);
 
     if (tool === 'text') {
       setPendingTextPos({ x: nx, y: ny });
@@ -321,7 +453,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isDrawingRef.current || !currentShapeRef.current) return;
-    const { nx, ny } = getPos(e);
+    const { nx, ny } = getPos(e, e.currentTarget);
     if (currentShapeRef.current.tool === 'pen') {
       currentShapeRef.current.points = [
         ...(currentShapeRef.current.points || []),
@@ -331,7 +463,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       currentShapeRef.current.x2 = nx;
       currentShapeRef.current.y2 = ny;
     }
-    drawCanvas();
+    paintCanvas(e.currentTarget);
   };
 
   const handlePointerUp = () => {
@@ -346,7 +478,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     if (hasMovement) {
       setShapes((prev) => [...prev, s]);
     } else {
-      drawCanvas();
+      drawActiveCanvases();
     }
   };
 
@@ -372,6 +504,44 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     setPendingTextValue('');
   };
 
+  const openFullscreen = () => {
+    if (!imageSrcRef.current) return;
+    setPendingTextPos(null);
+    setIsFullscreen(true);
+  };
+
+  const closeFullscreen = () => {
+    isDrawingRef.current = false;
+    currentShapeRef.current = null;
+    setPendingTextPos(null);
+    setIsFullscreen(false);
+  };
+
+  const getFloatingPopupPercent = (
+    canvas: HTMLCanvasElement | null,
+    pos: { x: number; y: number }
+  ) => {
+    const img = loadedImageRef.current;
+    if (!canvas || !img || !img.complete || canvas.width <= 0 || canvas.height <= 0) {
+      return {
+        left: Math.min(70, Math.max(4, pos.x * 100)),
+        top: Math.min(82, Math.max(8, pos.y * 100)),
+      };
+    }
+    const { dx, dy, dw, dh } = getImageDrawRect(
+      img.width,
+      img.height,
+      canvas.width,
+      canvas.height
+    );
+    const leftPct = ((dx + pos.x * dw) / canvas.width) * 100;
+    const topPct = ((dy + pos.y * dh) / canvas.height) * 100;
+    return {
+      left: Math.min(72, Math.max(4, leftPct)),
+      top: Math.min(82, Math.max(6, topPct)),
+    };
+  };
+
   const tools: Array<{ id: MarkupTool; label: string; icon: React.ReactNode }> = [
     { id: 'pen', label: t.toolPen, icon: <Pen className="w-3.5 h-3.5" /> },
     { id: 'circle', label: t.toolCircle, icon: <Circle className="w-3.5 h-3.5" /> },
@@ -380,9 +550,19 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     { id: 'text', label: t.toolText, icon: <TypeIcon className="w-3.5 h-3.5" /> },
   ];
 
+  const inlinePopupCoords =
+    pendingTextPos && imageSrc && !isFullscreen
+      ? getFloatingPopupPercent(canvasRef.current, pendingTextPos)
+      : null;
+
+  const fullscreenPopupCoords =
+    pendingTextPos && imageSrc && isFullscreen
+      ? getFloatingPopupPercent(fullscreenCanvasRef.current, pendingTextPos)
+      : null;
+
   return (
     <div className="space-y-2.5">
-      {/* Drawing Toolbar */}
+      {/* Inline Drawing Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
         <div className="flex flex-wrap items-center gap-1">
           {tools.map((item) => (
@@ -405,7 +585,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
           ))}
         </div>
 
-        {/* Color, Stroke Width, Undo, Clear */}
+        {/* Color, Stroke Width, Undo, Clear, Delete, Fullscreen */}
         <div className="flex flex-wrap items-center gap-1.5">
           <div className="flex items-center gap-1 pr-1 border-r border-slate-200">
             {COLOR_SWATCHES.map((sw) => (
@@ -466,29 +646,39 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
             <Eraser className="w-3.5 h-3.5" />
           </button>
           {imageSrc && (
-            <button
-              type="button"
-              onClick={() => {
-                onImageChange(null);
-                setShapes((prev) => (prev.length === 0 ? prev : []));
-                setPendingTextPos(null);
-              }}
-              className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 cursor-pointer"
-              title={t.deletePhotoTooltip}
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  onImageChange(null);
+                  setShapes((prev) => (prev.length === 0 ? prev : []));
+                  setPendingTextPos(null);
+                }}
+                className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 cursor-pointer"
+                title={t.deletePhotoTooltip}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={openFullscreen}
+                className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap transition-colors"
+                title={t.fullscreenExpandTooltip}
+              >
+                {t.fullscreenMarkupBtn}
+              </button>
+            </>
           )}
         </div>
       </div>
 
-      {tool === 'text' && imageSrc && (
+      {tool === 'text' && imageSrc && !isFullscreen && (
         <div className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-1.5">
           {t.textHint}
         </div>
       )}
 
-      {/* Canvas Container */}
+      {/* Inline Canvas Container */}
       <div
         ref={wrapRef}
         className={`relative w-full ${aspectClass} rounded-xl bg-slate-100 border border-dashed border-slate-300 overflow-hidden flex items-center justify-center`}
@@ -499,17 +689,31 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
-          className={`w-full h-full block ${
+          onPointerCancel={handlePointerUp}
+          onDoubleClick={openFullscreen}
+          className={`w-full h-full block touch-none ${
             tool === 'text' ? 'cursor-text' : 'cursor-crosshair'
           } ${imageSrc ? '' : 'hidden'}`}
         />
 
-        {/* Floating Text Annotation Input */}
-        {pendingTextPos && imageSrc && (
+        {/* Top-right Expand Icon Button on Photo */}
+        {imageSrc && (
+          <button
+            type="button"
+            onClick={openFullscreen}
+            title={t.fullscreenExpandTooltip}
+            className="absolute top-2.5 right-2.5 z-20 p-2 rounded-lg bg-slate-900/75 hover:bg-slate-900 text-white border border-white/20 shadow-md backdrop-blur-xs cursor-pointer transition-colors"
+          >
+            <Maximize2 className="w-4 h-4" />
+          </button>
+        )}
+
+        {/* Inline Floating Text Annotation Input */}
+        {inlinePopupCoords && (
           <div
             style={{
-              left: `${Math.min(70, Math.max(4, pendingTextPos.x * 100))}%`,
-              top: `${Math.min(82, Math.max(8, pendingTextPos.y * 100))}%`,
+              left: `${inlinePopupCoords.left}%`,
+              top: `${inlinePopupCoords.top}%`,
             }}
             onClick={(e) => e.stopPropagation()}
             className="absolute z-30 bg-white rounded-xl shadow-xl border border-slate-300 p-2 flex items-center gap-1.5 min-w-[210px]"
@@ -524,6 +728,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
                   e.preventDefault();
                   commitTextAnnotation();
                 } else if (e.key === 'Escape') {
+                  e.stopPropagation();
                   setPendingTextPos(null);
                 }
               }}
@@ -555,6 +760,190 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
           </label>
         )}
       </div>
+
+      {/* Fullscreen Photo Markup Modal (Portal above all workspace modals) */}
+      {isFullscreen &&
+        imageSrc &&
+        createPortal(
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-[70] bg-slate-950/95 flex flex-col select-none"
+            role="dialog"
+            aria-modal="true"
+          >
+            {/* Synchronized Fullscreen Top Toolbar */}
+            <div className="bg-slate-900 border-b border-slate-800 px-3 sm:px-5 py-2.5 flex flex-wrap items-center justify-between gap-2 shrink-0">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {tools.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setTool(item.id);
+                      setPendingTextPos(null);
+                    }}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition-colors ${
+                      tool === item.id
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700'
+                    }`}
+                  >
+                    {item.icon}
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Color Swatches + Color Picker */}
+                <div className="flex items-center gap-1.5 pr-2 border-r border-slate-700">
+                  {COLOR_SWATCHES.map((sw) => (
+                    <button
+                      key={sw}
+                      type="button"
+                      onClick={() => setColor(sw)}
+                      style={{ backgroundColor: sw }}
+                      className={`w-5 h-5 rounded-full border cursor-pointer ${
+                        color === sw
+                          ? 'ring-2 ring-white border-slate-900 scale-110'
+                          : 'border-slate-500'
+                      }`}
+                      title={sw}
+                    />
+                  ))}
+                  <input
+                    type="color"
+                    value={color}
+                    onChange={(e) => setColor(e.target.value)}
+                    className="w-6 h-6 rounded border border-slate-600 bg-slate-800 cursor-pointer p-0"
+                    title="Color"
+                  />
+                </div>
+
+                {/* Stroke Sizes */}
+                <div
+                  className="flex items-center gap-1 pr-2 border-r border-slate-700"
+                  title={t.sizeLabel}
+                >
+                  {STROKE_SIZES.map((sz) => (
+                    <button
+                      key={sz.label}
+                      type="button"
+                      onClick={() => setLineWidth(sz.value)}
+                      className={`px-2 py-1 rounded text-xs font-bold cursor-pointer ${
+                        lineWidth === sz.value
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700'
+                      }`}
+                    >
+                      {sz.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Undo & Clear */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShapes((prev) => (prev.length > 0 ? prev.slice(0, -1) : prev))
+                  }
+                  className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 cursor-pointer"
+                  title={t.undoTooltip}
+                >
+                  <Undo2 className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShapes((prev) => (prev.length === 0 ? prev : []));
+                    setPendingTextPos(null);
+                  }}
+                  className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 cursor-pointer"
+                  title={t.clearTooltip}
+                >
+                  <Eraser className="w-4 h-4" />
+                </button>
+
+                {/* Done Button */}
+                <button
+                  type="button"
+                  onClick={closeFullscreen}
+                  className="ml-1 px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap shadow-md transition-colors"
+                >
+                  <span>{t.fullscreenDoneBtn}</span>
+                </button>
+              </div>
+            </div>
+
+            {tool === 'text' && (
+              <div className="bg-blue-950/90 border-b border-blue-800/70 text-blue-200 text-xs font-semibold px-4 py-1.5 text-center shrink-0">
+                {t.textHint}
+              </div>
+            )}
+
+            {/* Large Fullscreen Drawing Stage */}
+            <div className="flex-1 min-h-0 p-2 sm:p-5 flex items-center justify-center overflow-hidden">
+              <div
+                ref={fullscreenWrapRef}
+                className="relative w-full h-full rounded-xl overflow-hidden bg-slate-900 border border-slate-800"
+              >
+                <canvas
+                  ref={fullscreenCanvasRef}
+                  onPointerDown={handlePointerDown}
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={handlePointerUp}
+                  onPointerCancel={handlePointerUp}
+                  className={`w-full h-full block touch-none ${
+                    tool === 'text' ? 'cursor-text' : 'cursor-crosshair'
+                  }`}
+                />
+
+                {/* Fullscreen Floating Text Annotation Input */}
+                {fullscreenPopupCoords && (
+                  <div
+                    style={{
+                      left: `${fullscreenPopupCoords.left}%`,
+                      top: `${fullscreenPopupCoords.top}%`,
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute z-30 bg-white rounded-xl shadow-2xl border border-slate-300 p-2.5 flex items-center gap-2 min-w-[230px]"
+                  >
+                    <input
+                      type="text"
+                      autoFocus
+                      value={pendingTextValue}
+                      onChange={(e) => setPendingTextValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          commitTextAnnotation();
+                        } else if (e.key === 'Escape') {
+                          e.stopPropagation();
+                          setPendingTextPos(null);
+                        }
+                      }}
+                      placeholder={t.textPlaceholder}
+                      className="flex-1 px-2.5 py-1.5 text-xs sm:text-sm rounded-lg border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    />
+                    <button
+                      type="button"
+                      onClick={commitTextAnnotation}
+                      className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs sm:text-sm font-semibold cursor-pointer whitespace-nowrap"
+                    >
+                      {t.textSaveBtn}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Bottom Keyboard / Gesture Hint */}
+            <div className="py-1.5 px-4 bg-slate-900/90 border-t border-slate-800 text-center text-[11px] text-slate-400 shrink-0">
+              {t.fullscreenHint}
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 };

@@ -10,6 +10,7 @@ import {
   FolderPlus,
   HardDriveDownload,
   Home,
+  Loader2,
   Palette,
   Pencil,
   RotateCcw,
@@ -24,8 +25,10 @@ import type {
   DefectItem,
   DefectStatus,
   FloorPlan,
+  GeminiApiConfig,
   ProjectFile,
   ProjectStatus,
+  ReportBookData,
   SeverityLevel,
   ToastItem,
   WorkspaceTab,
@@ -45,7 +48,11 @@ import {
   translateProjectStatus,
 } from './i18n/translations';
 import {
-  buildPrintableReportHtml,
+  clearGeminiApiKey,
+  loadGeminiConfig,
+  saveGeminiConfig,
+} from './utils/geminiClient';
+import {
   exportProjectExcel,
   exportProjectPDF,
   exportProjectWord,
@@ -58,6 +65,8 @@ import { StudioTab } from './components/StudioTab';
 import { DefectListTab } from './components/DefectListTab';
 import { ExportTab } from './components/ExportTab';
 import {
+  ApiKeyGuideModal,
+  ApiKeySettingsModal,
   BrandSettingsModal,
   ConfirmModal,
   DefectEditModal,
@@ -141,13 +150,16 @@ export default function App() {
   const [activeFloorId, setActiveFloorId] = useState<string | null>(null);
   const [hubSearch, setHubSearch] = useState('');
 
-  // Toasts & Print / PDF
+  // Toasts & PDF export state
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const [printHtml, setPrintHtml] = useState('');
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+  const [geminiConfig, setGeminiConfig] = useState<GeminiApiConfig>(loadGeminiConfig);
 
   // Modals
   const [showBrandModal, setShowBrandModal] = useState(false);
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [showApiKeyGuideModal, setShowApiKeyGuideModal] = useState(false);
   const [projectModalTarget, setProjectModalTarget] = useState<{
     open: boolean;
     project: ProjectFile | null;
@@ -711,17 +723,15 @@ export default function App() {
     }));
   };
 
-  const handleExportPDF = async () => {
+  const handleExportPDF = async (reportBook?: ReportBookData) => {
     if (!activeProject || isExportingPdf) return;
     setIsExportingPdf(true);
-    notify(
-      lang === 'en'
-        ? 'Generating A4 PDF report, please wait...'
-        : 'กำลังสร้างไฟล์รายงาน PDF ขนาด A4 กรุณารอสักครู่...',
-      'info'
-    );
     try {
-      const fileName = await exportProjectPDF(activeProject, brand, lang);
+      // Allow React to paint the loading overlay before mounting/rendering the A4 PDF template
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => setTimeout(resolve, 60));
+      });
+      const fileName = await exportProjectPDF(activeProject, brand, lang, reportBook);
       notify(
         lang === 'en'
           ? `Downloaded ${fileName}`
@@ -741,15 +751,9 @@ export default function App() {
     }
   };
 
-  const handlePrintReport = () => {
+  const handleExportWord = async (reportBook?: ReportBookData) => {
     if (!activeProject) return;
-    setPrintHtml(buildPrintableReportHtml(activeProject, brand, lang, false));
-    setTimeout(() => window.print(), 250);
-  };
-
-  const handleExportWord = () => {
-    if (!activeProject) return;
-    exportProjectWord(activeProject, brand, lang);
+    await exportProjectWord(activeProject, brand, lang, reportBook);
     notify(
       lang === 'en'
         ? 'Downloaded Word report (.doc)'
@@ -758,9 +762,9 @@ export default function App() {
     );
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     if (!activeProject) return;
-    const kind = exportProjectExcel(activeProject, lang);
+    const kind = await exportProjectExcel(activeProject, brand, lang);
     notify(
       kind === 'xlsx'
         ? lang === 'en'
@@ -919,6 +923,43 @@ export default function App() {
                   🇺🇸 EN
                 </button>
               </div>
+            </div>
+          </div>
+
+          {/* Client-Side Gemini API Key Status & Controls Bar */}
+          <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`inline-flex items-center px-2.5 py-1 rounded-lg border text-xs font-bold whitespace-nowrap ${
+                  geminiConfig.apiKey
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                    : 'bg-rose-50 border-rose-200 text-rose-700'
+                }`}
+              >
+                {geminiConfig.apiKey ? t.apiKeyStatusReady : t.apiKeyStatusMissing}
+              </span>
+              {geminiConfig.apiKey && (
+                <span className="text-[11px] font-mono-num text-slate-500">
+                  {geminiConfig.model === 'auto' ? t.apiKeyAutoBadge : geminiConfig.model}
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowApiKeyGuideModal(true)}
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer"
+              >
+                {t.apiKeyGuideBtn}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowApiKeyModal(true)}
+                className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer"
+              >
+                {t.apiKeySettingsBtn}
+              </button>
             </div>
           </div>
         </header>
@@ -1290,6 +1331,7 @@ export default function App() {
                 onOpenZoneModal={(zoneId) => setZoneModalTargetId(zoneId)}
                 onConfirmDeleteFloor={handleConfirmDeleteFloor}
                 onOpenLightbox={(src, caption) => setLightbox({ src, caption })}
+                onRequireApiKey={() => setShowApiKeyModal(true)}
                 onNotify={notify}
               />
             )}
@@ -1316,23 +1358,36 @@ export default function App() {
               <ExportTab
                 lang={lang}
                 project={activeProject}
+                brand={brand}
                 isExportingPdf={isExportingPdf}
                 onExportPDF={handleExportPDF}
-                onPrintReport={handlePrintReport}
                 onExportWord={handleExportWord}
                 onExportExcel={handleExportExcel}
+                onNotify={notify}
               />
             )}
           </div>
         )}
       </main>
 
-      {/* Printable A4 Report Area */}
-      <div
-        id="printArea"
-        className="hidden bg-white text-slate-900"
-        dangerouslySetInnerHTML={{ __html: printHtml }}
-      />
+      {/* Full-Screen PDF Generation Overlay (covers #pdfRenderContainer at z-index 9998) */}
+      {isExportingPdf && (
+        <div
+          className="pdf-loading-overlay fixed inset-0 z-[9999] bg-slate-900/80 flex items-center justify-center p-4"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl px-6 py-6 max-w-sm w-full text-center">
+            <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-3.5">
+              <Loader2 className="w-6 h-6 animate-spin" />
+            </div>
+            <h4 className="text-base font-bold text-slate-900">{t.pdfGeneratingBtn}</h4>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1.5 leading-relaxed">
+              {t.pdfLoadingSub}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Hidden JSON Import Input */}
       <input
@@ -1480,6 +1535,52 @@ export default function App() {
           src={lightbox.src}
           caption={lightbox.caption}
           onClose={() => setLightbox(null)}
+        />
+      )}
+
+      {showApiKeyModal && (
+        <ApiKeySettingsModal
+          lang={lang}
+          config={geminiConfig}
+          onClose={() => setShowApiKeyModal(false)}
+          onSave={(next) => {
+            saveGeminiConfig(next);
+            setGeminiConfig(next);
+            setShowApiKeyModal(false);
+            notify(
+              lang === 'en'
+                ? next.apiKey
+                  ? `Saved Gemini API Key (${next.model})`
+                  : 'Saved model settings (no API key set)'
+                : next.apiKey
+                ? `บันทึก Gemini API Key แล้ว (${next.model})`
+                : 'บันทึกการตั้งค่าโมเดลแล้ว (ยังไม่ได้ใส่ API Key)',
+              next.apiKey ? 'success' : 'info'
+            );
+          }}
+          onDeleteKey={() => {
+            clearGeminiApiKey();
+            setGeminiConfig((prev) => ({ ...prev, apiKey: '' }));
+            notify(
+              lang === 'en' ? 'API Key removed' : 'ลบ Gemini API Key เรียบร้อยแล้ว',
+              'info'
+            );
+          }}
+          onOpenGuide={() => {
+            setShowApiKeyModal(false);
+            setShowApiKeyGuideModal(true);
+          }}
+        />
+      )}
+
+      {showApiKeyGuideModal && (
+        <ApiKeyGuideModal
+          lang={lang}
+          onClose={() => setShowApiKeyGuideModal(false)}
+          onGoToSettings={() => {
+            setShowApiKeyGuideModal(false);
+            setShowApiKeyModal(true);
+          }}
         />
       )}
     </div>

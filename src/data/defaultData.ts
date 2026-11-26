@@ -111,6 +111,11 @@ export function normalizeSeverity(sev?: string): SeverityLevel {
 export function migrateProject(proj: ProjectFile): ProjectFile {
   return {
     ...proj,
+    floors: (proj.floors || []).map((fl) => ({
+      ...fl,
+      zones: Array.isArray(fl.zones) ? fl.zones : [],
+      elements: Array.isArray(fl.elements) ? fl.elements : [],
+    })),
     defects: (proj.defects || []).map((d) => ({
       ...d,
       beforeImg: d.beforeImg ?? d.photoDataUrl ?? null,

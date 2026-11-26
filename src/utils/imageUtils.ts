@@ -1,8 +1,22 @@
-import * as XLSX from 'xlsx';
-import html2pdf from 'html2pdf.js';
-import type { AppLanguage, BrandConfig, ProjectFile } from '../types/inspection';
+import ExcelJS from 'exceljs';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
+import type {
+  AppLanguage,
+  BrandConfig,
+  DefectItem,
+  FloorPlan,
+  ProjectFile,
+  ReportBookData,
+} from '../types/inspection';
 import { DEFAULT_GEAR_LOGO_SVG, getArchitecturalFloorSvg } from '../data/defaultData';
 import { translateDefectStatus, translateSeverity } from '../i18n/translations';
+import {
+  createDefaultCustomExportSettings,
+  ENGINEER_COVER_SVG,
+  loadReportBookData,
+  sanitizeReportImageUrl,
+} from './reportBook';
 
 export function escapeHtml(str: unknown): string {
   if (str === null || str === undefined) return '';
@@ -29,19 +43,25 @@ export function getDefaultSaveAsFilename(prefix = 'home_inspection'): string {
   return `${prefix}_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.json`;
 }
 
-export function compressImageFile(file: File, maxWidth = 960, quality = 0.78): Promise<string> {
+export function compressImageFile(
+  file: File,
+  maxDimension = 2560,
+  quality = 0.95
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
+        const natW = img.naturalWidth || img.width;
+        const natH = img.naturalHeight || img.height;
+        const maxSide = Math.max(natW, natH);
+        const ratio =
+          maxDimension > 0 && maxSide > maxDimension ? maxDimension / maxSide : 1;
+        const w = Math.max(1, Math.round(natW * ratio));
+        const h = Math.max(1, Math.round(natH * ratio));
+
         const canvas = document.createElement('canvas');
-        let w = img.width;
-        let h = img.height;
-        if (w > maxWidth) {
-          h = Math.round((h * maxWidth) / w);
-          w = maxWidth;
-        }
         canvas.width = w;
         canvas.height = h;
         const ctx = canvas.getContext('2d');
@@ -113,306 +133,1463 @@ export function getFloorNameById(proj: ProjectFile, floorId: string): string {
   return proj.floors.find((f) => f.id === floorId)?.name || 'ชั้น 1';
 }
 
-export function buildPrintableReportHtml(
+function loadImageElement(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    if (!src.startsWith('data:')) {
+      img.crossOrigin = 'anonymous';
+    }
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Failed to load image'));
+    img.src = src;
+  });
+}
+
+function normalizeSvgForRaster(rawSvg: string, width: number, height: number): string {
+  let cleaned = rawSvg.trim().replace(/\sclass="[^"]*"/g, '');
+  if (!cleaned.includes('xmlns="http://www.w3.org/2000/svg"')) {
+    cleaned = cleaned.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
+  }
+  cleaned = cleaned
+    .replace(/\swidth="[^"]*"/i, '')
+    .replace(/\sheight="[^"]*"/i, '')
+    .replace('<svg ', `<svg width="${width}" height="${height}" `);
+  return cleaned;
+}
+
+export async function svgToPngDataUrl(
+  rawSvg: string,
+  width: number,
+  height: number
+): Promise<string | null> {
+  try {
+    const svgText = normalizeSvgForRaster(rawSvg, width, height);
+    const dataUri = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgText)}`;
+    const img = await loadImageElement(dataUri);
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, width, height);
+    return canvas.toDataURL('image/png');
+  } catch {
+    return null;
+  }
+}
+
+export async function renderFloorplanWithPinsToPng(
+  floor: FloorPlan,
+  floorDefects: DefectItem[]
+): Promise<string | null> {
+  const baseWidth = 800;
+  const baseHeight = 600;
+  const dpiScale = 2;
+  const width = baseWidth * dpiScale;
+  const height = baseHeight * dpiScale;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(0, 0, width, height);
+
+  try {
+    if (floor.imageUrl) {
+      const img = await loadImageElement(floor.imageUrl);
+      const scale = Math.min(width / img.naturalWidth, height / img.naturalHeight);
+      const drawW = img.naturalWidth * scale;
+      const drawH = img.naturalHeight * scale;
+      const offsetX = (width - drawW) / 2;
+      const offsetY = (height - drawH) / 2;
+      ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
+    } else {
+      const svgText = normalizeSvgForRaster(
+        getArchitecturalFloorSvg(floor.svgPreset ?? 0),
+        width,
+        height
+      );
+      const svgUri = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgText)}`;
+      const svgImg = await loadImageElement(svgUri);
+      ctx.drawImage(svgImg, 0, 0, width, height);
+    }
+  } catch {
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(40, 40, width - 80, height - 80);
+  }
+
+  floorDefects.forEach((p) => {
+    const px = Math.max(36, Math.min(width - 36, (p.x / 100) * width));
+    const py = Math.max(36, Math.min(height - 36, (p.y / 100) * height));
+    const pinColor =
+      p.status === 'แก้ไขแล้ว'
+        ? '#059669'
+        : p.severity === 'เร่งด่วน'
+        ? '#e11d48'
+        : p.severity === 'เล็กน้อย'
+        ? '#2563eb'
+        : '#f59e0b';
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(px, py, 16 * dpiScale, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(px, py, 13.5 * dpiScale, 0, Math.PI * 2);
+    ctx.fillStyle = pinColor;
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `bold ${13 * dpiScale}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(p.number), px, py + 1);
+    ctx.restore();
+  });
+
+  try {
+    return canvas.toDataURL('image/png');
+  } catch {
+    return null;
+  }
+}
+
+export async function renderFloorplanZonesToPng(floor: FloorPlan): Promise<string | null> {
+  const baseWidth = 800;
+  const baseHeight = 600;
+  const dpiScale = 2;
+  const width = baseWidth * dpiScale;
+  const height = baseHeight * dpiScale;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(0, 0, width, height);
+
+  try {
+    if (floor.imageUrl) {
+      const img = await loadImageElement(floor.imageUrl);
+      const scale = Math.min(width / img.naturalWidth, height / img.naturalHeight);
+      const drawW = img.naturalWidth * scale;
+      const drawH = img.naturalHeight * scale;
+      const offsetX = (width - drawW) / 2;
+      const offsetY = (height - drawH) / 2;
+      ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
+    } else {
+      const svgText = normalizeSvgForRaster(
+        getArchitecturalFloorSvg(floor.svgPreset ?? 0),
+        width,
+        height
+      );
+      const svgUri = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgText)}`;
+      const svgImg = await loadImageElement(svgUri);
+      ctx.drawImage(svgImg, 0, 0, width, height);
+    }
+  } catch {
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(40, 40, width - 80, height - 80);
+  }
+
+  (floor.zones || []).forEach((z) => {
+    const zx = (z.x / 100) * width;
+    const zy = (z.y / 100) * height;
+    const zw = (z.w / 100) * width;
+    const zh = (z.h / 100) * height;
+
+    ctx.save();
+    ctx.globalAlpha = 0.42;
+    ctx.fillStyle = z.bg || '#dbeafe';
+    ctx.beginPath();
+    ctx.roundRect(zx, zy, zw, zh, 8 * dpiScale);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.95;
+    ctx.strokeStyle = z.border || '#2563eb';
+    ctx.lineWidth = 2.5 * dpiScale;
+    ctx.setLineDash([6 * dpiScale, 4 * dpiScale]);
+    ctx.beginPath();
+    ctx.roundRect(zx, zy, zw, zh, 8 * dpiScale);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.font = `bold ${13 * dpiScale}px Sarabun, sans-serif`;
+    const labelText = z.name || '';
+    const textW = ctx.measureText(labelText).width;
+    const badgeW = Math.min(zw - 12 * dpiScale, textW + 18 * dpiScale);
+    const badgeH = 24 * dpiScale;
+    const bx = Math.max(8 * dpiScale, Math.min(width - badgeW - 8 * dpiScale, zx + 8 * dpiScale));
+    const by = Math.max(8 * dpiScale, Math.min(height - badgeH - 8 * dpiScale, zy + 8 * dpiScale));
+
+    ctx.fillStyle = z.border || '#1e3a8a';
+    ctx.beginPath();
+    ctx.roundRect(bx, by, badgeW, badgeH, 6 * dpiScale);
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(
+      labelText,
+      bx + 9 * dpiScale,
+      by + badgeH / 2 + 1,
+      Math.max(20 * dpiScale, badgeW - 18 * dpiScale)
+    );
+    ctx.restore();
+  });
+
+  try {
+    return canvas.toDataURL('image/png');
+  } catch {
+    return null;
+  }
+}
+
+export interface SharedReportAssets {
+  logoPngDataUrl: string | null;
+  coverGraphicPngDataUrl: string | null;
+  floorplanPngMap: Record<string, string>;
+  floorplanZonePngMap: Record<string, string>;
+}
+
+export async function prepareSharedReportAssets(
+  proj: ProjectFile,
+  brand: BrandConfig
+): Promise<SharedReportAssets> {
+  const sorted = [...proj.defects].sort((a, b) => (a.number || 0) - (b.number || 0));
+
+  const logoPromise = brand.customLogoDataUrl
+    ? Promise.resolve(brand.customLogoDataUrl)
+    : svgToPngDataUrl(DEFAULT_GEAR_LOGO_SVG, 440, 440);
+
+  const coverGraphicPromise = svgToPngDataUrl(ENGINEER_COVER_SVG, 1260, 780);
+
+  const floorEntriesPromise = Promise.all(
+    proj.floors.map(async (fl) => {
+      const flPins = sorted.filter((d) => d.floorId === fl.id);
+      const [pinPng, zonePng] = await Promise.all([
+        renderFloorplanWithPinsToPng(fl, flPins),
+        renderFloorplanZonesToPng(fl),
+      ]);
+      return [fl.id, pinPng, zonePng] as const;
+    })
+  );
+
+  const [logoPngDataUrl, coverGraphicPngDataUrl, floorEntries] = await Promise.all([
+    logoPromise,
+    coverGraphicPromise,
+    floorEntriesPromise,
+  ]);
+
+  const floorplanPngMap: Record<string, string> = {};
+  const floorplanZonePngMap: Record<string, string> = {};
+  floorEntries.forEach(([id, pinDataUrl, zoneDataUrl]) => {
+    if (pinDataUrl) floorplanPngMap[id] = pinDataUrl;
+    if (zoneDataUrl) floorplanZonePngMap[id] = zoneDataUrl;
+  });
+
+  return {
+    logoPngDataUrl,
+    coverGraphicPngDataUrl,
+    floorplanPngMap,
+    floorplanZonePngMap,
+  };
+}
+
+export interface BuiltReportPage {
+  id: string;
+  pageLabel: string;
+  isCover?: boolean;
+  html: string;
+}
+
+function stripLeadingStepNumber(text: string): string {
+  return String(text || '').replace(/^\s*\d+[\.\)\-]\s*/, '').trim();
+}
+
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function stripZonePrefixFromTitle(title: string, zone: string): string {
+  const cleanTitle = String(title || '').trim();
+  const cleanZone = String(zone || '').trim();
+  if (!cleanTitle || !cleanZone) return cleanTitle;
+
+  const zoneWithoutCode = cleanZone
+    .replace(/^(?:โซน|zone)\s*\d+\s*[:\.\-–—]?\s*/i, '')
+    .trim();
+
+  const candidates = new Set<string>([cleanZone]);
+  if (zoneWithoutCode) {
+    candidates.add(zoneWithoutCode);
+  }
+
+  const subParts = (zoneWithoutCode || cleanZone)
+    .split(/\s*(?:\/|&|และ|,)\s*/i)
+    .map((p) => p.trim())
+    .filter((p) => p.length >= 2);
+  subParts.forEach((p) => candidates.add(p));
+
+  const sortedCandidates = Array.from(candidates).sort((a, b) => b.length - a.length);
+  for (const candidate of sortedCandidates) {
+    const escaped = escapeRegExp(candidate);
+    const sepRegex = new RegExp(`^${escaped}\\s*[\\-–—:|·]+\\s*`, 'i');
+    if (sepRegex.test(cleanTitle)) {
+      const stripped = cleanTitle.replace(sepRegex, '').trim();
+      if (stripped.length > 0) return stripped;
+    }
+    if (candidate === cleanZone || candidate === zoneWithoutCode) {
+      const spaceRegex = new RegExp(`^${escaped}\\s+`, 'i');
+      if (spaceRegex.test(cleanTitle)) {
+        const stripped = cleanTitle.replace(spaceRegex, '').trim();
+        if (stripped.length > 0) return stripped;
+      }
+    }
+  }
+
+  return cleanTitle;
+}
+
+function normalizeReportText(text: string): string {
+  return String(text || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function resolveDefectPhoto(d: DefectItem, side: 'before' | 'after'): string | null {
+  const legacy = d as DefectItem & {
+    annotatedImage?: string | null;
+    originalImage?: string | null;
+    annotatedBeforeImg?: string | null;
+    annotatedAfterImg?: string | null;
+  };
+  if (side === 'before') {
+    return (
+      legacy.annotatedBeforeImg ||
+      legacy.annotatedImage ||
+      d.beforeImg ||
+      d.photoDataUrl ||
+      legacy.originalImage ||
+      null
+    );
+  }
+  return legacy.annotatedAfterImg || d.afterImg || null;
+}
+
+function estimateDefectRowHeight(
+  d: DefectItem,
+  flName: string,
+  showCauseDetails: boolean,
+  showSolutionDetails: boolean,
+  causePrefix: string,
+  solutionPrefix: string
+): number {
+  const zoneLabel = (d.zone || flName || '').trim();
+  const cleanTitle = stripZonePrefixFromTitle(d.title, zoneLabel);
+  const cleanCause = (d.cause || '').trim();
+  const cleanSolution = (d.solution || '').trim();
+
+  const normTitle = normalizeReportText(cleanTitle);
+  const normCause = normalizeReportText(cleanCause);
+  const normSolution = normalizeReportText(cleanSolution);
+
+  const showCause =
+    showCauseDetails && !d.hideCause && cleanCause.length > 0 && normCause !== normTitle;
+  const showSolution =
+    showSolutionDetails &&
+    !d.hideSolution &&
+    cleanSolution.length > 0 &&
+    normSolution !== normTitle &&
+    (!showCause || normSolution !== normCause);
+
+  let textHeight = 38; // Zone line + floor/severity line + gaps
+  textHeight += Math.max(1, Math.ceil(cleanTitle.length / 26)) * 16;
+  if (showCause) {
+    textHeight += 4 + Math.max(1, Math.ceil((causePrefix.length + 1 + cleanCause.length) / 28)) * 15;
+  }
+  if (showSolution) {
+    textHeight +=
+      4 + Math.max(1, Math.ceil((solutionPrefix.length + 1 + cleanSolution.length) / 28)) * 15;
+  }
+
+  const rowTextTotal = textHeight + 14;
+  const rowImageTotal = 150 + 14; // 150px photo box + vertical padding/border
+  return Math.max(rowImageTotal, rowTextTotal);
+}
+
+/**
+ * Builds the complete 5-part A4 Engineering Report Book (Cover, TOC, Intro, Steps & Zones,
+ * 7-column Table 1 at up to 4 defects per page with auto-fit pagination, Summary & Table 2, and anchored Page Footer).
+ * Pure inline CSS with Hex/RGB colors only (safe for both Word .doc and html2canvas PDF).
+ */
+export function buildSharedReportPages(
   proj: ProjectFile,
   brand: BrandConfig,
   lang: AppLanguage = 'th',
-  forWord = false
-): string {
-  const sorted = [...proj.defects].sort((a, b) => (a.number || 0) - (b.number || 0));
-  const total = sorted.length;
-  const urgent = sorted.filter((d) => d.severity === 'เร่งด่วน').length;
-  const pending = sorted.filter((d) => d.status !== 'แก้ไขแล้ว').length;
-  const fixed = sorted.filter((d) => d.status === 'แก้ไขแล้ว').length;
+  assets?: SharedReportAssets,
+  reportBookInput?: ReportBookData
+): BuiltReportPage[] {
+  const rb = reportBookInput || loadReportBookData(proj, lang);
+  const custom = {
+    ...createDefaultCustomExportSettings(),
+    ...(rb.customExport || {}),
+  };
+
+  const allSorted = [...proj.defects].sort((a, b) => (a.number || 0) - (b.number || 0));
+  const filteredDefects = allSorted.filter((d) => {
+    if (custom.defectSelectionMode === 'manual') {
+      return custom.selectedDefectIds.includes(d.id);
+    }
+    if (custom.defectStatusFilter === 'pending_only' && d.status === 'แก้ไขแล้ว') {
+      return false;
+    }
+    if (custom.defectStatusFilter === 'fixed_only' && d.status !== 'แก้ไขแล้ว') {
+      return false;
+    }
+    if (custom.defectSeverityFilter === 'urgent_only' && d.severity !== 'เร่งด่วน') {
+      return false;
+    }
+    return true;
+  });
+
+  const total = filteredDefects.length;
+  const urgent = filteredDefects.filter((d) => d.severity === 'เร่งด่วน').length;
+  const pending = filteredDefects.filter((d) => d.status !== 'แก้ไขแล้ว').length;
+  const fixed = filteredDefects.filter((d) => d.status === 'แก้ไขแล้ว').length;
+
   const isEn = lang === 'en';
+  const accentHex = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(brand.accentColor || '')
+    ? brand.accentColor
+    : '#1e3a8a';
+
+  const logoImgSrc = brand.customLogoDataUrl || assets?.logoPngDataUrl || '';
+  const coverGraphicSrc = assets?.coverGraphicPngDataUrl || '';
 
   const L = isEn
     ? {
-        inspector: 'Inspector',
-        project: 'Project',
-        houseNo: 'House No.',
-        address: 'Address',
-        date: 'Inspection Date',
-        summary: 'Inspection Summary',
-        total: 'Total',
-        urgent: 'Urgent',
-        pending: 'Pending / In Progress',
-        fixed: 'Fixed',
-        items: 'items',
-        floorplanHeading: 'Floorplan Defect Pin Map',
-        pinsUnit: 'pins',
-        tableHeading: 'Defect Inspection Schedule',
-        colNo: '#',
-        colDesc: 'Defect / Engineering Cause / Solution',
-        colStatus: 'Severity / Status',
-        colBefore: 'Before',
-        colAfter: 'After',
+        preparedBy: 'Prepared By',
+        inspectorWord: 'Inspector',
+        locationLabel: 'Location',
+        clientLabel: 'Homeowner / Client',
+        dateLabel: 'Inspection Date',
+        pageWord: 'Page',
+        tocTitle: 'Table of Contents',
+        tocColTopic: 'Topic',
+        tocColPage: 'Page',
+        tocSec1: '1. Introduction',
+        tocSec2: '2. Inspection Procedures & House Zones',
+        tocSec3: `3. Inspection Details — Table 1 (${total} items)`,
+        tocSec4: '4. Summary & Recommendations — Table 2',
+        sec1Title: '1. Introduction',
+        fig1Caption: 'Figure 1: Project Location Map / Satellite View',
+        fig2Caption: 'Figure 2: Front Elevation Photo of House',
+        noFig1: 'Location map not attached',
+        noFig2: 'Front house photo not attached',
+        sec2Title: '2. Inspection Procedures',
+        sec2Cont: '2. Inspection Procedures (Zone Plans Continued)',
+        fig3Caption: 'Figure 3: House Interior & Exterior Zone Floorplans',
+        sec3Title: '3. Inspection Details',
+        sec3Cont: '3. Inspection Details (Continued)',
+        t1Caption: 'Table 1: Field Inspection Defect Schedule',
+        t1CaptionCont: 'Table 1: Field Inspection Defect Schedule (Continued)',
+        colSeq: 'No.',
+        colCheck1: '1st Check (Before)',
+        colProblem: 'Defect & Details',
+        colCheck2: '2nd Check (After)',
+        colStatusGroup: 'Verification Status',
+        colFixed: 'Fixed',
+        colPartial: 'Fixed (Incomplete)',
+        colUnfixed: 'Not Fixed',
         causePrefix: 'Cause:',
         solutionPrefix: 'Solution:',
         noImg: 'No photo',
-        pendingImg: 'Not attached',
-        emptyTable: 'No defect records',
+        pendingImg: '-',
+        emptyDefects: 'No defect records in this project.',
+        sec4Title: '4. Summary / Recommendations',
+        sec4Lead:
+          'Summary evaluation of each engineering inspection procedure conducted on site (Table 2):',
+        t2Caption: 'Table 2: Inspection Procedure Verification Summary',
+        t2ColNo: 'No.',
+        t2ColItem: 'Inspection Item',
+        t2ColFinding: 'Findings / Notes',
+        statTotal: 'Total Defects',
+        statUrgent: 'Urgent',
+        statPending: 'Pending / In Progress',
+        statFixed: 'Fixed',
+        itemsUnit: 'items',
+        projectLabel: 'Project',
       }
     : {
-        inspector: 'ผู้ตรวจสอบ',
-        project: 'โครงการ',
-        houseNo: 'บ้านเลขที่',
-        address: 'ที่อยู่',
-        date: 'วันที่ตรวจ',
-        summary: 'สรุปผลการตรวจสอบ',
-        total: 'รายการทั้งหมด',
-        urgent: 'ระดับเร่งด่วน',
-        pending: 'รอ/กำลังแก้ไข',
-        fixed: 'แก้ไขแล้ว',
-        items: 'ข้อ',
-        floorplanHeading: 'ผังแปลนตำแหน่ง Defect',
-        pinsUnit: 'จุด',
-        tableHeading: 'รายละเอียดรายการตรวจสอบ (Defect List)',
-        colNo: 'ข้อ',
-        colDesc: 'รายการ Defect / สาเหตุ / วิธีแก้ไข',
-        colStatus: 'ระดับ / สถานะ',
-        colBefore: 'ก่อนแก้ไข (Before)',
-        colAfter: 'หลังแก้ไข (After)',
+        preparedBy: 'จัดทำโดย',
+        inspectorWord: 'ผู้ตรวจสอบ',
+        locationLabel: 'สถานที่ตั้ง (Location)',
+        clientLabel: 'ชื่อเจ้าของบ้าน',
+        dateLabel: 'วันที่ตรวจรับ',
+        pageWord: 'หน้า',
+        tocTitle: 'สารบัญ',
+        tocColTopic: 'สารบัญ',
+        tocColPage: 'หน้า',
+        tocSec1: '1. บทนำ',
+        tocSec2: '2. การดำเนินการ',
+        tocSec3: `3. รายละเอียดการตรวจสอบ (ตารางที่ 1 จำนวน ${total} ข้อ)`,
+        tocSec4: '4. สรุป / ข้อเสนอแนะ (ตารางที่ 2)',
+        sec1Title: '1. บทนำ',
+        fig1Caption: 'รูปที่ 1: ภาพแสดงตำแหน่งที่ตั้งโครงการ',
+        fig2Caption: 'รูปที่ 2: ภาพด้านหน้าบ้าน',
+        noFig1: 'ยังไม่ได้แนบภาพตำแหน่งที่ตั้งโครงการ',
+        noFig2: 'ยังไม่ได้แนบภาพด้านหน้าบ้าน',
+        sec2Title: '2. การดำเนินการ',
+        sec2Cont: '2. การดำเนินการ (ภาพแปลน Zone เพิ่มเติม)',
+        fig3Caption: 'รูปที่ 3: ภาพประกอบ Zone ต่างๆ ภายในบ้าน',
+        sec3Title: '3. รายละเอียดการตรวจสอบ',
+        sec3Cont: '3. รายละเอียดการตรวจสอบ (ต่อ)',
+        t1Caption: 'ตารางที่ 1 รายการตรวจสอบ',
+        t1CaptionCont: 'ตารางที่ 1 รายการตรวจสอบ (ต่อ)',
+        colSeq: 'ลำดับที่',
+        colCheck1: 'ตรวจครั้งที่ 1',
+        colProblem: 'ปัญหา',
+        colCheck2: 'ตรวจครั้งที่ 2',
+        colStatusGroup: 'สถานะการตรวจสอบ',
+        colFixed: 'แก้แล้ว',
+        colPartial: 'แก้แล้วแต่ไม่เรียบร้อย',
+        colUnfixed: 'ยังไม่แก้',
         causePrefix: 'สาเหตุ:',
         solutionPrefix: 'วิธีแก้ไข:',
         noImg: 'ไม่มีรูป',
-        pendingImg: 'ยังไม่แนบรูป',
-        emptyTable: 'ไม่มีรายการ Defect',
+        pendingImg: '-',
+        emptyDefects: 'ยังไม่มีรายการ Defect ในโครงการนี้',
+        sec4Title: '4. สรุป / ข้อเสนอแนะ',
+        sec4Lead:
+          'สรุปผลการตรวจสอบตามขั้นตอนการดำเนินการตรวจรับบ้านและระบบประกอบอาคาร ดังแสดงในตารางที่ 2:',
+        t2Caption: 'ตารางที่ 2 ตรวจสอบเนื้อหาการดำเนินการ',
+        t2ColNo: 'ลำดับ',
+        t2ColItem: 'รายการ',
+        t2ColFinding: 'สิ่งที่พบ',
+        statTotal: 'ทั้งหมด',
+        statUrgent: 'เร่งด่วน',
+        statPending: 'รอแก้ไข/กำลังแก้ไข',
+        statFixed: 'แก้ไขแล้ว',
+        itemsUnit: 'ข้อ',
+        projectLabel: 'โครงการ',
       };
 
-  // Build 2-column table layout for floorplans so html2canvas + Word + print all render identically
-  let floorPlansSection = '';
-  if (!forWord && proj.floors.length > 0) {
-    const floorCells: string[] = [];
-    for (let i = 0; i < proj.floors.length; i += 2) {
-      const pair = proj.floors.slice(i, i + 2);
-      floorCells.push(`
-        <tr class="print-break-inside-avoid">
-          ${pair
-            .map((fl) => {
-              const flPins = sorted.filter((d) => d.floorId === fl.id);
-              return `
-                <td style="width:${pair.length === 2 ? '50%' : '100%'}; vertical-align:top; padding:4px;">
-                  <div style="border:1px solid #cbd5e1; border-radius:8px; padding:8px; background:#ffffff;">
-                    <div style="font-size:12px; font-weight:700; margin-bottom:6px; color:#0f172a;">
-                      ${escapeHtml(fl.name)} (${flPins.length} ${L.pinsUnit})
-                    </div>
-                    <div style="position:relative; width:100%; height:245px; border:1px solid #e2e8f0; overflow:hidden; background:#f8fafc;">
-                      ${
-                        fl.imageUrl
-                          ? `<img src="${fl.imageUrl}" style="width:100%; height:100%; object-fit:contain; display:block;" />`
-                          : getArchitecturalFloorSvg(fl.svgPreset ?? 0)
-                      }
-                      ${flPins
-                        .map((p) => {
-                          const bg =
-                            p.status === 'แก้ไขแล้ว'
-                              ? '#059669'
-                              : p.severity === 'เร่งด่วน'
-                              ? '#e11d48'
-                              : p.severity === 'เล็กน้อย'
-                              ? '#2563eb'
-                              : '#f59e0b';
-                          return `<div style="position:absolute; left:${p.x}%; top:${p.y}%; transform:translate(-50%,-50%); width:18px; height:18px; border-radius:999px; background:${bg}; color:#ffffff; font-size:9px; font-weight:800; line-height:16px; text-align:center; border:1.5px solid #ffffff;">${p.number}</div>`;
-                        })
-                        .join('')}
-                    </div>
-                  </div>
-                </td>
-              `;
-            })
-            .join('')}
-          ${pair.length === 1 && proj.floors.length > 1 ? '<td style="width:50%;"></td>' : ''}
-        </tr>
-      `);
-    }
+  const perPage = custom.defectsPerPage === 2 || custom.defectsPerPage === 3 ? custom.defectsPerPage : 4;
+  const defectChunks: DefectItem[][] = [];
+  if (filteredDefects.length === 0) {
+    defectChunks.push([]);
+  } else {
+    let currentChunk: DefectItem[] = [];
+    let currentHeight = 0;
+    const getPageBudget = (chunkIndex: number) => (chunkIndex === 0 ? 810 : 842);
 
-    floorPlansSection = `
-      <div style="margin-bottom:18px;">
-        <h3 style="font-size:15px; font-weight:700; color:${brand.accentColor}; border-bottom:2px solid ${brand.accentColor}; padding-bottom:4px; margin:0 0 8px 0;">
-          ${L.floorplanHeading}
-        </h3>
-        <table style="width:100%; border-collapse:collapse; table-layout:fixed;">
-          <tbody>${floorCells.join('')}</tbody>
-        </table>
-      </div>
-    `;
+    filteredDefects.forEach((d) => {
+      const flName = getFloorNameById(proj, d.floorId);
+      const estH = estimateDefectRowHeight(
+        d,
+        flName,
+        custom.showCauseDetails,
+        custom.showSolutionDetails,
+        L.causePrefix,
+        L.solutionPrefix
+      );
+      const budget = getPageBudget(defectChunks.length);
+      if (
+        currentChunk.length > 0 &&
+        (currentChunk.length >= perPage || currentHeight + estH > budget)
+      ) {
+        defectChunks.push(currentChunk);
+        currentChunk = [d];
+        currentHeight = estH;
+      } else {
+        currentChunk.push(d);
+        currentHeight += estH;
+      }
+    });
+    if (currentChunk.length > 0) {
+      defectChunks.push(currentChunk);
+    }
   }
 
-  const tableRows = sorted
-    .map((d) => {
-      const flName = getFloorNameById(proj, d.floorId);
-      const sevText = translateSeverity(d.severity, lang);
-      const stText = translateDefectStatus(d.status, lang);
+  // Build Zone Cards for Section 2 (Figure 3)
+  const zoneCards: Array<{ title: string; imgSrc: string }> = [];
+  proj.floors.forEach((fl) => {
+    const zSrc = assets?.floorplanZonePngMap?.[fl.id] || assets?.floorplanPngMap?.[fl.id] || fl.imageUrl || '';
+    if (zSrc) {
+      zoneCards.push({ title: fl.name, imgSrc: zSrc });
+    }
+  });
+  rb.extraZonePlanImgs.forEach((rawSrc, idx) => {
+    const cleanSrc = sanitizeReportImageUrl(rawSrc);
+    if (cleanSrc) {
+      zoneCards.push({
+        title: isEn ? `Additional Zone Plan ${idx + 1}` : `ภาพแปลนเพิ่มเติม ${idx + 1}`,
+        imgSrc: cleanSrc,
+      });
+    }
+  });
+
+  const zonePageChunks: Array<Array<{ title: string; imgSrc: string }>> = [];
+  if (zoneCards.length === 0) {
+    zonePageChunks.push([]);
+  } else {
+    zonePageChunks.push(zoneCards.slice(0, 4));
+    for (let i = 4; i < zoneCards.length; i += 6) {
+      zonePageChunks.push(zoneCards.slice(i, i + 6));
+    }
+  }
+
+  const anySectionEnabled =
+    custom.includeCover ||
+    custom.includeToc ||
+    custom.includeIntro ||
+    custom.includeStepsAndZones ||
+    custom.includeDefectTable ||
+    custom.includeSummaryTable2;
+
+  const showCover = custom.includeCover;
+  const showToc = custom.includeToc;
+  const showIntro = custom.includeIntro;
+  const showSteps = custom.includeStepsAndZones;
+  const showDefects = custom.includeDefectTable || !anySectionEnabled;
+  const showSummary = custom.includeSummaryTable2;
+
+  let nextPageNum = 1;
+  const sec1Page = showIntro ? nextPageNum++ : 0;
+  const sec2StartPage = showSteps ? nextPageNum : 0;
+  const sec2PageCount = showSteps ? zonePageChunks.length : 0;
+  if (showSteps) {
+    nextPageNum += sec2PageCount;
+  }
+  const sec3StartPage = showDefects ? nextPageNum : 0;
+  const defectPageCount = showDefects ? defectChunks.length : 0;
+  if (showDefects) {
+    nextPageNum += defectPageCount;
+  }
+  const sec3EndPage = showDefects ? sec3StartPage + defectPageCount - 1 : 0;
+  const sec4Page = showSummary ? nextPageNum++ : 0;
+
+  const tocPageLabel = isEn ? 'i' : 'ก';
+
+  const renderPageHeaderStrip = (sectionTag: string) => `
+    <table style="width:100%; border-collapse:collapse; border-bottom:2px solid ${accentHex}; margin-bottom:10px;">
+      <tr>
+        <td style="width:42px; vertical-align:middle; padding-bottom:6px;">
+          ${
+            logoImgSrc
+              ? `<img src="${logoImgSrc}" width="36" height="36" style="width:36px; height:36px; object-fit:contain; display:block;" />`
+              : ''
+          }
+        </td>
+        <td style="vertical-align:middle; padding-left:8px; padding-bottom:6px;">
+          <div style="font-size:12px; font-weight:800; color:${accentHex}; line-height:1.2;">${escapeHtml(brand.companyName)}</div>
+          <div style="font-size:9.5px; color:#475569;">${escapeHtml(rb.coverTitle)}</div>
+        </td>
+        <td style="vertical-align:middle; text-align:right; padding-bottom:6px;">
+          <span style="display:inline-block; padding:3px 9px; border-radius:4px; background:#eff6ff; border:1px solid #bfdbfe; color:${accentHex}; font-size:10px; font-weight:700;">
+            ${escapeHtml(sectionTag)}
+          </span>
+        </td>
+      </tr>
+    </table>
+  `;
+
+  const customFooterNoteHtml = custom.customFooterNote.trim()
+    ? `<div style="margin-top:2px; font-size:9.5px; color:#64748b;">${escapeHtml(custom.customFooterNote.trim())}</div>`
+    : '';
+
+  const renderStandardFooter = (pageLabel: string) => `
+    <div style="margin-top:auto; padding-top:10px; border-top:1px solid #e2e8f0;">
+      <table style="width:100%; border-collapse:collapse;">
+        <tr>
+          <td style="vertical-align:bottom; text-align:left; font-size:10px; color:#475569;">
+            <div>${escapeHtml(brand.companyName)} | ${escapeHtml(brand.contactInfo)}</div>
+            ${customFooterNoteHtml}
+            <div style="margin-top:2px; font-weight:700; color:${accentHex}; font-size:11px;">
+              ${L.pageWord} ${escapeHtml(pageLabel)}
+            </div>
+          </td>
+          <td style="vertical-align:bottom; text-align:right; font-size:10.5px; color:#0f172a; line-height:1.35;">
+            <div style="font-weight:700;">( ${escapeHtml(brand.inspectorName)} )</div>
+            <div style="color:#334155;">${escapeHtml(brand.licenseNo)} &nbsp; ${L.inspectorWord}</div>
+          </td>
+        </tr>
+      </table>
+    </div>
+  `;
+
+  const wrapPage = (
+    id: string,
+    pageLabel: string,
+    bodyHtml: string,
+    isCover = false
+  ): BuiltReportPage => {
+    const inner = isCover
+      ? `<div class="report-page report-a4-page" style="width:794px; height:1123px; padding:34px 38px 28px 38px; box-sizing:border-box; display:flex; flex-direction:column; overflow:hidden; background:#ffffff; color:#0f172a; font-family:'Sarabun', Tahoma, sans-serif;">
+          ${bodyHtml}
+        </div>`
+      : `<div class="report-page report-a4-page" style="width:794px; height:1123px; padding:34px 38px 28px 38px; box-sizing:border-box; display:flex; flex-direction:column; overflow:hidden; background:#ffffff; color:#0f172a; font-family:'Sarabun', Tahoma, sans-serif;">
+          <div style="flex:0 0 auto;">${bodyHtml}</div>
+          ${renderStandardFooter(pageLabel)}
+        </div>`;
+
+    return { id, pageLabel, isCover, html: inner };
+  };
+
+  const pages: BuiltReportPage[] = [];
+
+  /* --------------------------------------------------------------------------
+   * COVER PAGE
+   * -------------------------------------------------------------------------- */
+  const coverBody = `
+    <div style="border:2px solid ${accentHex}; border-radius:10px; padding:26px 28px; flex:1; min-height:0; box-sizing:border-box; display:flex; flex-direction:column; justify-content:space-between; background:#ffffff;">
+      <div style="text-align:center; border-bottom:3px solid ${accentHex}; padding-bottom:16px;">
+        ${
+          logoImgSrc
+            ? `<div style="margin-bottom:8px;"><img src="${logoImgSrc}" width="88" height="88" style="width:88px; height:88px; object-fit:contain; display:inline-block;" /></div>`
+            : ''
+        }
+        <div style="font-size:23px; font-weight:800; color:${accentHex}; letter-spacing:0.5px;">
+          ${escapeHtml(brand.companyName)}
+        </div>
+        <div style="font-size:12px; color:#334155; margin-top:4px;">
+          ${escapeHtml(brand.tagline)}
+        </div>
+        <div style="font-size:11px; color:#64748b; margin-top:3px;">
+          ${escapeHtml(brand.contactInfo)}
+        </div>
+      </div>
+
+      <div style="text-align:center; padding:14px 8px;">
+        ${
+          coverGraphicSrc
+            ? `<div style="margin:0 auto 18px auto;"><img src="${coverGraphicSrc}" width="370" height="229" style="width:370px; max-width:100%; height:auto; display:inline-block;" /></div>`
+            : ''
+        }
+        <div style="font-size:26px; font-weight:800; color:#0f172a; line-height:1.3; margin-bottom:10px;">
+          ${escapeHtml(rb.coverTitle)}
+        </div>
+        <div style="display:inline-block; padding:6px 18px; border-radius:6px; background:#eff6ff; border:1.5px solid ${accentHex}; color:${accentHex}; font-size:13.5px; font-weight:700; margin-bottom:20px;">
+          ${escapeHtml(rb.propertyCondition)}
+        </div>
+
+        <table style="width:94%; margin:0 auto; border-collapse:collapse; table-layout:fixed; text-align:left; font-size:12.5px; background:#f8fafc;">
+          <colgroup>
+            <col style="width:34%;" />
+            <col style="width:66%;" />
+          </colgroup>
+          <tr>
+            <td style="border:1px solid #cbd5e1; padding:8px 12px; font-weight:700; color:${accentHex}; background:#eff6ff;">
+              ${L.locationLabel}
+            </td>
+            <td style="border:1px solid #cbd5e1; padding:8px 12px; color:#0f172a;">
+              ${escapeHtml(rb.locationText)}
+            </td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #cbd5e1; padding:8px 12px; font-weight:700; color:${accentHex}; background:#eff6ff;">
+              ${L.clientLabel}
+            </td>
+            <td style="border:1px solid #cbd5e1; padding:8px 12px; color:#0f172a; font-weight:700;">
+              ${escapeHtml(rb.clientName)}
+            </td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #cbd5e1; padding:8px 12px; font-weight:700; color:${accentHex}; background:#eff6ff;">
+              ${L.dateLabel}
+            </td>
+            <td style="border:1px solid #cbd5e1; padding:8px 12px; color:#0f172a;">
+              ${escapeHtml(rb.inspectionDate)}
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <div style="border-top:2px solid #cbd5e1; padding-top:14px; text-align:center;">
+        <div style="font-size:14px; font-weight:800; color:#0f172a;">
+          ${L.preparedBy} &nbsp; ${escapeHtml(brand.inspectorName)}
+        </div>
+        <div style="font-size:11.5px; color:#475569; margin-top:3px;">
+          ${escapeHtml(brand.licenseNo)} &nbsp;|&nbsp; ${escapeHtml(brand.companyName)}
+        </div>
+      </div>
+    </div>
+  `;
+  if (showCover) {
+    pages.push(wrapPage('page-cover', '', coverBody, true));
+  }
+
+  /* --------------------------------------------------------------------------
+   * TABLE OF CONTENTS PAGE (หน้า ก)
+   * -------------------------------------------------------------------------- */
+  const sec3Range =
+    sec3StartPage === sec3EndPage ? String(sec3StartPage) : `${sec3StartPage} - ${sec3EndPage}`;
+
+  const tocItems: Array<{ label: string; page: string }> = [];
+  if (showIntro) tocItems.push({ label: L.tocSec1, page: String(sec1Page) });
+  if (showSteps) tocItems.push({ label: L.tocSec2, page: String(sec2StartPage) });
+  if (showDefects) tocItems.push({ label: L.tocSec3, page: sec3Range });
+  if (showSummary) tocItems.push({ label: L.tocSec4, page: String(sec4Page) });
+
+  const tocRowsHtml = tocItems
+    .map(
+      (item, idx) => `
+        <tr style="${idx % 2 === 1 ? 'background:#f8fafc;' : ''}">
+          <td style="border:1px solid #cbd5e1; padding:11px 14px; font-weight:700; color:#0f172a; ${idx % 2 === 1 ? 'background:#f8fafc;' : ''}">${escapeHtml(item.label)}</td>
+          <td style="border:1px solid #cbd5e1; padding:11px 14px; text-align:center; font-weight:700; color:${accentHex}; ${idx % 2 === 1 ? 'background:#f8fafc;' : ''}">${escapeHtml(item.page)}</td>
+        </tr>
+      `
+    )
+    .join('');
+
+  const tocBody = `
+    ${renderPageHeaderStrip(L.tocTitle)}
+    <div style="padding:8px 2px;">
+      <h2 style="font-size:21px; font-weight:800; color:${accentHex}; text-align:center; margin:6px 0 18px 0; border-bottom:2px solid ${accentHex}; padding-bottom:10px;">
+        ${L.tocTitle}
+      </h2>
+
+      <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:13px; margin-bottom:22px;">
+        <colgroup>
+          <col style="width:82%;" />
+          <col style="width:18%;" />
+        </colgroup>
+        <thead>
+          <tr style="background:${accentHex}; color:#ffffff;">
+            <th style="border:1px solid #cbd5e1; padding:10px 14px; text-align:left; color:#ffffff; background:${accentHex};">${L.tocColTopic}</th>
+            <th style="border:1px solid #cbd5e1; padding:10px 14px; text-align:center; color:#ffffff; background:${accentHex};">${L.tocColPage}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tocRowsHtml}
+        </tbody>
+      </table>
+
+      <div style="border:1px solid #bfdbfe; border-radius:8px; background:#eff6ff; padding:14px 16px;">
+        <div style="font-size:13px; font-weight:800; color:${accentHex}; margin-bottom:8px;">
+          ${L.projectLabel}: ${escapeHtml(rb.coverTitle)}
+        </div>
+        <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:12px; background:#ffffff;">
+          <colgroup>
+            <col style="width:25%;" />
+            <col style="width:25%;" />
+            <col style="width:25%;" />
+            <col style="width:25%;" />
+          </colgroup>
+          <tr>
+            <td style="border:1px solid #cbd5e1; padding:8px; text-align:center;">
+              <div style="color:#64748b; font-size:10.5px;">${L.statTotal}</div>
+              <div style="font-size:18px; font-weight:800; color:#0f172a;">${total}</div>
+            </td>
+            <td style="border:1px solid #cbd5e1; padding:8px; text-align:center;">
+              <div style="color:#64748b; font-size:10.5px;">${L.statUrgent}</div>
+              <div style="font-size:18px; font-weight:800; color:#dc2626;">${urgent}</div>
+            </td>
+            <td style="border:1px solid #cbd5e1; padding:8px; text-align:center;">
+              <div style="color:#64748b; font-size:10.5px;">${L.statPending}</div>
+              <div style="font-size:18px; font-weight:800; color:#d97706;">${pending}</div>
+            </td>
+            <td style="border:1px solid #cbd5e1; padding:8px; text-align:center;">
+              <div style="color:#64748b; font-size:10.5px;">${L.statFixed}</div>
+              <div style="font-size:18px; font-weight:800; color:#059669;">${fixed}</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  `;
+  if (showToc) {
+    pages.push(wrapPage('page-toc', tocPageLabel, tocBody));
+  }
+
+  /* --------------------------------------------------------------------------
+   * SECTION 1: INTRODUCTION (หน้า 1)
+   * -------------------------------------------------------------------------- */
+  const sanitizedLocImg = sanitizeReportImageUrl(rb.locationMapImg);
+  const sanitizedFrontImg = sanitizeReportImageUrl(rb.frontHouseImg);
+
+  const renderIntroFigure = (src: string, caption: string, emptyText: string) => `
+    <div style="border:1px solid #cbd5e1; border-radius:6px; padding:8px; background:#ffffff; text-align:center;">
+      ${
+        src
+          ? `<div style="width:100%; height:242px; background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; display:flex; align-items:center; justify-content:center; overflow:hidden; margin:0 auto;">
+              <img src="${src}" width="310" style="max-width:100%; max-height:240px; width:auto; height:auto; object-fit:contain; display:block; margin:0 auto;" />
+            </div>`
+          : `<div style="width:100%; height:180px; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:4px; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:11.5px; padding:20px;">${escapeHtml(emptyText)}</div>`
+      }
+      <div style="font-size:11px; font-weight:700; color:#334155; margin-top:6px;">
+        ${escapeHtml(caption)}
+      </div>
+    </div>
+  `;
+
+  const sec1Body = `
+    ${renderPageHeaderStrip(L.sec1Title)}
+    <h2 style="font-size:17px; font-weight:800; color:${accentHex}; margin:0 0 8px 0;">
+      ${L.sec1Title}
+    </h2>
+    <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:11.5px; margin-bottom:10px; background:#f8fafc;">
+      <colgroup>
+        <col style="width:54%;" />
+        <col style="width:46%;" />
+      </colgroup>
+      <tr>
+        <td style="border:1px solid #cbd5e1; padding:6px 10px;"><strong>${L.projectLabel}:</strong> ${escapeHtml(rb.coverTitle)}</td>
+        <td style="border:1px solid #cbd5e1; padding:6px 10px;"><strong>${L.clientLabel}:</strong> ${escapeHtml(rb.clientName)}</td>
+      </tr>
+      <tr>
+        <td style="border:1px solid #cbd5e1; padding:6px 10px;"><strong>${L.locationLabel}:</strong> ${escapeHtml(rb.locationText)}</td>
+        <td style="border:1px solid #cbd5e1; padding:6px 10px;"><strong>${L.dateLabel}:</strong> ${escapeHtml(rb.inspectionDate)}</td>
+      </tr>
+    </table>
+
+    <table style="width:100%; border-collapse:collapse; table-layout:fixed; margin-bottom:10px;">
+      <colgroup>
+        <col style="width:50%;" />
+        <col style="width:50%;" />
+      </colgroup>
+      <tr>
+        <td style="vertical-align:top; padding-right:6px;">
+          ${renderIntroFigure(sanitizedLocImg, L.fig1Caption, L.noFig1)}
+        </td>
+        <td style="vertical-align:top; padding-left:6px;">
+          ${renderIntroFigure(sanitizedFrontImg, L.fig2Caption, L.noFig2)}
+        </td>
+      </tr>
+    </table>
+
+    <div style="border:1px solid #e2e8f0; border-radius:6px; background:#f8fafc; padding:11px 14px; font-size:12px; line-height:1.65; color:#0f172a; white-space:pre-line; text-align:justify;">
+      ${escapeHtml(rb.introContent)}
+    </div>
+  `;
+  if (showIntro) {
+    pages.push(wrapPage('page-sec1', String(sec1Page), sec1Body));
+  }
+
+  /* --------------------------------------------------------------------------
+   * SECTION 2: OPERATIONS & ZONE FLOORPLANS (หน้า 2)
+   * -------------------------------------------------------------------------- */
+  const cleanedSteps = rb.inspectionSteps
+    .map((s) => stripLeadingStepNumber(s))
+    .filter((s) => s.length > 0);
+
+  const stepsHtml = cleanedSteps
+    .map(
+      (step, idx) => `
+        <tr>
+          <td style="width:28px; vertical-align:top; padding:3px 4px; font-weight:700; color:${accentHex};">${idx + 1}.</td>
+          <td style="vertical-align:top; padding:3px 4px; color:#0f172a; line-height:1.45;">${escapeHtml(step)}</td>
+        </tr>
+      `
+    )
+    .join('');
+
+  if (showSteps) {
+    zonePageChunks.forEach((cardsChunk, zIdx) => {
+      const pageNumStr = String(sec2StartPage + zIdx);
+      const zoneImgBoxH =
+        zIdx === 0 ? (cardsChunk.length <= 2 ? 250 : 196) : 215;
+
+      const zoneRowsHtml: string[] = [];
+      for (let i = 0; i < cardsChunk.length; i += 2) {
+        const pair = cardsChunk.slice(i, i + 2);
+        zoneRowsHtml.push(`
+          <tr>
+            ${pair
+              .map(
+                (card) => `
+                  <td style="width:50%; vertical-align:top; padding:4px;">
+                    <div style="border:1px solid #cbd5e1; border-radius:6px; padding:7px; background:#ffffff; text-align:center;">
+                      <div style="font-size:11px; font-weight:700; color:#0f172a; margin-bottom:5px;">${escapeHtml(card.title)}</div>
+                      <div style="width:100%; height:${zoneImgBoxH}px; background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; display:flex; align-items:center; justify-content:center; overflow:hidden; margin:0 auto;">
+                        <img src="${card.imgSrc}" width="320" style="max-width:100%; max-height:${zoneImgBoxH - 2}px; width:auto; height:auto; object-fit:contain; display:block; margin:0 auto;" />
+                      </div>
+                    </div>
+                  </td>
+                `
+              )
+              .join('')}
+            ${pair.length === 1 ? '<td style="width:50%;"></td>' : ''}
+          </tr>
+        `);
+      }
+
+      const sec2Body =
+        zIdx === 0
+          ? `
+            ${renderPageHeaderStrip(L.sec2Title)}
+            <h2 style="font-size:17px; font-weight:800; color:${accentHex}; margin:0 0 8px 0;">
+              ${L.sec2Title}
+            </h2>
+
+            <div style="border:1px solid #e2e8f0; border-radius:6px; background:#f8fafc; padding:9px 13px; margin-bottom:12px;">
+              <table style="width:100%; border-collapse:collapse; font-size:11.5px;">
+                <tbody>${stepsHtml}</tbody>
+              </table>
+            </div>
+
+            <div style="font-size:12px; font-weight:800; color:${accentHex}; margin-bottom:6px; text-align:center;">
+              ${escapeHtml(L.fig3Caption)}
+            </div>
+            <table style="width:100%; border-collapse:collapse; table-layout:fixed;">
+              <colgroup>
+                <col style="width:50%;" />
+                <col style="width:50%;" />
+              </colgroup>
+              <tbody>${zoneRowsHtml.join('')}</tbody>
+            </table>
+          `
+          : `
+            ${renderPageHeaderStrip(L.sec2Cont)}
+            <div style="font-size:12.5px; font-weight:800; color:${accentHex}; margin-bottom:8px; text-align:center;">
+              ${escapeHtml(L.fig3Caption)}
+            </div>
+            <table style="width:100%; border-collapse:collapse; table-layout:fixed;">
+              <colgroup>
+                <col style="width:50%;" />
+                <col style="width:50%;" />
+              </colgroup>
+              <tbody>${zoneRowsHtml.join('')}</tbody>
+            </table>
+          `;
+
+      pages.push(wrapPage(`page-sec2-${zIdx + 1}`, pageNumStr, sec2Body));
+    });
+  }
+
+  /* --------------------------------------------------------------------------
+   * SECTION 3: INSPECTION DETAILS — TABLE 1 (7 COLUMNS, LOCKED COLGROUP)
+   * -------------------------------------------------------------------------- */
+  if (showDefects) {
+    defectChunks.forEach((chunk, chunkIdx) => {
+      const pageNumStr = String(sec3StartPage + chunkIdx);
+      const heading = chunkIdx === 0 ? L.sec3Title : L.sec3Cont;
+      const caption = chunkIdx === 0 ? L.t1Caption : L.t1CaptionCont;
+
+      const rowsHtml =
+        chunk.length === 0
+          ? `<tr><td colspan="7" style="border:1px solid #cbd5e1; padding:24px; text-align:center; color:#64748b;">${L.emptyDefects}</td></tr>`
+          : chunk
+              .map((d, idx) => {
+                const rowBg = idx % 2 === 1 ? '#f8fafc' : '#ffffff';
+                const isFixed = d.status === 'แก้ไขแล้ว';
+                const isPartial = d.status === 'กำลังแก้ไข';
+                const isUnfixed = d.status === 'รอแก้ไข';
+                const flName = getFloorNameById(proj, d.floorId);
+
+                const zoneLabel = (d.zone || flName || '').trim();
+                const cleanTitle = stripZonePrefixFromTitle(d.title, zoneLabel);
+                const cleanCause = (d.cause || '').trim();
+                const cleanSolution = (d.solution || '').trim();
+
+                const normTitle = normalizeReportText(cleanTitle);
+                const normCause = normalizeReportText(cleanCause);
+                const normSolution = normalizeReportText(cleanSolution);
+
+                const showCause =
+                  custom.showCauseDetails &&
+                  !d.hideCause &&
+                  cleanCause.length > 0 &&
+                  normCause !== normTitle;
+                const showSolution =
+                  custom.showSolutionDetails &&
+                  !d.hideSolution &&
+                  cleanSolution.length > 0 &&
+                  normSolution !== normTitle &&
+                  (!showCause || normSolution !== normCause);
+
+                const beforeSrc = resolveDefectPhoto(d, 'before');
+                const afterSrc = resolveDefectPhoto(d, 'after');
+
+                return `
+                  <tr style="break-inside:avoid; page-break-inside:avoid; height:auto; background:${rowBg};">
+                    <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; vertical-align:middle; font-weight:800; font-size:11.5px; color:#0f172a; background:${rowBg}; height:auto;">
+                      ${d.number}
+                    </td>
+                    <td style="border:1px solid #cbd5e1; padding:6px 8px; text-align:center; vertical-align:middle; background:${rowBg}; height:auto;">
+                      ${
+                        beforeSrc
+                          ? `<div style="width:100%; height:150px; background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; display:flex; align-items:center; justify-content:center; overflow:hidden; margin:0 auto;">
+                              <img src="${beforeSrc}" width="174" style="max-width:100%; max-height:148px; width:auto; height:auto; object-fit:contain; display:block; margin:0 auto;" />
+                            </div>`
+                          : `<div style="width:100%; height:150px; background-color:#f8fafc; border:1px dashed #cbd5e1; border-radius:4px; display:flex; align-items:center; justify-content:center; margin:0 auto; color:#94a3b8; font-size:10px;">${L.noImg}</div>`
+                      }
+                    </td>
+                    <td style="border:1px solid #cbd5e1; padding:6px 8px; vertical-align:top; text-align:left; line-height:1.45; background:${rowBg}; height:auto; word-break:break-word;">
+                      <div style="font-weight:800; font-size:10.5px; color:${accentHex}; line-height:1.35; margin-bottom:2px;">
+                        ${escapeHtml(zoneLabel)}
+                      </div>
+                      <div style="font-size:9.5px; color:#64748b; line-height:1.3; margin-bottom:3px;">
+                        ${escapeHtml(flName)} · ${escapeHtml(translateSeverity(d.severity, lang))}
+                      </div>
+                      <div style="font-weight:700; font-size:10.5px; color:#0f172a; line-height:1.45;">
+                        ${escapeHtml(cleanTitle)}
+                      </div>
+                      ${
+                        showCause
+                          ? `<div style="font-size:9.5px; color:#334155; margin-top:3px; line-height:1.4;"><strong>${L.causePrefix}</strong> ${escapeHtml(cleanCause)}</div>`
+                          : ''
+                      }
+                      ${
+                        showSolution
+                          ? `<div style="font-size:9.5px; color:#065f46; margin-top:3px; line-height:1.4;"><strong>${L.solutionPrefix}</strong> ${escapeHtml(cleanSolution)}</div>`
+                          : ''
+                      }
+                    </td>
+                    <td style="border:1px solid #cbd5e1; padding:6px 8px; text-align:center; vertical-align:middle; background:${rowBg}; height:auto;">
+                      ${
+                        afterSrc
+                          ? `<div style="width:100%; height:150px; background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; display:flex; align-items:center; justify-content:center; overflow:hidden; margin:0 auto;">
+                              <img src="${afterSrc}" width="140" style="max-width:100%; max-height:148px; width:auto; height:auto; object-fit:contain; display:block; margin:0 auto;" />
+                            </div>`
+                          : `<div style="width:100%; height:150px; background-color:#f8fafc; border:1px dashed #e2e8f0; border-radius:4px; display:flex; align-items:center; justify-content:center; margin:0 auto; color:#94a3b8; font-size:11px;">${L.pendingImg}</div>`
+                      }
+                    </td>
+                    <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; vertical-align:middle; background:${isFixed ? '#f0fdf4' : rowBg}; height:auto;">
+                      ${
+                        isFixed
+                          ? '<span style="color:#059669; font-size:17px; font-weight:800; line-height:1;">✓</span>'
+                          : ''
+                      }
+                    </td>
+                    <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; vertical-align:middle; background:${isPartial ? '#fffbeb' : rowBg}; height:auto;">
+                      ${
+                        isPartial
+                          ? '<span style="color:#d97706; font-size:17px; font-weight:800; line-height:1;">✓</span>'
+                          : ''
+                      }
+                    </td>
+                    <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; vertical-align:middle; background:${isUnfixed ? '#fef2f2' : rowBg}; height:auto;">
+                      ${
+                        isUnfixed
+                          ? '<span style="color:#dc2626; font-size:17px; font-weight:800; line-height:1;">✓</span>'
+                          : ''
+                      }
+                    </td>
+                  </tr>
+                `;
+              })
+              .join('');
+
+      const sec3Body = `
+        ${renderPageHeaderStrip(heading)}
+        ${
+          chunkIdx === 0
+            ? `<h2 style="font-size:17px; font-weight:800; color:${accentHex}; margin:0 0 4px 0;">${L.sec3Title}</h2>`
+            : ''
+        }
+        <div style="font-size:11.5px; font-weight:700; color:#334155; margin-bottom:6px;">
+          ${escapeHtml(caption)}
+        </div>
+
+        <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:10px; height:auto;">
+          <colgroup>
+            <col style="width:5%;" />
+            <col style="width:27%;" />
+            <col style="width:28%;" />
+            <col style="width:22%;" />
+            <col style="width:6%;" />
+            <col style="width:6%;" />
+            <col style="width:6%;" />
+          </colgroup>
+          <thead>
+            <tr style="background:${accentHex}; color:#ffffff;">
+              <th rowspan="2" width="5%" style="border:1px solid #cbd5e1; padding:6px 3px; text-align:center; vertical-align:middle; color:#ffffff; background:${accentHex}; font-size:10px; line-height:1.2;">${L.colSeq}</th>
+              <th rowspan="2" width="27%" style="border:1px solid #cbd5e1; padding:6px 6px; text-align:center; vertical-align:middle; color:#ffffff; background:${accentHex}; font-size:10.5px; line-height:1.2;">${L.colCheck1}</th>
+              <th rowspan="2" width="28%" style="border:1px solid #cbd5e1; padding:6px 8px; text-align:center; vertical-align:middle; color:#ffffff; background:${accentHex}; font-size:10.5px; line-height:1.2;">${L.colProblem}</th>
+              <th rowspan="2" width="22%" style="border:1px solid #cbd5e1; padding:6px 6px; text-align:center; vertical-align:middle; color:#ffffff; background:${accentHex}; font-size:10.5px; line-height:1.2;">${L.colCheck2}</th>
+              <th colspan="3" width="18%" style="border:1px solid #cbd5e1; padding:5px 4px; text-align:center; vertical-align:middle; color:#ffffff; background:${accentHex}; font-size:10px; line-height:1.2;">${L.colStatusGroup}</th>
+            </tr>
+            <tr style="background:#1e40af; color:#ffffff;">
+              <th width="6%" style="border:1px solid #cbd5e1; padding:4px 2px; font-size:10px; line-height:1.2; text-align:center; vertical-align:middle; word-break:break-word; color:#ffffff; background:#1e40af;">${L.colFixed}</th>
+              <th width="6%" style="border:1px solid #cbd5e1; padding:4px 2px; font-size:10px; line-height:1.2; text-align:center; vertical-align:middle; word-break:break-word; color:#ffffff; background:#1e40af;">${L.colPartial}</th>
+              <th width="6%" style="border:1px solid #cbd5e1; padding:4px 2px; font-size:10px; line-height:1.2; text-align:center; vertical-align:middle; word-break:break-word; color:#ffffff; background:#1e40af;">${L.colUnfixed}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+      `;
+
+      pages.push(wrapPage(`page-sec3-${chunkIdx + 1}`, pageNumStr, sec3Body));
+    });
+  }
+
+  /* --------------------------------------------------------------------------
+   * SECTION 4: SUMMARY / RECOMMENDATIONS & TABLE 2 (หน้าสุดท้าย)
+   * -------------------------------------------------------------------------- */
+  const table2RowsHtml = rb.table2Rows
+    .map((row, idx) => {
+      const cleanItem = stripLeadingStepNumber(row.item);
       return `
-        <tr class="print-break-inside-avoid">
-          <td style="border:1px solid #cbd5e1; padding:6px; text-align:center; vertical-align:top; font-weight:700; color:#0f172a;">${d.number}</td>
-          <td style="border:1px solid #cbd5e1; padding:6px; vertical-align:top;">
-            <div style="font-weight:700; color:#0f172a;">${escapeHtml(d.title)}</div>
-            <div style="font-size:11px; color:#475569; margin-top:2px;">${escapeHtml(flName)} · ${escapeHtml(d.zone)}</div>
-            ${!d.hideCause && d.cause ? `<div style="font-size:11px; margin-top:4px; color:#334155;"><strong>${L.causePrefix}</strong> ${escapeHtml(d.cause)}</div>` : ''}
-            ${!d.hideSolution && d.solution ? `<div style="font-size:11px; margin-top:3px; color:#065f46;"><strong>${L.solutionPrefix}</strong> ${escapeHtml(d.solution)}</div>` : ''}
+        <tr style="height:auto; background:${idx % 2 === 1 ? '#f8fafc' : '#ffffff'};">
+          <td style="border:1px solid #cbd5e1; padding:6px 8px; text-align:center; font-weight:700; color:#0f172a; vertical-align:middle; height:auto;">
+            ${idx + 1}
           </td>
-          <td style="border:1px solid #cbd5e1; padding:6px; text-align:center; vertical-align:top; font-size:11px; color:#0f172a;">
-            <div><strong>${escapeHtml(sevText)}</strong></div>
-            <div style="margin-top:4px; color:#334155;">${escapeHtml(stText)}</div>
+          <td style="border:1px solid #cbd5e1; padding:6px 8px; vertical-align:top; text-align:left; color:#0f172a; line-height:1.45; height:auto;">
+            ${escapeHtml(cleanItem)}
           </td>
-          <td style="border:1px solid #cbd5e1; padding:6px; text-align:center; vertical-align:top;">
-            ${d.beforeImg ? `<img src="${d.beforeImg}" width="130" style="width:130px; height:96px; object-fit:cover; border-radius:4px; display:inline-block;" />` : `<span style="color:#94a3b8; font-size:10px;">${L.noImg}</span>`}
-          </td>
-          <td style="border:1px solid #cbd5e1; padding:6px; text-align:center; vertical-align:top;">
-            ${d.afterImg ? `<img src="${d.afterImg}" width="130" style="width:130px; height:96px; object-fit:cover; border-radius:4px; display:inline-block;" />` : `<span style="color:#94a3b8; font-size:10px;">${L.pendingImg}</span>`}
+          <td style="border:1px solid #cbd5e1; padding:6px 8px; vertical-align:top; text-align:left; color:#1e3a8a; font-weight:600; line-height:1.45; height:auto;">
+            ${escapeHtml(row.finding)}
           </td>
         </tr>
       `;
     })
     .join('');
 
-  return `
-    <div style="font-family:'Sarabun', Tahoma, sans-serif; color:#0f172a; background:#ffffff; line-height:1.45; padding:4px;">
-      <table style="width:100%; border-collapse:collapse; border-bottom:3px solid ${brand.accentColor}; margin-bottom:14px;">
-        <tr>
-          <td style="width:74px; vertical-align:middle; padding-bottom:10px;">
-            ${brand.customLogoDataUrl ? `<img src="${brand.customLogoDataUrl}" width="64" height="64" style="width:64px; height:64px; object-fit:contain;" />` : `<div style="width:64px; height:64px;">${forWord ? '' : DEFAULT_GEAR_LOGO_SVG}</div>`}
-          </td>
-          <td style="vertical-align:middle; padding-left:10px; padding-bottom:10px;">
-            <div style="font-size:20px; font-weight:800; color:${brand.accentColor};">${escapeHtml(brand.companyName)}</div>
-            <div style="font-size:12px; color:#334155;">${escapeHtml(brand.tagline)}</div>
-            <div style="font-size:11px; color:#475569;">${L.inspector}: <strong>${escapeHtml(brand.inspectorName)}</strong> (${escapeHtml(brand.licenseNo)}) | ${escapeHtml(brand.contactInfo)}</div>
-          </td>
-        </tr>
-      </table>
+  const sec4Body = `
+    ${renderPageHeaderStrip(L.sec4Title)}
+    <h2 style="font-size:17px; font-weight:800; color:${accentHex}; margin:0 0 8px 0;">
+      ${L.sec4Title}
+    </h2>
+    <p style="font-size:12px; color:#334155; margin:0 0 10px 0; line-height:1.55;">
+      ${escapeHtml(L.sec4Lead)}
+    </p>
 
-      <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:14px; background:#f8fafc;">
-        <tr>
-          <td style="border:1px solid #e2e8f0; padding:6px 8px;"><strong>${L.project}:</strong> ${escapeHtml(proj.name)}</td>
-          <td style="border:1px solid #e2e8f0; padding:6px 8px;"><strong>${L.houseNo}:</strong> ${escapeHtml(proj.houseNo)}</td>
+    <div style="font-size:12px; font-weight:700; color:${accentHex}; margin-bottom:6px;">
+      ${escapeHtml(L.t2Caption)}
+    </div>
+    <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:11px; margin-bottom:14px; height:auto;">
+      <colgroup>
+        <col style="width:8%;" />
+        <col style="width:58%;" />
+        <col style="width:34%;" />
+      </colgroup>
+      <thead>
+        <tr style="background:${accentHex}; color:#ffffff;">
+          <th width="8%" style="border:1px solid #cbd5e1; padding:7px 8px; text-align:center; vertical-align:middle; color:#ffffff; background:${accentHex};">${L.t2ColNo}</th>
+          <th width="58%" style="border:1px solid #cbd5e1; padding:7px 8px; text-align:left; vertical-align:middle; color:#ffffff; background:${accentHex};">${L.t2ColItem}</th>
+          <th width="34%" style="border:1px solid #cbd5e1; padding:7px 8px; text-align:left; vertical-align:middle; color:#ffffff; background:${accentHex};">${L.t2ColFinding}</th>
         </tr>
-        <tr>
-          <td style="border:1px solid #e2e8f0; padding:6px 8px;"><strong>${L.address}:</strong> ${escapeHtml(proj.address)}</td>
-          <td style="border:1px solid #e2e8f0; padding:6px 8px;"><strong>${L.date}:</strong> ${escapeHtml(proj.inspectionDate)}</td>
-        </tr>
-      </table>
+      </thead>
+      <tbody>
+        ${table2RowsHtml}
+      </tbody>
+    </table>
 
-      <div style="font-size:12px; margin-bottom:14px; padding:8px 10px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px;">
-        <strong>${L.summary}:</strong>
-        ${L.total} <strong>${total}</strong> ${L.items} &nbsp;|&nbsp;
-        ${L.urgent} <strong style="color:#dc2626;">${urgent}</strong> ${L.items} &nbsp;|&nbsp;
-        ${L.pending} <strong style="color:#d97706;">${pending}</strong> ${L.items} &nbsp;|&nbsp;
-        ${L.fixed} <strong style="color:#059669;">${fixed}</strong> ${L.items}
+    <div style="border:1px solid #bfdbfe; border-radius:8px; background:#eff6ff; padding:12px 14px;">
+      <div style="font-size:12px; font-weight:800; color:${accentHex}; margin-bottom:6px;">
+        ${L.statTotal}: ${total} ${L.itemsUnit} &nbsp;|&nbsp;
+        ${L.statUrgent}: <span style="color:#dc2626;">${urgent}</span> ${L.itemsUnit} &nbsp;|&nbsp;
+        ${L.statPending}: <span style="color:#d97706;">${pending}</span> ${L.itemsUnit} &nbsp;|&nbsp;
+        ${L.statFixed}: <span style="color:#059669;">${fixed}</span> ${L.itemsUnit}
       </div>
-
-      ${floorPlansSection}
-
-      <h3 style="font-size:15px; font-weight:700; color:${brand.accentColor}; border-bottom:2px solid ${brand.accentColor}; padding-bottom:4px; margin:0 0 8px 0;">
-        ${L.tableHeading}
-      </h3>
-      <table style="width:100%; border-collapse:collapse; font-size:11.5px;">
-        <thead>
-          <tr style="background:#f1f5f9;">
-            <th style="border:1px solid #cbd5e1; padding:6px; width:36px;">${L.colNo}</th>
-            <th style="border:1px solid #cbd5e1; padding:6px; text-align:left;">${L.colDesc}</th>
-            <th style="border:1px solid #cbd5e1; padding:6px; width:82px;">${L.colStatus}</th>
-            <th style="border:1px solid #cbd5e1; padding:6px; width:140px;">${L.colBefore}</th>
-            <th style="border:1px solid #cbd5e1; padding:6px; width:140px;">${L.colAfter}</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${tableRows || `<tr><td colspan="5" style="border:1px solid #cbd5e1; padding:16px; text-align:center;">${L.emptyTable}</td></tr>`}
-        </tbody>
-      </table>
+      <div style="font-size:12px; line-height:1.65; color:#0f172a; white-space:pre-line; text-align:justify;">
+        ${escapeHtml(rb.closingSummary)}
+      </div>
     </div>
   `;
+  if (showSummary) {
+    pages.push(wrapPage('page-sec4', String(sec4Page), sec4Body));
+  }
+
+  return pages;
 }
 
+export function buildSharedReportHtml(
+  proj: ProjectFile,
+  brand: BrandConfig,
+  lang: AppLanguage = 'th',
+  assets?: SharedReportAssets,
+  reportBookInput?: ReportBookData
+): string {
+  const pages = buildSharedReportPages(proj, brand, lang, assets, reportBookInput);
+  return pages
+    .map((p, idx) =>
+      idx === 0
+        ? p.html
+        : `<br clear="all" style="page-break-before:always;" />${p.html}`
+    )
+    .join('\n');
+}
+
+async function waitForImagesInDoc(doc: Document): Promise<void> {
+  const imgs = Array.from(doc.querySelectorAll('img'));
+  if (imgs.length === 0) return;
+
+  await Promise.all(
+    imgs.map(async (img) => {
+      if (!(img.complete && img.naturalWidth > 0)) {
+        await new Promise<void>((resolve) => {
+          let settled = false;
+          const finish = () => {
+            if (settled) return;
+            settled = true;
+            img.removeEventListener('load', finish);
+            img.removeEventListener('error', finish);
+            resolve();
+          };
+          img.addEventListener('load', finish);
+          img.addEventListener('error', finish);
+          setTimeout(finish, 8000);
+        });
+      }
+      if (typeof img.decode === 'function') {
+        try {
+          await img.decode();
+        } catch {
+          // Ignore decode failures for inline SVG or unsupported formats
+        }
+      }
+    })
+  );
+}
+
+/**
+ * Renders the 5-part A4 Engineering Report Book inside an isolated <iframe> (zero Tailwind oklch),
+ * capturing each .report-page cleanly one-by-one at High-DPI (scale 2.5) so Thai typography
+ * and annotated site photos render print-sharp without clipping or blank pages.
+ */
 export async function exportProjectPDF(
   proj: ProjectFile,
   brand: BrandConfig,
-  lang: AppLanguage = 'th'
+  lang: AppLanguage = 'th',
+  reportBookInput?: ReportBookData
 ): Promise<string> {
-  if (document.fonts?.ready) {
-    await document.fonts.ready;
-  }
-
   const safeSlug = (proj.houseNo || 'Report').replace(/[^a-zA-Z0-9ก-๙_-]/g, '_');
   const fileName = `Inspection_Report_${safeSlug}.pdf`;
-  const reportHtml = buildPrintableReportHtml(proj, brand, lang, false);
+  const rb = reportBookInput || loadReportBookData(proj, lang);
+  const assets = await prepareSharedReportAssets(proj, brand);
+  const pages = buildSharedReportPages(proj, brand, lang, assets, rb);
+  const joinedPagesHtml = pages.map((p) => p.html).join('\n');
 
-  const wrapper = document.createElement('div');
-  wrapper.style.position = 'fixed';
-  wrapper.style.left = '-10000px';
-  wrapper.style.top = '0';
-  wrapper.style.width = '760px';
-  wrapper.style.background = '#ffffff';
-  wrapper.style.padding = '12px';
-  wrapper.style.zIndex = '-1';
-  wrapper.innerHTML = reportHtml;
-  document.body.appendChild(wrapper);
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.style.position = 'fixed';
+  iframe.style.top = '0';
+  iframe.style.left = '0';
+  iframe.style.width = '794px';
+  iframe.style.height = '1123px';
+  iframe.style.border = '0';
+  iframe.style.opacity = '0';
+  iframe.style.pointerEvents = 'none';
+  iframe.style.zIndex = '9998';
+  iframe.style.background = '#ffffff';
+  document.body.appendChild(iframe);
 
   try {
-    const pdfOptions: Record<string, unknown> = {
-      margin: [10, 10, 10, 10],
-      filename: fileName,
-      image: { type: 'jpeg', quality: 0.92 },
-      html2canvas: {
-        scale: 2,
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!iframeDoc) {
+      throw new Error('Isolated PDF iframe document unavailable');
+    }
+
+    iframeDoc.open();
+    iframeDoc.write(`<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" />
+    <style>
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 794px;
+        background: #ffffff;
+        color: #0f172a;
+        font-family: 'Sarabun', Tahoma, sans-serif;
+      }
+      table { border-collapse: collapse; }
+      tr { break-inside: avoid; page-break-inside: avoid; }
+    </style>
+  </head>
+  <body>${joinedPagesHtml}</body>
+</html>`);
+    iframeDoc.close();
+
+    if (document.fonts?.ready) {
+      await document.fonts.ready;
+    }
+    if (iframeDoc.fonts?.ready) {
+      await iframeDoc.fonts.ready;
+    }
+    await waitForImagesInDoc(iframeDoc);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+
+    const totalBodyHeight = Math.max(1123, iframeDoc.body.scrollHeight);
+    iframe.style.height = `${totalBodyHeight}px`;
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    const pageNodes = Array.from(iframeDoc.querySelectorAll('.report-page')) as HTMLElement[];
+    if (pageNodes.length === 0) {
+      throw new Error('No report pages generated');
+    }
+
+    const pdf = new jsPDF({
+      unit: 'mm',
+      format: 'a4',
+      orientation: 'portrait',
+      compress: true,
+    });
+
+    const pageWidthMm = 210;
+    const pageHeightMm = 297;
+
+    for (let i = 0; i < pageNodes.length; i++) {
+      const node = pageNodes[i];
+      const canvas = await html2canvas(node, {
+        scale: 2.5,
         useCORS: true,
         allowTaint: true,
+        imageTimeout: 0,
         backgroundColor: '#ffffff',
-        windowWidth: 784,
-        onclone: (clonedDoc: Document) => {
-          // Strip Tailwind v4 stylesheets containing oklch()/oklab() that html2canvas cannot parse
-          const styles = Array.from(clonedDoc.querySelectorAll('style, link[rel="stylesheet"]'));
-          styles.forEach((node) => {
-            if (node.tagName === 'LINK') {
-              const href = node.getAttribute('href') || '';
-              if (!href.includes('fonts.googleapis.com')) {
-                node.remove();
-              }
-            } else {
-              const txt = node.textContent || '';
-              if (txt.includes('oklch') || txt.includes('oklab') || txt.includes('--tw-')) {
-                node.remove();
-              }
-            }
-          });
-          const cleanStyle = clonedDoc.createElement('style');
-          cleanStyle.textContent = `
-            * { box-sizing: border-box; }
-            body { margin: 0; padding: 0; background: #ffffff; color: #0f172a; font-family: 'Sarabun', Tahoma, sans-serif; }
-            .print-break-inside-avoid { break-inside: avoid; page-break-inside: avoid; }
-            table { page-break-inside: auto; }
-            tr { page-break-inside: avoid; break-inside: avoid; }
-          `;
-          clonedDoc.head.appendChild(cleanStyle);
-        },
-      },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
-    };
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: 794,
+        width: 794,
+        height: 1123,
+      });
 
-    const worker = html2pdf() as unknown as {
-      set: (opts: Record<string, unknown>) => {
-        from: (el: HTMLElement) => { save: () => Promise<void> };
-      };
-    };
-    await worker.set(pdfOptions).from(wrapper).save();
+      if (i > 0) {
+        pdf.addPage('a4', 'portrait');
+      }
 
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      pdf.addImage(imgData, 'JPEG', 0, 0, pageWidthMm, pageHeightMm);
+    }
+
+    pdf.save(fileName);
     return fileName;
   } finally {
-    wrapper.remove();
+    iframe.remove();
   }
 }
 
-export function exportProjectWord(
+export async function exportProjectWord(
   proj: ProjectFile,
   brand: BrandConfig,
-  lang: AppLanguage = 'th'
-): void {
+  lang: AppLanguage = 'th',
+  reportBookInput?: ReportBookData
+): Promise<void> {
+  const rb = reportBookInput || loadReportBookData(proj, lang);
+  const assets = await prepareSharedReportAssets(proj, brand);
+  const bodyHtml = buildSharedReportHtml(proj, brand, lang, assets, rb);
+
   const html = `
     <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-    <head><meta charset='utf-8'><title>${escapeHtml(proj.name)}</title></head>
-    <body>${buildPrintableReportHtml(proj, brand, lang, true)}</body></html>`;
+    <head>
+      <meta charset='utf-8'>
+      <title>${escapeHtml(rb.coverTitle || proj.name)}</title>
+      <style>
+        @page { size: A4 portrait; margin: 12mm; }
+        body { font-family: 'Sarabun', Tahoma, sans-serif; color: #0f172a; background: #ffffff; margin: 0; padding: 0; }
+        table { border-collapse: collapse; }
+        tr { page-break-inside: avoid; }
+      </style>
+    </head>
+    <body>${bodyHtml}</body></html>`;
+
   const blob = new Blob(['\ufeff', html], { type: 'application/msword;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -425,54 +1602,265 @@ export function exportProjectWord(
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function exportProjectExcel(
+function estimateRowHeight(texts: Array<{ text: string; colWidth: number }>): number {
+  let maxLines = 1;
+  texts.forEach(({ text, colWidth }) => {
+    if (!text) return;
+    const charsPerLine = Math.max(8, Math.floor(colWidth * 0.85));
+    const paragraphs = text.split(/\r?\n/);
+    let totalLines = 0;
+    paragraphs.forEach((p) => {
+      totalLines += Math.max(1, Math.ceil(p.length / charsPerLine));
+    });
+    if (totalLines > maxLines) maxLines = totalLines;
+  });
+  return Math.min(240, Math.max(24, maxLines * 16 + 10));
+}
+
+export async function exportProjectExcel(
   proj: ProjectFile,
+  brand: BrandConfig,
   lang: AppLanguage = 'th'
-): 'xlsx' | 'csv' {
+): Promise<'xlsx' | 'csv'> {
   const sorted = [...proj.defects].sort((a, b) => (a.number || 0) - (b.number || 0));
   const isEn = lang === 'en';
-  const rows = sorted.map((d) =>
-    isEn
-      ? {
-          'No.': d.number,
-          Floor: getFloorNameById(proj, d.floorId),
-          Zone: d.zone,
-          'Defect Item': d.title,
-          'Engineering Cause': d.hideCause ? '' : d.cause || '',
-          Solution: d.hideSolution ? '' : d.solution || '',
-          Severity: translateSeverity(d.severity, lang),
-          Status: translateDefectStatus(d.status, lang),
-          'Before Photo': d.beforeImg ? 'Attached' : 'None',
-          'After Photo': d.afterImg ? 'Attached' : 'None',
-        }
-      : {
-          'ข้อที่': d.number,
-          'ชั้น': getFloorNameById(proj, d.floorId),
-          'โซน': d.zone,
-          'รายการ Defect': d.title,
-          'สาเหตุทางวิศวกรรม': d.hideCause ? '' : d.cause || '',
-          'วิธีแก้ไข': d.hideSolution ? '' : d.solution || '',
-          'ความรุนแรง': d.severity,
-          'สถานะ': d.status,
-          'รูปก่อนแก้ไข (Before)': d.beforeImg ? 'มีรูปภาพ' : 'ไม่มี',
-          'รูปหลังแก้ไข (After)': d.afterImg ? 'มีรูปภาพ' : 'ไม่มี',
-        }
-  );
-
   const safeSlug = (proj.houseNo || 'Report').replace(/[^a-zA-Z0-9ก-๙_-]/g, '_');
+
+  const total = sorted.length;
+  const urgentCount = sorted.filter((d) => d.severity === 'เร่งด่วน').length;
+  const pendingCount = sorted.filter((d) => d.status !== 'แก้ไขแล้ว').length;
+  const fixedCount = sorted.filter((d) => d.status === 'แก้ไขแล้ว').length;
+
   try {
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Defect List');
-    XLSX.writeFile(wb, `Inspection_Report_${safeSlug}.xlsx`);
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = brand.companyName || 'TEAM INSPECTION SERVICES';
+    workbook.created = new Date();
+
+    const ws = workbook.addWorksheet('Defect List', {
+      views: [{ state: 'frozen', ySplit: 6 }],
+    });
+
+    // Exact 10 column widths matching spec
+    const colWidths = [8, 14, 28, 38, 40, 42, 15, 16, 18, 18];
+    colWidths.forEach((w, idx) => {
+      ws.getColumn(idx + 1).width = w;
+    });
+
+    // Row 1: Company Name (Bold, size 16, #1E3A8A)
+    ws.mergeCells('A1:J1');
+    const r1 = ws.getCell('A1');
+    r1.value = brand.companyName;
+    r1.font = { name: 'Sarabun', size: 16, bold: true, color: { argb: 'FF1E3A8A' } };
+    r1.alignment = { vertical: 'middle', horizontal: 'left' };
+    ws.getRow(1).height = 28;
+
+    // Row 2: Project Name & House No.
+    ws.mergeCells('A2:J2');
+    const r2 = ws.getCell('A2');
+    r2.value = isEn
+      ? `Project: ${proj.name}  |  House No.: ${proj.houseNo}  |  Client: ${proj.clientName}`
+      : `โครงการ: ${proj.name}  |  บ้านเลขที่: ${proj.houseNo}  |  ลูกค้า: ${proj.clientName}`;
+    r2.font = { name: 'Sarabun', size: 11, bold: true, color: { argb: 'FF0F172A' } };
+    r2.alignment = { vertical: 'middle', horizontal: 'left' };
+    ws.getRow(2).height = 22;
+
+    // Row 3: Inspector & Date
+    ws.mergeCells('A3:J3');
+    const r3 = ws.getCell('A3');
+    r3.value = isEn
+      ? `Inspector: ${brand.inspectorName} (${brand.licenseNo})  |  Inspection Date: ${proj.inspectionDate}  |  ${brand.contactInfo}`
+      : `ผู้ตรวจสอบ: ${brand.inspectorName} (${brand.licenseNo})  |  วันที่ตรวจรับ: ${proj.inspectionDate}  |  ${brand.contactInfo}`;
+    r3.font = { name: 'Sarabun', size: 10, color: { argb: 'FF475569' } };
+    r3.alignment = { vertical: 'middle', horizontal: 'left' };
+    ws.getRow(3).height = 20;
+
+    // Row 4: Summary Stats Bar
+    ws.mergeCells('A4:J4');
+    const r4 = ws.getCell('A4');
+    r4.value = isEn
+      ? `Summary: Total ${total} items  |  Urgent: ${urgentCount}  |  Pending: ${pendingCount}  |  Fixed: ${fixedCount}`
+      : `สรุปผลการตรวจสอบ: ทั้งหมด ${total} ข้อ  |  เร่งด่วน: ${urgentCount} ข้อ  |  รอแก้ไข: ${pendingCount} ข้อ  |  แก้ไขแล้ว: ${fixedCount} ข้อ`;
+    r4.font = { name: 'Sarabun', size: 11, bold: true, color: { argb: 'FF1E3A8A' } };
+    r4.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
+    r4.alignment = { vertical: 'middle', horizontal: 'left' };
+    r4.border = {
+      top: { style: 'thin', color: { argb: 'FFBFDBFE' } },
+      bottom: { style: 'thin', color: { argb: 'FFBFDBFE' } },
+      left: { style: 'thin', color: { argb: 'FFBFDBFE' } },
+      right: { style: 'thin', color: { argb: 'FFBFDBFE' } },
+    };
+    ws.getRow(4).height = 24;
+
+    // Row 5: Blank spacer
+    ws.getRow(5).height = 10;
+
+    // Row 6: Table Header (#1E3A8A background, white bold centered, height 28)
+    const headers = isEn
+      ? [
+          'No.',
+          'Floor',
+          'Zone',
+          'Defect Item',
+          'Engineering Cause',
+          'Solution',
+          'Severity',
+          'Status',
+          'Before Photo',
+          'After Photo',
+        ]
+      : [
+          'ข้อที่',
+          'ชั้น',
+          'โซน',
+          'รายการ Defect',
+          'สาเหตุทางวิศวกรรม',
+          'วิธีแก้ไข',
+          'ความรุนแรง',
+          'สถานะ',
+          'รูปก่อนแก้ไข',
+          'รูปหลังแก้ไข',
+        ];
+
+    const headerRow = ws.getRow(6);
+    headerRow.height = 28;
+    const thinSlateBorder: Partial<ExcelJS.Borders> = {
+      top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+      bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+      left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+      right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    };
+
+    headers.forEach((title, idx) => {
+      const cell = headerRow.getCell(idx + 1);
+      cell.value = title;
+      cell.font = { name: 'Sarabun', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      cell.border = thinSlateBorder;
+    });
+
+    // Data rows starting at Row 7
+    sorted.forEach((d, idx) => {
+      const flName = getFloorNameById(proj, d.floorId);
+      const causeText = d.hideCause ? '' : d.cause || '';
+      const solutionText = d.hideSolution ? '' : d.solution || '';
+      const sevText = translateSeverity(d.severity, lang);
+      const statusText = translateDefectStatus(d.status, lang);
+      const beforeText = d.beforeImg
+        ? isEn
+          ? 'Attached'
+          : 'มีรูปภาพ'
+        : isEn
+        ? 'None'
+        : 'ไม่มี';
+      const afterText = d.afterImg
+        ? isEn
+          ? 'Attached'
+          : 'มีรูปภาพ'
+        : isEn
+        ? 'None'
+        : 'ไม่มี';
+
+      const row = ws.addRow([
+        d.number,
+        flName,
+        d.zone,
+        d.title,
+        causeText,
+        solutionText,
+        sevText,
+        statusText,
+        beforeText,
+        afterText,
+      ]);
+
+      const zebraArgb = idx % 2 === 1 ? 'FFF8FAFC' : 'FFFFFFFF';
+      row.height = estimateRowHeight([
+        { text: d.zone, colWidth: colWidths[2] },
+        { text: d.title, colWidth: colWidths[3] },
+        { text: causeText, colWidth: colWidths[4] },
+        { text: solutionText, colWidth: colWidths[5] },
+      ]);
+
+      row.eachCell((cell, colNumber) => {
+        cell.font = { name: 'Sarabun', size: 10.5, color: { argb: 'FF0F172A' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: zebraArgb } };
+        cell.border = thinSlateBorder;
+        const centerCols = colNumber === 1 || colNumber >= 7;
+        cell.alignment = {
+          vertical: 'top',
+          horizontal: centerCols ? 'center' : 'left',
+          wrapText: true,
+        };
+      });
+
+      // Highlight Severity column (Col 7)
+      const sevCell = row.getCell(7);
+      if (d.severity === 'เร่งด่วน') {
+        sevCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+        sevCell.font = { name: 'Sarabun', size: 10.5, bold: true, color: { argb: 'FF991B1B' } };
+      } else if (d.severity === 'เล็กน้อย') {
+        sevCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } };
+        sevCell.font = { name: 'Sarabun', size: 10.5, bold: true, color: { argb: 'FF1E40AF' } };
+      } else {
+        sevCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
+        sevCell.font = { name: 'Sarabun', size: 10.5, bold: true, color: { argb: 'FF92400E' } };
+      }
+
+      // Highlight Status column (Col 8)
+      const statusCell = row.getCell(8);
+      if (d.status === 'แก้ไขแล้ว') {
+        statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } };
+        statusCell.font = { name: 'Sarabun', size: 10.5, bold: true, color: { argb: 'FF166534' } };
+      } else if (d.status === 'กำลังแก้ไข') {
+        statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } };
+        statusCell.font = { name: 'Sarabun', size: 10.5, bold: true, color: { argb: 'FF1E40AF' } };
+      } else {
+        statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
+        statusCell.font = { name: 'Sarabun', size: 10.5, bold: true, color: { argb: 'FF92400E' } };
+      }
+    });
+
+    const lastRowNumber = Math.max(6, 6 + sorted.length);
+    ws.autoFilter = {
+      from: 'A6',
+      to: `J${lastRowNumber}`,
+    };
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Inspection_Report_${safeSlug}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
     return 'xlsx';
   } catch (err) {
-    console.warn('XLSX export fallback to CSV:', err);
-    const headers = Object.keys(rows[0] || (isEn ? { 'No.': '' } : { 'ข้อที่': '' }));
+    console.warn('ExcelJS export fallback to CSV:', err);
+    const headers = isEn
+      ? ['No.', 'Floor', 'Zone', 'Defect Item', 'Engineering Cause', 'Solution', 'Severity', 'Status', 'Before Photo', 'After Photo']
+      : ['ข้อที่', 'ชั้น', 'โซน', 'รายการ Defect', 'สาเหตุทางวิศวกรรม', 'วิธีแก้ไข', 'ความรุนแรง', 'สถานะ', 'รูปก่อนแก้ไข', 'รูปหลังแก้ไข'];
+    const csvRows = sorted.map((d) => [
+      d.number,
+      getFloorNameById(proj, d.floorId),
+      d.zone,
+      d.title,
+      d.hideCause ? '' : d.cause || '',
+      d.hideSolution ? '' : d.solution || '',
+      translateSeverity(d.severity, lang),
+      translateDefectStatus(d.status, lang),
+      d.beforeImg ? (isEn ? 'Attached' : 'มีรูปภาพ') : isEn ? 'None' : 'ไม่มี',
+      d.afterImg ? (isEn ? 'Attached' : 'มีรูปภาพ') : isEn ? 'None' : 'ไม่มี',
+    ]);
     const csvLines = [
       headers.join(','),
-      ...rows.map((r) =>
-        headers.map((h) => `"${String((r as Record<string, unknown>)[h] ?? '').replace(/"/g, '""')}"`).join(',')
+      ...csvRows.map((row) =>
+        row.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(',')
       ),
     ];
     const blob = new Blob(['\ufeff' + csvLines.join('\n')], { type: 'text/csv;charset=utf-8' });

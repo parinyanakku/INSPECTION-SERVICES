@@ -65,7 +65,7 @@ export const DefectListTab: React.FC<DefectListTabProps> = ({
     e.target.value = '';
     if (!file) return;
     try {
-      const compressed = await compressImageFile(file, 960, 0.78);
+      const compressed = await compressImageFile(file, 2560, 0.95);
       onUpdateDefectPhoto(defectId, field, compressed);
       onNotify(
         field === 'beforeImg'
