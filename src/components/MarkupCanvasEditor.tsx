@@ -1,3 +1,4 @@
+import {imageUploadError} from '../utils/dngImage';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -447,7 +448,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       onImageChange(compressed);
     } catch {
       onNotify(
-        lang === 'en' ? 'Failed to load image file' : 'ไม่สามารถอ่านไฟล์รูปภาพได้',
+        imageUploadError(file,lang,lang === 'en' ? 'Failed to load image file' : 'ไม่สามารถอ่านไฟล์รูปภาพได้'),
         'danger'
       );
     }

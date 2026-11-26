@@ -1,3 +1,4 @@
+import {isDngFile,imageUploadError} from '../utils/dngImage';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Eye,
@@ -254,11 +255,11 @@ export const StudioTab: React.FC<StudioTabProps> = ({
 
   const handleFloorImageUpload = async (file?: File) => {
     if (!file || !activeFloor) return;
-    if (!file.type.startsWith('image/')) {
+    if (!file.type.startsWith('image/') && !isDngFile(file)) {
       onNotify(
         lang === 'en'
-          ? 'Please select an image file (JPG, PNG, WEBP)'
-          : 'กรุณาเลือกไฟล์รูปภาพ (JPG, PNG, WEBP)',
+          ? 'Please select an image file (JPG, PNG, WEBP, DNG)'
+          : 'กรุณาเลือกไฟล์รูปภาพ (JPG, PNG, WEBP, DNG)',
         'warning'
       );
       return;
@@ -280,7 +281,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
       );
     } catch {
       onNotify(
-        lang === 'en' ? 'Failed to load floorplan image' : 'ไม่สามารถโหลดรูปแปลนได้',
+        imageUploadError(file,lang,lang === 'en' ? 'Failed to load floorplan image' : 'ไม่สามารถโหลดรูปแปลนได้'),
         'danger'
       );
     }
@@ -435,7 +436,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
       setMarkupImageSrc(compressed);
     } catch {
       onNotify(
-        lang === 'en' ? 'Failed to load image file' : 'ไม่สามารถอ่านไฟล์รูปภาพได้',
+        imageUploadError(file,lang,lang === 'en' ? 'Failed to load image file' : 'ไม่สามารถอ่านไฟล์รูปภาพได้'),
         'danger'
       );
     }

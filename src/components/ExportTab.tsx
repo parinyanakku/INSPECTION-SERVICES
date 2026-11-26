@@ -1,3 +1,4 @@
+import {isDngFile,decodeDngToJpeg,imageUploadError} from '../utils/dngImage';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -43,6 +44,7 @@ import {
 export { buildSharedReportHtml } from '../utils/imageUtils';
 
 async function prepareReportPhoto(file: File): Promise<string> {
+  if(isDngFile(file))return decodeDngToJpeg(file,4096,0.98);
   const rawDataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -225,7 +227,7 @@ export const ExportTab: React.FC<ExportTabProps> = ({
         'success'
       );
     } catch {
-      onNotify(unsupportedImageMessage, 'danger');
+      onNotify(imageUploadError(file,lang,unsupportedImageMessage), 'danger');
     }
   };
 

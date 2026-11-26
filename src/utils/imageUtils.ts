@@ -1,3 +1,4 @@
+import {isDngFile,decodeDngToJpeg} from './dngImage';
 import { configureReportFrame, reportDocument, waitForReportFonts, prepareReportCanvasFonts } from './reportLayout';
 import { appendPrintableExcelReport } from './excelReport';
 import { downloadNativeWordReport } from './wordReport';
@@ -52,6 +53,7 @@ export function compressImageFile(
   maxDimension = 2560,
   quality = 0.95
 ): Promise<string> {
+  if(isDngFile(file))return decodeDngToJpeg(file,maxDimension,quality);
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {

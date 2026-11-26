@@ -1,3 +1,4 @@
+import {imageUploadError} from '../utils/dngImage';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ExternalLink,
@@ -72,7 +73,7 @@ export const BrandSettingsModal: React.FC<BrandSettingsModalProps> = ({
       setForm((prev) => ({ ...prev, customLogoDataUrl: dataUrl }));
     } catch {
       onNotify(
-        lang === 'en' ? 'Failed to read logo file' : 'ไม่สามารถอ่านไฟล์รูปโลโก้ได้',
+        imageUploadError(file,lang,lang === 'en' ? 'Failed to read logo file' : 'ไม่สามารถอ่านไฟล์รูปโลโก้ได้'),
         'danger'
       );
     }
@@ -575,7 +576,7 @@ export const DefectEditModal: React.FC<DefectEditModalProps> = ({
       else setAfterImg(compressed);
     } catch {
       onNotify(
-        lang === 'en' ? 'Failed to read image file' : 'ไม่สามารถอ่านไฟล์รูปภาพได้',
+        imageUploadError(file,lang,lang === 'en' ? 'Failed to read image file' : 'ไม่สามารถอ่านไฟล์รูปภาพได้'),
         'danger'
       );
     }

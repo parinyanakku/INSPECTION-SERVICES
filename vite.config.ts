@@ -28,6 +28,8 @@ export default defineConfig(() => {
         },
       },
     ],
+    optimizeDeps: { exclude: ['flashraw'] },
+    worker: { format: 'es' },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
