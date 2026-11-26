@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.29",
+  "latest": "v1.0.30",
   "releases": [
+    {
+      "version": "v1.0.30",
+      "build": 30,
+      "storageSchema": 2,
+      "date": "2026-11-26T08:08:05.166Z",
+      "notes": "Center report headers, improve A4 defect pagination and use TH Sarabun New in exports",
+      "commit": "dbf23187e38477417e2183d319f94b8c0f3e90af"
+    },
     {
       "version": "v1.0.29",
       "build": 29,
