@@ -6,7 +6,25 @@ import { AdminLicensePanel } from './AdminLicensePanel';
 import {openWorkspace,closeWorkspace,flushWorkspace,workspaceStatus} from '../utils/workspaceStorage';
 const API='https://geleptwbxjoumxyxbhqa.supabase.co';
 const PUBLIC_KEY="sb_publishable_v-AeQKI2OT9QRGVP1HVHbQ_STCiFAnk";
-type Session={access_token:string;user:{id:string;email?:string}};
+type Session={access_token:string;refresh_token?:string;expires_at?:number;expires_in?:number;user:{id:string;email?:string}};
+const SESSION_KEY='tis_auth_tab_session_v1';
+function clearSession(){try{sessionStorage.removeItem(SESSION_KEY);}catch{}}
+function remember(s:Session):Session{
+ const expiry=s.expires_at||(s.expires_in?Math.floor(Date.now()/1000)+s.expires_in:0);
+ const saved={...s,expires_at:expiry};
+ if(saved.refresh_token&&expiry){try{sessionStorage.setItem(SESSION_KEY,JSON.stringify({access_token:saved.access_token,refresh_token:saved.refresh_token,expires_at:expiry,user:{id:saved.user.id,email:saved.user.email}}));}catch{}}
+ return saved;
+}
+function readSession():Session|null{
+ try{const s=JSON.parse(sessionStorage.getItem(SESSION_KEY)||'null');return s&&typeof s.access_token==='string'&&typeof s.refresh_token==='string'&&Number.isFinite(s.expires_at)&&typeof s.user?.id==='string'?s:null;}catch{return null;}
+}
+async function refreshIfNeeded(s:Session):Promise<Session>{
+ if(s.expires_at&&s.expires_at>Math.floor(Date.now()/1000)+120)return s;
+ if(!s.refresh_token)throw Error('เซสชันหมดอายุ');
+ const next=await request<Session>('/auth/v1/token?grant_type=refresh_token',undefined,{refresh_token:s.refresh_token});
+ if(!next?.access_token||!next.refresh_token||next.user?.id!==s.user.id)throw Error('ยืนยันเซสชันไม่สำเร็จ');
+ return remember(next);
+}
 async function request<T>(path:string,token?:string,body?:unknown):Promise<T>{
  const headers:Record<string,string>={apikey:PUBLIC_KEY,'Content-Type':'application/json'};
  if(token)headers.Authorization='Bearer '+token;
@@ -23,9 +41,32 @@ export default function AccountWorkspace(){
  const resetUrl='https://teaminspectionproelite.github.io/INSPECTION-SERVICES/reset-password.html';
  const [isAdmin,setIsAdmin]=useState(false),[adminOpen,setAdminOpen]=useState(false);
  const live=useRef<Session|null>(null);
+ const [restoring,setRestoring]=useState(()=>!!readSession());
+ const restoreStarted=useRef(false),closing=useRef(false);
+ const inFlight=useRef<Promise<void>|null>(null);
+ async function enterWorkspace(s:Session){
+   if(!await allowed(s.access_token)){clearSession();throw Error('บัญชียังไม่ได้รับสิทธิ์ หรือสิทธิ์หมดอายุ/ถูกระงับ กรุณาติดต่อผู้ดูแลเพื่อรับรหัสลงทะเบียน');}
+   const admin=(await request<boolean>('/rest/v1/rpc/inspection_is_admin',s.access_token,{}))===true;
+   await openWorkspace(s.user.id);
+   if(admin){try{const count=await importLegacyAdminProjects(s.user.id,admin);if(count>0)setLegacyNotice('นำเข้าแฟ้มก่อนมีระบบ Login จำนวน '+count+' แฟ้ม เข้าพื้นที่ Admin แล้ว');}catch{setLegacyNotice('ยังนำเข้าแฟ้มเก่าไม่สำเร็จ ข้อมูลต้นฉบับยังอยู่ กรุณาสำรองข้อมูลหรือติดต่อผู้ดูแล');}}
+   const saved=remember(s);live.current=saved;setSession(saved);setBlocked(false);setIsAdmin(admin);setAdminOpen(false);
+ }
+ useEffect(()=>{
+   if(restoreStarted.current)return;restoreStarted.current=true;
+   const saved=readSession();if(!saved){setRestoring(false);return;}
+   void (async()=>{
+     try{
+       const current=await refreshIfNeeded(saved);
+       const verified=await request<Session['user']>('/auth/v1/user',current.access_token);
+       if(verified.id!==saved.user.id){clearSession();throw Error('บัญชีไม่ตรงกับเซสชันเดิม');}
+       await enterWorkspace({...current,user:verified});
+     }catch(e){setError(e instanceof Error?e.message:'ไม่สามารถคืนสถานะเข้าสู่ระบบได้ กรุณาเข้าสู่ระบบใหม่');}
+     finally{setRestoring(false);}
+   })();
+ },[]);
  useEffect(()=>{const listen=()=>setStorage(workspaceStatus());window.addEventListener('tis-workspace-storage',listen);return()=>window.removeEventListener('tis-workspace-storage',listen);},[]);
  async function login(e:React.FormEvent){
-   e.preventDefault();if(busy)return;setBusy(true);setError('');
+   e.preventDefault();if(busy||restoring)return;setBusy(true);setError('');clearSession();
    try{
      const s=await request<Session>('/auth/v1/token?grant_type=password',undefined,{email:email.trim(),password});
      if(!s?.access_token||!s.user?.id)throw Error('ไม่พบข้อมูลบัญชี');
@@ -34,11 +75,7 @@ export default function AccountWorkspace(){
        catch{throw Error('เปิดใช้งานรหัสไม่สำเร็จ: ตรวจสอบว่ารหัสตรงกับบัญชีนี้ ยังไม่ถูกใช้ และไม่หมดอายุ หากเคยใช้แล้วให้เข้าสู่ระบบโดยไม่กรอกรหัส');}
        setActivationCode('');
      }
-     if(!await allowed(s.access_token))throw Error('บัญชียังไม่ได้รับสิทธิ์ หรือสิทธิ์หมดอายุ/ถูกระงับ กรุณาติดต่อผู้ดูแลเพื่อรับรหัสลงทะเบียน');
-     const admin = (await request<boolean>('/rest/v1/rpc/inspection_is_admin',s.access_token,{}))===true;
-     await openWorkspace(s.user.id);
-     if(admin){try{const count=await importLegacyAdminProjects(s.user.id,admin);if(count>0)setLegacyNotice('นำเข้าแฟ้มก่อนมีระบบ Login จำนวน '+count+' แฟ้ม เข้าพื้นที่ Admin แล้ว');}catch{setLegacyNotice('ยังนำเข้าแฟ้มเก่าไม่สำเร็จ ข้อมูลต้นฉบับยังอยู่ กรุณาสำรองข้อมูลหรือติดต่อผู้ดูแล');}}
-     live.current=s;setSession(s);setBlocked(false);setIsAdmin(admin);setAdminOpen(false);
+     await enterWorkspace(s);
    }catch(e){setError(e instanceof Error?e.message:'เข้าสู่ระบบไม่สำเร็จ');}
    finally{setBusy(false);setPassword('');}
  }
@@ -58,30 +95,44 @@ export default function AccountWorkspace(){
  async function logout(){
    if(busy)return;
    if(!window.confirm('ออกจากระบบ? โปรดบันทึกหมุดและงานร่างที่ยังไม่บันทึกก่อน'))return;
-   setBusy(true);setError('');
+   setBusy(true);setError('');closing.current=true;
    try{
+     await inFlight.current;
      if(!await flushWorkspace())throw Error('ยังบันทึกข้อมูลไม่สำเร็จ โปรดสำรองข้อมูลลงเครื่องก่อน');
-     const s=live.current;live.current=null;
+     const s=live.current;
      await closeWorkspace();
+     clearSession();live.current=null;
      if(s)try{await fetch(API+'/auth/v1/logout?scope=local',{method:'POST',headers:{apikey:PUBLIC_KEY,Authorization:'Bearer '+s.access_token},signal:AbortSignal.timeout(5000)});}catch{/* local session is closed */}
      // Reload the entire runtime so late async callbacks cannot write into a different account.
      window.location.reload();
    }catch(e){setError(e instanceof Error?e.message:'ออกจากระบบไม่สำเร็จ');}
-   finally{setBusy(false);}
+   finally{closing.current=false;setBusy(false);}
  }
  useEffect(()=>{
    if(!session)return;
-   let running=false,disposed=false;
-   const check=async()=>{if(running||disposed||live.current!==session)return;running=true;try{
-     if(!await allowed(session.access_token))throw Error('สิทธิ์หมดอายุหรือถูกระงับ');
-     const admin = (await request<boolean>('/rest/v1/rpc/inspection_is_admin',session.access_token,{}))===true;
-     if(!disposed&&live.current===session){setIsAdmin(admin);if(!admin)setAdminOpen(false);}
-   }catch{if(!disposed&&live.current===session){setIsAdmin(false);setAdminOpen(false);setBlocked(true);setError('ไม่สามารถยืนยันสิทธิ์ได้ กรุณาออกจากระบบและเข้าสู่ระบบใหม่');}}finally{running=false;}};
+   let disposed=false;
+   const check=()=>{
+     if(inFlight.current||disposed||closing.current||!live.current)return;
+     const initial=live.current;
+     const task=(async()=>{try{
+       const current=await refreshIfNeeded(initial);
+       if(disposed||live.current!==initial)return;
+       live.current=current;
+       if(current!==initial)setSession(current);
+       if(!await allowed(current.access_token)){clearSession();throw Error('สิทธิ์หมดอายุหรือถูกระงับ');}
+       const admin=(await request<boolean>('/rest/v1/rpc/inspection_is_admin',current.access_token,{}))===true;
+       if(!disposed&&!closing.current){setIsAdmin(admin);if(!admin)setAdminOpen(false);}
+     }catch{
+       if(!disposed&&!closing.current){setIsAdmin(false);setAdminOpen(false);setBlocked(true);setError('ไม่สามารถยืนยันสิทธิ์ได้ กรุณารีเฟรชเพื่อเชื่อมต่อใหม่ หรือออกจากระบบแล้วเข้าสู่ระบบอีกครั้ง');}
+     }})();
+     inFlight.current=task;void task.finally(()=>{if(inFlight.current===task)inFlight.current=null;});
+   };
    const timer=window.setInterval(check,60000);
-   const focus=()=>{if(document.visibilityState==='visible')void check();};
+   const focus=()=>{if(document.visibilityState==='visible')check();};
    document.addEventListener('visibilitychange',focus);
    return()=>{disposed=true;clearInterval(timer);document.removeEventListener('visibilitychange',focus);};
- },[session]);
+ },[session?.user.id]);
+ if(restoring)return <main className="min-h-screen bg-slate-100 flex items-center justify-center p-4"><section className="bg-white rounded-xl border p-6 text-center"><h1 className="font-bold text-blue-950">TEAM INSPECTION PRO ELITE</h1><p role="status" className="text-sm text-slate-600 mt-3">กำลังตรวจสอบบัญชีและเปิดแฟ้มงานเดิม…</p></section></main>;
  if(!session)return <main className="min-h-screen bg-slate-100 flex items-center justify-center p-4"><section className="bg-white border border-slate-200 rounded-2xl shadow-lg w-full max-w-md p-6 space-y-4">
  <h1 className="text-xl font-bold text-blue-950">TEAM INSPECTION PRO ELITE</h1><p className="text-sm text-slate-600">เข้าสู่ระบบเพื่อเปิดพื้นที่งานส่วนตัวบนอุปกรณ์นี้</p>
  <form onSubmit={login} className="space-y-3"><label className="block text-sm font-medium">อีเมล<input type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)} className="block w-full border rounded-lg p-2 mt-1"/></label>
