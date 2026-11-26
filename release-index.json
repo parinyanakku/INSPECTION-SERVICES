@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.41",
+  "latest": "v1.0.42",
   "releases": [
+    {
+      "version": "v1.0.42",
+      "build": 42,
+      "storageSchema": 2,
+      "date": "2026-11-26T09:25:22.888Z",
+      "notes": "Configure shared public Google OAuth client for Drive sync",
+      "commit": "9efa75f7f5667214abf5e2f551a0dbb3f050d3c6",
+      "notesTh": "เชื่อม Google Drive ด้วยปุ่มเดียว ลูกค้าไม่ต้องกรอก OAuth Client ID เอง"
+    },
     {
       "version": "v1.0.41",
       "build": 41,
