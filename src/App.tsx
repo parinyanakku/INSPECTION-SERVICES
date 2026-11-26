@@ -439,6 +439,13 @@ export default function App({isAdmin=false}:{isAdmin?:boolean}) {
     }
   };
 
+  const handlePrepareVersionUpdate = async (): Promise<boolean> => {
+    // Compatible releases use the same per-account IndexedDB workspace.
+    // Persist live state and wait for durable writes before leaving this page.
+    if (!persistAll(brand, projects, false)) return false;
+    return await flushWorkspace();
+  };
+
   const handleVersionBackup = async (): Promise<boolean> => {
     // Snapshot live project state, not a potentially stale browser copy.
     if (!persistAll(brand, projects, false)) return false;
@@ -948,7 +955,7 @@ export default function App({isAdmin=false}:{isAdmin?:boolean}) {
             </div>
 
             <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
-              <VersionUpdate lang={lang} onBackup={handleVersionBackup} />
+              <VersionUpdate lang={lang} onBackup={handleVersionBackup} onPrepare={handlePrepareVersionUpdate} />
               <button
                 type="button"
                 onClick={() => setShowBrandModal(true)}
