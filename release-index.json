@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.43",
+  "latest": "v1.0.44",
   "releases": [
+    {
+      "version": "v1.0.44",
+      "build": 44,
+      "storageSchema": 2,
+      "date": "2026-11-26T09:39:44.836Z",
+      "notes": "Remember Google account and create visible Drive project backups",
+      "commit": "27de575fd534d1770986839c42816a9bb0ae1941",
+      "notesTh": "จดจำบัญชี Google Drive กดซิงค์ด้วยปุ่มเดียว เพิ่มโฟลเดอร์เปิดดู JSON และรูปภาพจริง พร้อมเก็บข้อมูลซิงค์เดิม"
+    },
     {
       "version": "v1.0.43",
       "build": 43,
