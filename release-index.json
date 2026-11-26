@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.38",
+  "latest": "v1.0.39",
   "releases": [
+    {
+      "version": "v1.0.39",
+      "build": 39,
+      "storageSchema": 2,
+      "date": "2026-11-26T08:52:44.226Z",
+      "notes": "Show all files by default in image upload dialogs",
+      "commit": "9850c0e9c8e143d9d56e3575df170114858db39d",
+      "notesTh": "ตั้งหน้าต่างเลือกภาพให้แสดงไฟล์ทั้งหมด โดยยังตรวจสอบความถูกต้องของไฟล์รูปภาพก่อนนำเข้า"
+    },
     {
       "version": "v1.0.38",
       "build": 38,
