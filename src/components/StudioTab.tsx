@@ -102,6 +102,16 @@ export const StudioTab: React.FC<StudioTabProps> = ({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const markupEditorRef = useRef<MarkupCanvasEditorHandle | null>(null);
 
+  const activeFloorIdRef = useRef<string | null>(activeFloor?.id || null);
+  const langRef = useRef<AppLanguage>(lang);
+  const onNotifyRef = useRef(onNotify);
+  const onUpdateProjectRef = useRef(onUpdateProject);
+
+  activeFloorIdRef.current = activeFloor?.id || null;
+  langRef.current = lang;
+  onNotifyRef.current = onNotify;
+  onUpdateProjectRef.current = onUpdateProject;
+
   // Global pointer move / up for pin dragging and zone move/resize
   useEffect(() => {
     const handlePointerMove = (e: PointerEvent) => {
@@ -125,7 +135,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
           Math.min(98, +(((e.clientY - rect.top) / rect.height) * 100).toFixed(2))
         );
 
-        onUpdateProject(
+        onUpdateProjectRef.current(
           (prev) => ({
             ...prev,
             defects: prev.defects.map((d) =>
@@ -137,17 +147,18 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         return;
       }
 
-      if (zoneDragRef.current && activeFloor) {
+      const currentFlId = activeFloorIdRef.current;
+      if (zoneDragRef.current && currentFlId) {
         const zi = zoneDragRef.current;
         const rect = stage.getBoundingClientRect();
         const dxPct = ((e.clientX - zi.startX) / rect.width) * 100;
         const dyPct = ((e.clientY - zi.startY) / rect.height) * 100;
 
-        onUpdateProject(
+        onUpdateProjectRef.current(
           (prev) => ({
             ...prev,
             floors: prev.floors.map((fl) => {
-              if (fl.id !== activeFloor.id) return fl;
+              if (fl.id !== currentFlId) return fl;
               return {
                 ...fl,
                 zones: fl.zones.map((z) => {
@@ -179,8 +190,9 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         draggingPinRef.current = null;
         if (dp.moved) {
           pinMovedJustNowRef.current = true;
-          onUpdateProject((prev) => {
-            const fl = prev.floors.find((f) => f.id === activeFloor?.id) || null;
+          const currentFlId = activeFloorIdRef.current;
+          onUpdateProjectRef.current((prev) => {
+            const fl = prev.floors.find((f) => f.id === currentFlId) || null;
             return {
               ...prev,
               defects: prev.defects.map((d) => {
@@ -190,8 +202,8 @@ export const StudioTab: React.FC<StudioTabProps> = ({
               }),
             };
           });
-          onNotify(
-            lang === 'en' ? 'Pin position updated' : 'ย้ายตำแหน่งหมุดเรียบร้อยแล้ว',
+          onNotifyRef.current(
+            langRef.current === 'en' ? 'Pin position updated' : 'ย้ายตำแหน่งหมุดเรียบร้อยแล้ว',
             'success'
           );
         }
@@ -199,7 +211,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
 
       if (zoneDragRef.current) {
         zoneDragRef.current = null;
-        onUpdateProject((prev) => prev);
+        onUpdateProjectRef.current((prev) => prev);
       }
     };
 
@@ -209,7 +221,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
     };
-  }, [activeFloor, lang, onNotify, onUpdateProject]);
+  }, []);
 
   const handleFloorImageUpload = async (file?: File) => {
     if (!file || !activeFloor) return;

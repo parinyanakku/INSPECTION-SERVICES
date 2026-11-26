@@ -1173,13 +1173,16 @@ export const LightboxModal: React.FC<LightboxModalProps> = ({
   onClose,
 }) => {
   const t = UI_TEXT[lang];
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [onClose]);
+  }, []);
 
   return (
     <div

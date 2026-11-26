@@ -107,7 +107,6 @@ export function drawMarkupShape(
     const clampedX = Math.max(4, Math.min(w - boxW - 4, x1));
     const clampedY = Math.max(boxH / 2 + 4, Math.min(h - boxH / 2 - 4, y1));
 
-    // High-contrast backing pill for clear readability on any photo
     ctx.fillStyle = 'rgba(15, 23, 42, 0.86)';
     ctx.strokeStyle = s.color || '#ef4444';
     ctx.lineWidth = 2;
@@ -116,9 +115,8 @@ export function drawMarkupShape(
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = s.color === '#ffffff' ? '#ffffff' : '#ffffff';
+    ctx.fillStyle = '#ffffff';
     ctx.fillText(s.text, clampedX + paddingX, clampedY + 1);
-    // Small accent dot matching chosen color
     ctx.fillStyle = s.color || '#ef4444';
     ctx.fillRect(clampedX, clampedY - boxH / 2, 4, boxH);
   }
@@ -147,10 +145,16 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const loadedImageRef = useRef<HTMLImageElement | null>(null);
+  const imageSrcRef = useRef<string | null>(imageSrc);
+  const shapesRef = useRef<MarkupShape[]>(shapes);
   const isDrawingRef = useRef(false);
   const currentShapeRef = useRef<MarkupShape | null>(null);
 
-  const redrawCanvas = useCallback(() => {
+  imageSrcRef.current = imageSrc;
+  shapesRef.current = shapes;
+
+  // Pure canvas renderer with zero dependencies on React state
+  const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     const img = loadedImageRef.current;
     if (!canvas || !img || !img.complete) return;
@@ -159,6 +163,8 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
 
     const w = canvas.width;
     const h = canvas.height;
+    if (w <= 0 || h <= 0) return;
+
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = '#0f172a';
     ctx.fillRect(0, 0, w, h);
@@ -178,66 +184,90 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     }
     ctx.drawImage(img, dx, dy, dw, dh);
 
-    shapes.forEach((s) => drawMarkupShape(ctx, s, w, h));
+    const activeShapes = shapesRef.current;
+    for (let i = 0; i < activeShapes.length; i++) {
+      drawMarkupShape(ctx, activeShapes[i], w, h);
+    }
     if (currentShapeRef.current) {
       drawMarkupShape(ctx, currentShapeRef.current, w, h);
     }
-  }, [shapes]);
+  }, []);
 
+  // Pure canvas size synchronizer (never calls setState)
   const syncDimensions = useCallback(() => {
     const canvas = canvasRef.current;
     const wrap = wrapRef.current;
-    if (!canvas || !wrap || !imageSrc) return;
-    canvas.width = wrap.clientWidth || 520;
-    canvas.height = wrap.clientHeight || 390;
-    redrawCanvas();
-  }, [imageSrc, redrawCanvas]);
+    if (!canvas || !wrap || !imageSrcRef.current) return;
+    const targetW = wrap.clientWidth || 520;
+    const targetH = wrap.clientHeight || 390;
+    if (canvas.width !== targetW) canvas.width = targetW;
+    if (canvas.height !== targetH) canvas.height = targetH;
+    drawCanvas();
+  }, [drawCanvas]);
 
+  // Load image ONLY when imageSrc actually changes; guard all state resets
   useEffect(() => {
-    setShapes([]);
-    setPendingTextPos(null);
-    setPendingTextValue('');
+    shapesRef.current = [];
+    currentShapeRef.current = null;
+    isDrawingRef.current = false;
+    setShapes((prev) => (prev.length === 0 ? prev : []));
+    setPendingTextPos((prev) => (prev === null ? prev : null));
+    setPendingTextValue((prev) => (prev === '' ? prev : ''));
+
     if (!imageSrc) {
       loadedImageRef.current = null;
       return;
     }
+
+    let cancelled = false;
     const img = new Image();
     img.onload = () => {
+      if (cancelled || imageSrcRef.current !== imageSrc) return;
       loadedImageRef.current = img;
       syncDimensions();
     };
     img.src = imageSrc;
+
+    return () => {
+      cancelled = true;
+    };
   }, [imageSrc, syncDimensions]);
 
+  // Redraw canvas whenever shapes state updates (pure canvas draw, no setState)
   useEffect(() => {
-    redrawCanvas();
-  }, [shapes, redrawCanvas]);
+    shapesRef.current = shapes;
+    drawCanvas();
+  }, [shapes, drawCanvas]);
 
+  // Resize listener (registered once, pure DOM/canvas operation)
   useEffect(() => {
     const onResize = () => {
-      if (imageSrc) syncDimensions();
+      if (imageSrcRef.current) syncDimensions();
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, [imageSrc, syncDimensions]);
+  }, [syncDimensions]);
 
+  // Expose imperative export method without re-triggering renders
   useEffect(() => {
     if (!editorRef) return;
     editorRef.current = {
       exportDataUrl: () => {
-        if (!imageSrc) return null;
+        const src = imageSrcRef.current;
+        if (!src) return null;
         const canvas = canvasRef.current;
-        if (canvas && canvas.width > 0 && shapes.length > 0) {
+        if (canvas && canvas.width > 0 && shapesRef.current.length > 0) {
+          drawCanvas();
           try {
             return canvas.toDataURL('image/jpeg', 0.84);
           } catch {
-            // fallback
+            // fallback to original src
           }
         }
-        return imageSrc;
+        return src;
       },
     };
-  }, [editorRef, imageSrc, shapes]);
+  }, [editorRef, drawCanvas]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -247,7 +277,10 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       const compressed = await compressImageFile(file, 960, 0.82);
       onImageChange(compressed);
     } catch {
-      onNotify(lang === 'en' ? 'Failed to load image file' : 'ไม่สามารถอ่านไฟล์รูปภาพได้', 'danger');
+      onNotify(
+        lang === 'en' ? 'Failed to load image file' : 'ไม่สามารถอ่านไฟล์รูปภาพได้',
+        'danger'
+      );
     }
   };
 
@@ -298,7 +331,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       currentShapeRef.current.x2 = nx;
       currentShapeRef.current.y2 = ny;
     }
-    redrawCanvas();
+    drawCanvas();
   };
 
   const handlePointerUp = () => {
@@ -313,7 +346,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     if (hasMovement) {
       setShapes((prev) => [...prev, s]);
     } else {
-      redrawCanvas();
+      drawCanvas();
     }
   };
 
@@ -415,7 +448,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
 
           <button
             type="button"
-            onClick={() => setShapes((prev) => prev.slice(0, -1))}
+            onClick={() => setShapes((prev) => (prev.length > 0 ? prev.slice(0, -1) : prev))}
             className="p-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer"
             title={t.undoTooltip}
           >
@@ -424,7 +457,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
           <button
             type="button"
             onClick={() => {
-              setShapes([]);
+              setShapes((prev) => (prev.length === 0 ? prev : []));
               setPendingTextPos(null);
             }}
             className="p-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer"
@@ -437,7 +470,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
               type="button"
               onClick={() => {
                 onImageChange(null);
-                setShapes([]);
+                setShapes((prev) => (prev.length === 0 ? prev : []));
                 setPendingTextPos(null);
               }}
               className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 cursor-pointer"
