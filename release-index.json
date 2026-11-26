@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.23",
+  "latest": "v1.0.24",
   "releases": [
+    {
+      "version": "v1.0.24",
+      "build": 24,
+      "storageSchema": 2,
+      "date": "2026-11-26T07:41:55.882Z",
+      "notes": "Keep saved account projects across compatible updates without repeated exports",
+      "commit": "a3294722cb89263561e08d8e2bb196b4e0eab4c9"
+    },
     {
       "version": "v1.0.23",
       "build": 23,
