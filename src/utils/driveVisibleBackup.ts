@@ -10,11 +10,11 @@ async function digest(value:string){
  return Array.from(new Uint8Array(bytes)).map(x=>x.toString(16).padStart(2,'0')).join('');
 }
 const clean=(name:string)=>name.replace(/[\u0000-\u001f/\\:*?"<>|]/g,'_').trim().slice(0,100)||'Project';
-export async function mirrorWorkspace(token:string,userId:string,records:Records,active:()=>boolean,progress:(done:number,total:number)=>void){
+export async function mirrorWorkspace(token:string,userId:string,records:Records,active:()=>boolean,progress:(done:number,total:number)=>void,signal?:AbortSignal){
  if(!/^[a-f0-9-]{36}$/i.test(userId))throw Error('Invalid workspace ID');
  async function req(url:string,init:RequestInit={}){
   if(!active())throw Error('Cancelled');
-  const res=await fetch(url,{...init,headers:{...init.headers,Authorization:'Bearer '+token}});
+  const res=await fetch(url,{...init,signal,headers:{...init.headers,Authorization:'Bearer '+token}});
   if(!res.ok)throw Error('Google Drive HTTP '+res.status);
   return res.json();
  }
@@ -70,7 +70,10 @@ export async function mirrorWorkspace(token:string,userId:string,records:Records
  let done=0;progress(done,jobs.length);
  // Content-addressed copies are immutable, so a concurrent or interrupted sync
  // cannot overwrite a newer copy. Old copies are retained in the user's Drive.
- for(const job of jobs){
+ let cursor=0;let failed=false;
+ async function worker(){while(!failed&&active()&&cursor<jobs.length){
+  const job=jobs[cursor++];
+  try{
   const hash=await digest(job.value),keyHash=await digest(job.key);
   const copy=keyHash.slice(0,20)+hash.slice(0,40),known=byFolder.get(job.parent)!;
   if(!known.has(copy)){
@@ -82,7 +85,11 @@ export async function mirrorWorkspace(token:string,userId:string,records:Records
    const saved=await req(UPLOAD,{method:'POST',headers:{'Content-Type':'multipart/related; boundary='+boundary},body});
    if(!saved.id)throw Error('Visible backup upload not confirmed');known.add(copy);
   }
-  progress(++done,jobs.length);
- }
+  if(active())progress(++done,jobs.length);
+  }catch(e){failed=true;throw e;}
+ }}
+ const results=await Promise.allSettled(Array.from({length:Math.min(4,jobs.length)},()=>worker()));
+ const error=results.find((r):r is PromiseRejectedResult=>r.status==='rejected');if(error)throw error.reason;
+ if(!active())throw Error('Cancelled');
  return root;
 }
