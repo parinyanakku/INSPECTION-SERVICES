@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.19",
+  "latest": "v1.0.20",
   "releases": [
+    {
+      "version": "v1.0.20",
+      "build": 20,
+      "storageSchema": 2,
+      "date": "2026-11-26T07:24:23.526Z",
+      "notes": "Add customer password change and PKCE email recovery",
+      "commit": "01660b5f854f9cb24f40a3e4568ec51071c3ae7a"
+    },
     {
       "version": "v1.0.19",
       "build": 19,
