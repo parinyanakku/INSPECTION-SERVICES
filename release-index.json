@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.30",
+  "latest": "v1.0.31",
   "releases": [
+    {
+      "version": "v1.0.31",
+      "build": 31,
+      "storageSchema": 2,
+      "date": "2026-11-26T08:11:38.996Z",
+      "notes": "Use A4 landscape for defect detail pages with up to three records per page",
+      "commit": "d811700e8218881e9162abd9be59b3908cb02f5d"
+    },
     {
       "version": "v1.0.30",
       "build": 30,
