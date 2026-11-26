@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.11",
+  "latest": "v1.0.12",
   "releases": [
+    {
+      "version": "v1.0.12",
+      "build": 12,
+      "storageSchema": 2,
+      "date": "2026-11-26T07:04:30.524Z",
+      "notes": "Unify workspace login and admin license management",
+      "commit": "1ef68ec7c0338c5a7dd34f9324faab4af6c365a1"
+    },
     {
       "version": "v1.0.11",
       "build": 11,
