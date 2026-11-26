@@ -1,4 +1,4 @@
-import { workspaceStorage, flushWorkspace } from './utils/workspaceStorage';
+import { workspaceStorage, flushWorkspace, writeWorkspaceBatch } from './utils/workspaceStorage';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
@@ -516,6 +516,53 @@ export default function App({isAdmin=false}:{isAdmin?:boolean}) {
     reader.onload = (ev) => {
       try {
         const parsed = JSON.parse(String(ev.target?.result || ''));
+        if (parsed.format === 'TIS_ADMIN_PROJECT_ENRICHMENT_V1') {
+          if(!isAdmin)throw Error('ไฟล์นี้ใช้สำหรับผู้ดูแลระบบเท่านั้น');
+          const target=projects.find(p=>p.id===parsed.projectId);
+          if(!target)throw Error('ไม่พบแฟ้มโครงการเดิมที่ตรงกับไฟล์นี้');
+          const image=(v:unknown):v is string=>typeof v==='string'&&/^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(v);
+          const items=parsed.defects;
+          if(!Array.isArray(items)||!items.length||items.length>1000||items.some((d:any)=>!d||typeof d.id!=='string'||!Number.isInteger(d.number)||typeof d.title!=='string'||typeof d.zone!=='string'||typeof d.floorId!=='string'||!image(d.beforeImg)||!Number.isFinite(d.x)||!Number.isFinite(d.y)||d.x<0||d.x>100||d.y<0||d.y>100)||new Set(items.map((d:any)=>d.id)).size!==items.length)throw Error('รายการภาพหรือข้อมูล Defect ไม่ถูกต้อง');
+          const byId=new Map<string,any>(items.map((d:any)=>[d.id,d]));
+          if(items.some((d:any)=>!target.defects.some(x=>x.id===d.id&&x.number===d.number)))throw Error('หมายเลข Defect ในแฟ้มเดิมไม่ตรงกับไฟล์ กรุณาสำรองแฟ้มและตรวจสอบก่อนนำเข้า');
+          if(typeof parsed.inspectionDate!=='string'||typeof parsed.address!=='string'||!parsed.reportBook||typeof parsed.reportBook!=='object')throw Error('ข้อมูลรายงานไม่ถูกต้อง');
+          const report=parsed.reportBook;
+          if(!image(report.locationMapImg)||!image(report.frontHouseImg)||!Array.isArray(report.extraZonePlanImgs)||!report.extraZonePlanImgs.every(image))throw Error('ภาพประกอบรายงานไม่ถูกต้อง');
+          const sourceFloors=Array.isArray(parsed.floors)?parsed.floors:[];
+          const defaultFloors=createDefaultSirinaphaProject().floors;
+          const updatedFloors=new Set<string>();
+          const nextFloors=target.floors.map(fl=>{
+            const src=sourceFloors.find((x:any)=>x.id===fl.id);
+            const original=defaultFloors.find(x=>x.id===fl.id);
+            // Never overwrite a custom drawing or an existing uploaded floor plan.
+            if(!src||!original||fl.imageUrl||fl.isCustomBuilder||(fl.elements?.length||0)>0||JSON.stringify(fl.zones)!==JSON.stringify(original.zones)||!image(src.imageUrl)||!Array.isArray(src.zones)||src.zones.some((z:any)=>!z||typeof z.name!=='string'||typeof z.id!=='string'||![z.x,z.y,z.w,z.h].every(Number.isFinite)))return fl;
+            updatedFloors.add(fl.id);
+            return {...fl,imageUrl:src.imageUrl,zones:src.zones,subtitle:lang==='en'?'Source report plan':'แปลนจากรายงานต้นฉบับ'};
+          });
+          const nextProject={...target,inspectionDate:parsed.inspectionDate,address:parsed.address,floors:nextFloors,defects:target.defects.map(d=>{
+            const src=byId.get(d.id);if(!src)return d;
+            // Keep prior edits to the correction status, severity, causes, recommendations and existing photos.
+            return {...d,title:src.title,beforeImg:d.beforeImg||d.photoDataUrl||src.beforeImg,...(updatedFloors.has(d.floorId)&&d.floorId===src.floorId?{zone:src.zone,x:src.x,y:src.y}:{})};
+          })};
+          const previousReport=workspaceStorage.getItem('tis_report_book_v1_'+target.id);
+          const old=previousReport?JSON.parse(previousReport):{};
+          const nextReport={...old,...report,locationMapImg:old.locationMapImg||report.locationMapImg,frontHouseImg:old.frontHouseImg||report.frontHouseImg,extraZonePlanImgs:[...new Set([...(Array.isArray(old.extraZonePlanImgs)?old.extraZonePlanImgs:[]),...report.extraZonePlanImgs])]};
+          const nextProjects=projects.map(p=>p.id===target.id?nextProject:p);
+          setConfirmState({
+            title:'เพิ่มข้อมูลและภาพจากรายงานในแฟ้มเดิม',
+            message:'พบภาพ '+items.length+' รายการในแฟ้ม "'+target.name+'" จะปรับชื่อรายการ วันที่ และรายละเอียดรายงาน เพิ่มภาพที่ยังไม่มี และแปลนต้นฉบับเฉพาะแปลนที่ยังไม่แก้ไข (ตำแหน่งหมุดเป็นค่าประมาณตามโซน) โดยไม่ลบแฟ้มอื่น ภาพเดิม หรือสถานะการแก้ไข กรุณาสำรอง JSON ก่อนดำเนินการ',
+            confirmText:'เพิ่มข้อมูลในแฟ้มเดิม',
+            confirmStyle:'primary',
+            onConfirm:async()=>{
+              try{
+                const ts=formatCurrentTime();
+                await writeWorkspaceBatch({[STORAGE_KEY_PROJECTS]:JSON.stringify(nextProjects),[STORAGE_KEY_BRAND]:JSON.stringify(brand),[STORAGE_KEY_LAST_SAVED]:ts,['tis_report_book_v1_'+target.id]:JSON.stringify(nextReport)});
+                setProjects(nextProjects);setLastSavedAt(ts);setHubSearch('');setActiveProjectId(null);setConfirmState(null);
+                notify('เพิ่มข้อมูลรายงานและภาพในแฟ้มเดิมเรียบร้อยแล้ว','success');
+              }catch{setConfirmState(null);notify('นำเข้าไม่สำเร็จ ข้อมูลเดิมยังอยู่ กรุณาตรวจสอบพื้นที่ในเครื่อง','danger');}
+            },
+          });return;
+        }
         if (Array.isArray(parsed.projects)) {
           setConfirmState({
             title: lang === 'en' ? 'Import Full Backup' : 'นำเข้าไฟล์สำรองข้อมูลทั้งหมด',
