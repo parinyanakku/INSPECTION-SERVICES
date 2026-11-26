@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.10",
+  "latest": "v1.0.11",
   "releases": [
+    {
+      "version": "v1.0.11",
+      "build": 11,
+      "storageSchema": 2,
+      "date": "2026-11-26T06:57:59.995Z",
+      "notes": "Reset app runtime on account logout to isolate late callbacks",
+      "commit": "cbbc0b23397f9557b7b68252eeaf0b8107a17ed0"
+    },
     {
       "version": "v1.0.10",
       "build": 10,
