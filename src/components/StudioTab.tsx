@@ -26,6 +26,8 @@ import {
 } from '../utils/geminiClient';
 import { compressImageFile } from '../utils/imageUtils';
 import { FloorPlanSvg } from './FloorPlanSvg';
+import { CustomFloorEditor } from './CustomFloorEditor';
+import { customFloorDataUrl } from '../utils/customFloorSvg';
 import {
   MarkupCanvasEditor,
   type MarkupCanvasEditorHandle,
@@ -75,6 +77,8 @@ export const StudioTab: React.FC<StudioTabProps> = ({
     : [];
 
   const [isZoneSetupMode, setIsZoneSetupMode] = useState(false);
+  const [editingFloorId, setEditingFloorId] = useState<string | null>(null);
+  const isEditingFloor = !!activeFloor && editingFloorId === activeFloor.id && !activeFloor.imageUrl;
   const [showZoneOverlays, setShowZoneOverlays] = useState(true);
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
   const [isFloorDropActive, setIsFloorDropActive] = useState(false);
@@ -253,6 +257,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
           fl.id === activeFloor.id ? { ...fl, imageUrl: compressed } : fl
         ),
       }));
+      setEditingFloorId(null);
       onNotify(
         lang === 'en'
           ? `Uploaded floorplan for "${activeFloor.name}"`
@@ -278,25 +283,19 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         {
           id: newId,
           name: floorLabel,
-          subtitle: lang === 'en' ? '1 Zone' : '1 โซน',
           imageUrl: null,
-          svgPreset: nextNum % 2 === 1 ? 0 : 1,
-          zones: [
-            {
-              id: `z_${Date.now()}`,
-              name: lang === 'en' ? `Main Zone Floor ${nextNum}` : `โซนหลัก ชั้น ${nextNum}`,
-              x: 10,
-              y: 10,
-              w: 80,
-              h: 80,
-              bg: '#dbeafe',
-              border: '#2563eb',
-            },
-          ],
+          svgPreset: 0,
+          isCustomBuilder: true,
+          zones: [],
+          elements: [],
         },
       ],
     }));
     onSelectFloor(newId);
+    setIsZoneSetupMode(false);
+    setPlacingDraftId(null);
+    setSelectedZoneId(null);
+    setEditingFloorId(newId);
     onNotify(
       lang === 'en'
         ? `Added floor "${floorLabel}"`
@@ -518,6 +517,8 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                   type="button"
                   onClick={() => {
                     onSelectFloor(f.id);
+                    setEditingFloorId(null);
+                    setIsZoneSetupMode(false);
                     setSelectedZoneId(null);
                   }}
                   className={`px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-colors whitespace-nowrap cursor-pointer ${
@@ -568,9 +569,21 @@ export const StudioTab: React.FC<StudioTabProps> = ({
             />
           </label>
 
+          {activeFloor && !activeFloor.imageUrl && (
+            <button type="button" onClick={() => {
+              if (isEditingFloor) { setEditingFloorId(null); return; }
+              if (!activeFloor.isCustomBuilder && !window.confirm(lang === 'en' ? 'Replace the sample background with a custom plan? Existing zones and pins are kept.' : 'เปลี่ยนพื้นหลังแปลนตัวอย่างเป็นผังที่สร้างเองหรือไม่? โซนและหมุดเดิมจะยังอยู่')) return;
+              onUpdateProject(prev => ({...prev, floors:prev.floors.map(fl=>fl.id===activeFloor.id?{...fl,isCustomBuilder:true,elements:fl.elements||[]}:fl)}));
+              setIsZoneSetupMode(false); setPlacingDraftId(null); setSelectedZoneId(null); setEditingFloorId(activeFloor.id);
+            }} className="text-xs px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 font-semibold cursor-pointer">
+              {isEditingFloor ? (lang === 'en' ? 'Finish drawing' : 'เสร็จสิ้นการวาด') : (lang === 'en' ? 'Draw floor plan' : 'สร้าง / แก้ไขผังแปลนเอง')}
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => {
+              setEditingFloorId(null);
               const next = !isZoneSetupMode;
               setIsZoneSetupMode(next);
               setPlacingDraftId(null);
@@ -631,6 +644,11 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         )}
 
         {/* Floorplan Stage */}
+        {isEditingFloor && activeFloor ? (
+          <CustomFloorEditor key={activeFloor.id} floor={activeFloor} lang={lang}
+            onChange={updated => onUpdateProject(prev => ({...prev, floors:prev.floors.map(fl=>fl.id===updated.id?{...fl,isCustomBuilder:true,zones:updated.zones,elements:updated.elements}:fl)}))}
+            onDone={() => {setEditingFloorId(null); setShowZoneOverlays(true);}} />
+        ) : (
         <div
           id="floorStage"
           ref={floorStageRef}
@@ -658,6 +676,8 @@ export const StudioTab: React.FC<StudioTabProps> = ({
               referrerPolicy="no-referrer"
               className="w-full h-full object-contain pointer-events-none select-none bg-white"
             />
+          ) : activeFloor?.isCustomBuilder ? (
+            <img src={customFloorDataUrl(activeFloor)} alt={activeFloor.name} className="w-full h-full pointer-events-none select-none" />
           ) : (
             <FloorPlanSvg floorIndex={activeFloor?.svgPreset ?? 0} />
           )}
@@ -781,6 +801,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
               </button>
             ))}
         </div>
+        )}
 
         {/* Legend */}
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
@@ -1094,6 +1115,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                   type="button"
                   onClick={() => {
                     setIsZoneSetupMode(false);
+                    setEditingFloorId(null);
                     const next =
                       placingDraftId === activeDraft.id ? null : activeDraft.id;
                     setPlacingDraftId(next);

@@ -10,6 +10,7 @@ import type {
   ReportBookData,
 } from '../types/inspection';
 import { DEFAULT_GEAR_LOGO_SVG, getArchitecturalFloorSvg } from '../data/defaultData';
+import { customFloorSvg } from './customFloorSvg';
 import { translateDefectStatus, translateSeverity } from '../i18n/translations';
 import {
   createDefaultCustomExportSettings,
@@ -209,7 +210,7 @@ export async function renderFloorplanWithPinsToPng(
       ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
     } else {
       const svgText = normalizeSvgForRaster(
-        getArchitecturalFloorSvg(floor.svgPreset ?? 0),
+        floor.isCustomBuilder ? customFloorSvg(floor) : getArchitecturalFloorSvg(floor.svgPreset ?? 0),
         width,
         height
       );
@@ -289,7 +290,7 @@ export async function renderFloorplanZonesToPng(floor: FloorPlan): Promise<strin
       ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
     } else {
       const svgText = normalizeSvgForRaster(
-        getArchitecturalFloorSvg(floor.svgPreset ?? 0),
+        floor.isCustomBuilder ? customFloorSvg(floor) : getArchitecturalFloorSvg(floor.svgPreset ?? 0),
         width,
         height
       );
