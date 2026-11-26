@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.47",
+  "latest": "v1.0.48",
   "releases": [
+    {
+      "version": "v1.0.48",
+      "build": 48,
+      "storageSchema": 2,
+      "date": "2026-11-26T09:57:50.436Z",
+      "notes": "Allow custom floor names in plan studio",
+      "commit": "09c9a49aa575edf352f48862ec50ccfd0b9db243",
+      "notesTh": "เพิ่มปุ่มเปลี่ยนชื่อชั้น รองรับชื่อกำหนดเองทั้งไทยและอังกฤษ โดยรักษาแปลน โซน และหมุดเดิม"
+    },
     {
       "version": "v1.0.47",
       "build": 47,
