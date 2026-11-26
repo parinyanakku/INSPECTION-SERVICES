@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.9",
+  "latest": "v1.0.10",
   "releases": [
+    {
+      "version": "v1.0.10",
+      "build": 10,
+      "storageSchema": 2,
+      "date": "2026-11-26T06:57:13.898Z",
+      "notes": "Add licensed account workspaces with local IndexedDB and explicit legacy import",
+      "commit": "093abedb1f43b748c6efcb5a53fe5bf921008c56"
+    },
     {
       "version": "v1.0.9",
       "build": 9,
