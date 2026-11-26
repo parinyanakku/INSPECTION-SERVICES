@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.24",
+  "latest": "v1.0.25",
   "releases": [
+    {
+      "version": "v1.0.25",
+      "build": 25,
+      "storageSchema": 2,
+      "date": "2026-11-26T07:45:33.928Z",
+      "notes": "Restore authenticated workspace after browser refresh using tab sessions",
+      "commit": "0ec6967012e18ac8e8e5391d47eda98ae186f204"
+    },
     {
       "version": "v1.0.24",
       "build": 24,
