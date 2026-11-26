@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.13",
+  "latest": "v1.0.14",
   "releases": [
+    {
+      "version": "v1.0.14",
+      "build": 14,
+      "storageSchema": 2,
+      "date": "2026-11-26T07:08:21.878Z",
+      "notes": "Add account-bound License activation to unified login and admin panel",
+      "commit": "c11d4a65b50d8aaec969f3195e8e401de8d5211b"
+    },
     {
       "version": "v1.0.13",
       "build": 13,
