@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.40",
+  "latest": "v1.0.41",
   "releases": [
+    {
+      "version": "v1.0.41",
+      "build": 41,
+      "storageSchema": 2,
+      "date": "2026-11-26T09:07:34.262Z",
+      "notes": "Add opt-in manual Google Drive workspace sync beta",
+      "commit": "884d1e90b61eb34eb5a400719e7bc4f33d7c9167",
+      "notesTh": "เพิ่มระบบทดลองซิงค์แฟ้มงานกับ Google Drive ส่วนตัว พร้อมตรวจข้อมูลขัดแย้งและไม่ส่ง API Key"
+    },
     {
       "version": "v1.0.40",
       "build": 40,
