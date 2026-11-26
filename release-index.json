@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.39",
+  "latest": "v1.0.40",
   "releases": [
+    {
+      "version": "v1.0.40",
+      "build": 40,
+      "storageSchema": 2,
+      "date": "2026-11-26T08:55:25.482Z",
+      "notes": "Keep dialogs open on outside clicks to protect unsaved changes",
+      "commit": "e6353d3660526c7e7bef01edf880f8c2f3295952",
+      "notesTh": "ป้องกันหน้าต่างตั้งค่า API Key และหน้าต่างแก้ไขข้อมูลปิดเองเมื่อคลิกด้านนอก ให้ปิดผ่านปุ่มควบคุมโดยตรง"
+    },
     {
       "version": "v1.0.39",
       "build": 39,
