@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.21",
+  "latest": "v1.0.22",
   "releases": [
+    {
+      "version": "v1.0.22",
+      "build": 22,
+      "storageSchema": 2,
+      "date": "2026-11-26T07:28:37.595Z",
+      "notes": "Fix release manifest trailing newline",
+      "commit": "6b1bf9e8dd01c67e178ad451d6c90e83da015511"
+    },
     {
       "version": "v1.0.21",
       "build": 21,
