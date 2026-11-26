@@ -123,3 +123,27 @@ body {
     margin: 12mm;
   }
 }
+
+/* Narrow inspection zones can be smaller than their label or resize control. */
+.zone-box-compact .zone-label {
+  display: none;
+}
+.zone-setup-active .zone-box-compact.zone-box-selected .zone-label {
+  display: inline-flex;
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin: 0 0 3px 0;
+  max-width: 150px;
+  white-space: nowrap;
+}
+.zone-setup-active .zone-box-compact .zone-resize-handle {
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  height: 20px;
+  transform: translate(60%, 60%);
+}
+.zone-setup-active .zone-box-compact:not(.zone-box-selected) .zone-resize-handle {
+  opacity: 0.7;
+}

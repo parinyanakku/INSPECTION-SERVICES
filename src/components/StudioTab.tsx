@@ -195,14 +195,14 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                   if (zi.mode === 'move') {
                     return {
                       ...z,
-                      x: Math.max(0, Math.min(100 - z.w, +(zi.origX + dxPct).toFixed(1))),
-                      y: Math.max(0, Math.min(100 - z.h, +(zi.origY + dyPct).toFixed(1))),
+                      x: Math.max(0, Math.min(100 - z.w, +(zi.origX + dxPct).toFixed(2))),
+                      y: Math.max(0, Math.min(100 - z.h, +(zi.origY + dyPct).toFixed(2))),
                     };
                   }
                   return {
                     ...z,
-                    w: Math.max(10, Math.min(100 - z.x, +(zi.origW + dxPct).toFixed(1))),
-                    h: Math.max(8, Math.min(100 - z.y, +(zi.origH + dyPct).toFixed(1))),
+                    w: Math.min(100 - z.x, Math.max(Math.min(0.5, 100 - z.x), +(zi.origW + dxPct).toFixed(2))),
+                    h: Math.min(100 - z.y, Math.max(Math.min(0.5, 100 - z.y), +(zi.origH + dyPct).toFixed(2))),
                   };
                 }),
               };
@@ -791,12 +791,12 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                   background: `${z.bg}88`,
                   border: `2px dashed ${z.border}`,
                 }}
-                className={`zone-box absolute rounded-xl pointer-events-none ${
+                className={`zone-box absolute pointer-events-none ${z.w < 5 || z.h < 5 ? 'zone-box-compact rounded-sm' : 'rounded-xl'} ${
                   selectedZoneId === z.id ? 'zone-box-selected' : ''
                 }`}
               >
                 <div
-                  className="inline-flex items-center gap-1 px-2 py-0.5 m-1 rounded-md text-[10px] sm:text-[11px] font-bold max-w-[92%] truncate"
+                  className="zone-label inline-flex items-center gap-1 px-2 py-0.5 m-1 rounded-md text-[10px] sm:text-[11px] font-bold max-w-[92%] truncate"
                   style={{ background: z.border, color: '#ffffff' }}
                 >
                   <span className="truncate">{z.name}</span>
@@ -817,6 +817,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                 {isZoneSetupMode && (
                   <div
                     className="zone-resize-handle"
+                    title={lang==='en'?'Drag to resize zone':'ลากเพื่อปรับขนาดโซน'}
                     onPointerDown={(e) => {
                       e.stopPropagation();
                       setSelectedZoneId(z.id);
