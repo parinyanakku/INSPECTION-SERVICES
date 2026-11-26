@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.51",
+  "latest": "v1.0.52",
   "releases": [
+    {
+      "version": "v1.0.52",
+      "build": 52,
+      "storageSchema": 2,
+      "date": "2026-11-26T16:39:23.461Z",
+      "notes": "Support local DNG RAW photo import in inspection and reports",
+      "commit": "d34eb8bd25c58ab5bd0fda25eff759c0215495c3",
+      "notesTh": "เพิ่มอ่านไฟล์ DNG ในรูปหน้างาน รูปก่อนหลัง แปลนและเล่มรายงาน แปลงในเครื่องเป็น JPEG และไม่แก้ไขไฟล์ต้นฉบับ"
+    },
     {
       "version": "v1.0.51",
       "build": 51,
