@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.18",
+  "latest": "v1.0.19",
   "releases": [
+    {
+      "version": "v1.0.19",
+      "build": 19,
+      "storageSchema": 2,
+      "date": "2026-11-26T07:21:16.063Z",
+      "notes": "Generate unique initial customer passwords and copy credentials once",
+      "commit": "7a199af05c9cc8eac86ce5d4176baf2912c89ee0"
+    },
     {
       "version": "v1.0.18",
       "build": 18,
