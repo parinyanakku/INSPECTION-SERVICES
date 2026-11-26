@@ -81,9 +81,6 @@ export const BrandSettingsModal: React.FC<BrandSettingsModalProps> = ({
   return (
     <div
       className="fixed inset-0 bg-slate-900/55 backdrop-blur-xs z-40 flex items-center justify-center p-3 sm:p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
     >
       <div className="bg-white rounded-2xl border border-slate-200 max-w-xl w-full overflow-hidden max-h-[92vh] flex flex-col">
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
@@ -309,9 +306,6 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
   return (
     <div
       className="fixed inset-0 bg-slate-900/55 backdrop-blur-xs z-40 flex items-center justify-center p-3 sm:p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
     >
       <div className="bg-white rounded-2xl border border-slate-200 max-w-lg w-full overflow-hidden max-h-[92vh] flex flex-col">
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
@@ -468,9 +462,6 @@ export const PhotoAnnotateModal: React.FC<PhotoAnnotateModalProps> = ({
   return (
     <div
       className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-[60] flex items-center justify-center p-3 sm:p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
     >
       <div className="bg-white rounded-2xl border border-slate-200 max-w-2xl w-full overflow-hidden max-h-[94vh] flex flex-col">
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
@@ -616,9 +607,6 @@ export const DefectEditModal: React.FC<DefectEditModalProps> = ({
     <>
       <div
         className="fixed inset-0 bg-slate-900/55 backdrop-blur-xs z-40 flex items-center justify-center p-3 sm:p-4"
-        onClick={(e) => {
-          if (e.target === e.currentTarget) onClose();
-        }}
       >
         <div className="bg-white rounded-2xl border border-slate-200 max-w-3xl w-full overflow-hidden max-h-[92vh] flex flex-col">
           <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
@@ -928,9 +916,6 @@ export const ZoneEditModal: React.FC<ZoneEditModalProps> = ({
   return (
     <div
       className="fixed inset-0 bg-slate-900/55 backdrop-blur-xs z-40 flex items-center justify-center p-3 sm:p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
     >
       <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full overflow-hidden">
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
@@ -1038,9 +1023,6 @@ export const SaveAsJsonModal: React.FC<SaveAsJsonModalProps> = ({
   return (
     <div
       className="fixed inset-0 bg-slate-900/55 backdrop-blur-xs z-40 flex items-center justify-center p-3 sm:p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
     >
       <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full overflow-hidden">
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
@@ -1135,9 +1117,6 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   return (
     <div
       className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
     >
       <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full overflow-hidden">
         <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
@@ -1204,7 +1183,6 @@ export const LightboxModal: React.FC<LightboxModalProps> = ({
   return (
     <div
       className="fixed inset-0 bg-slate-950/92 z-[70] flex flex-col items-center justify-center p-4"
-      onClick={onClose}
     >
       <div
         className="w-full max-w-5xl flex items-center justify-between gap-3 text-white mb-3"
@@ -1348,9 +1326,6 @@ export const ApiKeySettingsModal: React.FC<ApiKeySettingsModalProps> = ({
   return (
     <div
       className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
     >
       <div className="bg-white rounded-2xl border border-slate-200 max-w-lg w-full overflow-hidden max-h-[92vh] flex flex-col">
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
@@ -1544,9 +1519,6 @@ export const ApiKeyGuideModal: React.FC<ApiKeyGuideModalProps> = ({
   return (
     <div
       className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
     >
       <div className="bg-white rounded-2xl border border-slate-200 max-w-lg w-full overflow-hidden max-h-[92vh] flex flex-col">
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
