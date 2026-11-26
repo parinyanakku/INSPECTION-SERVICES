@@ -142,7 +142,7 @@ function loadWorkspaceView(projects:ProjectFile[]):WorkspaceView {
   }catch{return empty;}
 }
 
-export default function App({isAdmin=false,language}:{isAdmin?:boolean;language?:AppLanguage}) {
+export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:boolean;language?:AppLanguage;autoRestoreSafe?:React.MutableRefObject<boolean>}) {
   const [localLang] = useState<AppLanguage>(loadInitialLang);
   const lang=language??localLang;
   const t = UI_TEXT[lang];
@@ -197,6 +197,10 @@ export default function App({isAdmin=false,language}:{isAdmin?:boolean;language?
   } | null>(null);
 
   const jsonImportRef = useRef<HTMLInputElement | null>(null);
+  React.useLayoutEffect(()=>{
+    if(autoRestoreSafe)autoRestoreSafe.current=!activeProjectId&&!showBrandModal&&!showApiKeyModal&&!showApiKeyGuideModal&&!projectModalTarget.open&&!defectModalTarget.open&&!annotateTarget&&!zoneModalTargetId&&!showSaveAsModal&&!lightbox&&!confirmState&&!isExportingPdf;
+    return()=>{if(autoRestoreSafe)autoRestoreSafe.current=false;};
+  },[autoRestoreSafe,activeProjectId,showBrandModal,showApiKeyModal,showApiKeyGuideModal,projectModalTarget.open,defectModalTarget.open,annotateTarget,zoneModalTargetId,showSaveAsModal,lightbox,confirmState,isExportingPdf]);
 
   useEffect(() => {
     document.documentElement.style.setProperty('--brand-color', brand.accentColor || '#1e3a8a');

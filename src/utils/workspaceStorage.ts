@@ -40,6 +40,7 @@ export async function openWorkspace(userId:string){
 function change(key:string,value:string|null){
  const connection=db;
  if(!connection)throw Error('Local workspace is not open');
+ const changed=(cache.get(key)??null)!==value;
  if(value===null)cache.delete(key);else cache.set(key,value);
  queued++;status();
  pending=pending.then(()=>new Promise<void>((resolve,reject)=>{
@@ -48,7 +49,7 @@ function change(key:string,value:string|null){
    tx.onabort=tx.onerror=()=>reject(tx.error||Error('Local storage write failed'));
    if(value===null)tx.objectStore('records').delete(key);
    else tx.objectStore('records').put({key,value});
- })).then(()=>{failures.delete(key);},()=>{failures.add(key);}).finally(()=>{queued--;status();});
+ })).then(()=>{failures.delete(key);if(changed&&syncKey(key))window.dispatchEvent(new Event('tis-workspace-sync-change'));},()=>{failures.add(key);}).finally(()=>{queued--;status();});
 }
 export const workspaceStorage={
  getItem(key:string){if(!db)throw Error('Local workspace is not open');return cache.get(key)??null;},
@@ -64,8 +65,9 @@ export async function writeWorkspaceBatch(records:Record<string,string>){
   tx.oncomplete=()=>resolve();tx.onabort=tx.onerror=()=>reject(tx.error||Error('Legacy migration failed'));
   const objectStore=tx.objectStore('records');for(const [key,value] of Object.entries(records))objectStore.put({key,value});
  });
+ const changed=Object.entries(records).some(([key,value])=>syncKey(key)&&cache.get(key)!==value);
  for(const [key,value] of Object.entries(records))cache.set(key,value);
- status();
+ status();if(changed)window.dispatchEvent(new Event('tis-workspace-sync-change'));
 }
 export async function flushWorkspace(){await pending;return failures.size===0;}
 export async function closeWorkspace(){
