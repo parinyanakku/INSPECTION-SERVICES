@@ -33,6 +33,7 @@ const EXCLUDED_MODEL_KEYWORDS = [
   'aqa',
   'robotics',
   'computer-use',
+  'image-generation',
 ];
 
 function delay(ms: number): Promise<void> {
@@ -195,7 +196,7 @@ function xhrGetJson<T>(url: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('GET', url, true);
-    xhr.timeout = 30000;
+    xhr.timeout = 5000;
 
     xhr.onload = () => {
       const bodyText = xhr.responseText || '';
@@ -282,7 +283,8 @@ export async function fetchAvailableGeminiModels(apiKey: string): Promise<string
 export function callGeminiDirect<T = GeminiGenerateContentResponse>(
   apiKey: string,
   model: string,
-  requestBody: unknown
+  requestBody: unknown,
+  timeoutMs = 20000
 ): Promise<T> {
   const cleanKey = apiKey.trim();
   if (!cleanKey) {
@@ -295,7 +297,7 @@ export function callGeminiDirect<T = GeminiGenerateContentResponse>(
     const xhr = new XMLHttpRequest();
     xhr.open('POST', url, true);
     xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.timeout = 60000;
+    xhr.timeout = Math.max(1, timeoutMs);
 
     xhr.onload = () => {
       const bodyText = xhr.responseText || '';
@@ -322,7 +324,11 @@ export function callGeminiDirect<T = GeminiGenerateContentResponse>(
     };
 
     xhr.ontimeout = () => {
-      reject(new Error('Request timed out while waiting for Google Gemini API'));
+      reject(new Error('GEMINI_TIMEOUT'));
+    };
+
+    xhr.onabort = () => {
+      reject(new Error('GEMINI_TIMEOUT'));
     };
 
     try {
@@ -507,6 +513,32 @@ function parseDefectJson(rawText: string): {
   };
 }
 
+// Reduce only the AI request image; the original marked photo stays in the report.
+function optimizeAnalysisImage(source: string): Promise<string> {
+  return new Promise(resolve => {
+    const image = new Image();
+    const timer = setTimeout(() => resolve(source), 2500);
+    const finish = (value: string) => { clearTimeout(timer); resolve(value); };
+    image.onload = () => {
+      try {
+        const ratio = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * ratio));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * ratio));
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { finish(source); return; }
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+        const compressed = canvas.toDataURL('image/jpeg', 0.86);
+        finish(compressed.length < source.length ? compressed : source);
+      } catch { finish(source); }
+    };
+    image.onerror = () => finish(source);
+    image.src = source;
+  });
+}
+
 export async function analyzeDefectWithGeminiClient(params: {
   apiKey: string;
   preferredModel: GeminiModelId;
@@ -519,7 +551,9 @@ export async function analyzeDefectWithGeminiClient(params: {
     throw new Error('MISSING_API_KEY');
   }
 
-  const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/.exec(params.imageDataUrl);
+  const deadline = Date.now() + 45000;
+  const optimizedImage = await optimizeAnalysisImage(params.imageDataUrl);
+  const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/.exec(optimizedImage);
   if (!match) {
     throw new Error('Invalid image format');
   }
@@ -542,6 +576,8 @@ ${note ? `หมายเหตุจากผู้ตรวจ: "${note}"` : '
 ส่งผลลัพธ์กลับเป็น JSON ที่มีคีย์ title, severity, cause, solution`;
 
   const { candidates } = await resolveCandidateModels(cleanKey, params.preferredModel);
+  // Respect explicitly selected model, but avoid cycling through every available model.
+  const boundedCandidates = candidates.slice(0, 2);
 
   const requestBody = {
     contents: [
@@ -576,54 +612,31 @@ ${note ? `หมายเหตุจากผู้ตรวจ: "${note}"` : '
   };
 
   let lastError = 'Unknown Gemini API error';
+  const timeoutMessage = params.lang === 'en'
+    ? 'AI took too long. Try again or choose a Flash model in API settings.'
+    : 'AI ตอบกลับช้าเกินกำหนด กรุณาลองใหม่หรือเลือกโมเดล Flash ในการตั้งค่า API';
 
-  for (let i = 0; i < candidates.length; i++) {
-    const model = candidates[i];
-
-    const attemptModel = async (): Promise<AnalyzedDefectResult | null> => {
-      const payload = await callGeminiDirect(cleanKey, model, requestBody);
-      const rawOutput =
-        payload?.candidates?.[0]?.content?.parts
-          ?.map((p) => p.text || '')
-          .join('') || '';
-      if (!rawOutput) {
-        lastError = `Empty response from ${model}`;
-        return null;
-      }
-      const parsed = parseDefectJson(rawOutput);
-      return {
-        ...parsed,
-        modelUsed: model,
-      };
-    };
-
+  for (let i = 0; i < boundedCandidates.length; i++) {
+    const model = boundedCandidates[i];
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new Error(timeoutMessage);
     try {
-      const res = await attemptModel();
-      if (res) return res;
+      const payload = await callGeminiDirect(cleanKey, model, requestBody, Math.min(20000, remaining));
+      const rawOutput = payload?.candidates?.[0]?.content?.parts
+        ?.map(p => p.text || '').join('') || '';
+      if (!rawOutput) throw new Error('Empty response from ' + model);
+      return { ...parseDefectJson(rawOutput), modelUsed: model };
     } catch (err: unknown) {
-      if (isAuthFailure(err)) {
-        throw new Error(err instanceof Error ? err.message : String(err));
+      if (isAuthFailure(err)) throw err;
+      const message = err instanceof Error ? err.message : String(err);
+      if (err instanceof GeminiHttpError && err.status === 429) {
+        throw new Error(params.lang === 'en'
+          ? 'Gemini quota or rate limit reached. Check your API quota and try again.'
+          : 'Gemini มีการจำกัดโควตาหรือจำนวนคำขอ กรุณาตรวจสอบโควตา API แล้วลองใหม่');
       }
-
-      if (is503HighDemand(err)) {
-        // Wait 1.5 seconds and retry the same model once before rotating to next model
-        await delay(1500);
-        try {
-          const retryRes = await attemptModel();
-          if (retryRes) return retryRes;
-        } catch (retryErr: unknown) {
-          if (isAuthFailure(retryErr)) {
-            throw new Error(
-              retryErr instanceof Error ? retryErr.message : String(retryErr)
-            );
-          }
-          lastError = retryErr instanceof Error ? retryErr.message : String(retryErr);
-        }
-      } else {
-        lastError = err instanceof Error ? err.message : String(err);
-      }
+      lastError = message === 'GEMINI_TIMEOUT' ? timeoutMessage : message;
+      // On overload or timeout, try only one alternative instead of retrying the same model.
     }
   }
-
   throw new Error(lastError);
 }
