@@ -525,7 +525,7 @@ function estimateDefectRowHeight(
       4 + Math.max(1, Math.ceil((solutionPrefix.length + 1 + cleanSolution.length) / 42)) * 15;
   }
 
-  const rowTextTotal = textHeight + 14;
+  const rowTextTotal = textHeight + 20;
   const rowImageTotal = 142 + 14; // landscape photo box + vertical padding/border
   return Math.max(rowImageTotal, rowTextTotal);
 }
@@ -798,7 +798,7 @@ export function buildSharedReportPages(
           <div style="font-size:11.9px; color:#475569;">${escapeHtml(rb.coverTitle)}</div>
         </td>
         <td style="vertical-align:middle; text-align:right; padding-bottom:6px;">
-          <span style="display:inline-block; padding:3px 10px 5px; text-align:center; vertical-align:middle; line-height:1.4; border-radius:4px; background:#eff6ff; border:1px solid #bfdbfe; color:${accentHex}; font-size:12.5px; font-weight:700;">
+          <span style="display:inline-block; padding:5px 12px 7px; text-align:center; vertical-align:middle; line-height:1.3; border-radius:4px; background:#eff6ff; border:1px solid #bfdbfe; color:${accentHex}; font-size:12.5px; font-weight:700;">
             ${escapeHtml(sectionTag)}
           </span>
         </td>
@@ -884,7 +884,7 @@ export function buildSharedReportPages(
         <div style="font-size:32.5px; font-weight:800; color:#0f172a; line-height:1.3; margin-bottom:10px;">
           ${escapeHtml(rb.coverTitle)}
         </div>
-        <div style="display:inline-block; padding:5px 18px 8px; text-align:center; vertical-align:middle; line-height:1.4; border-radius:6px; background:#eff6ff; border:1.5px solid ${accentHex}; color:${accentHex}; font-size:16.9px; font-weight:700; margin-bottom:20px;">
+        <div style="display:inline-block; padding:6px 18px 9px; text-align:center; vertical-align:middle; line-height:1.3; border-radius:6px; background:#eff6ff; border:1.5px solid ${accentHex}; color:${accentHex}; font-size:16.9px; font-weight:700; margin-bottom:20px;">
           ${escapeHtml(rb.propertyCondition)}
         </div>
 
@@ -894,26 +894,26 @@ export function buildSharedReportPages(
             <col style="width:66%;" />
           </colgroup>
           <tr>
-            <td style="border:1px solid #cbd5e1; padding:8px 12px; font-weight:700; color:${accentHex}; background:#eff6ff;">
+            <td style="border:1px solid #cbd5e1; padding:7px 13px 9px; vertical-align:middle; line-height:1.4; font-weight:700; color:${accentHex}; background:#eff6ff;">
               ${L.locationLabel}
             </td>
-            <td style="border:1px solid #cbd5e1; padding:8px 12px; color:#0f172a;">
+            <td style="border:1px solid #cbd5e1; padding:7px 13px 9px; vertical-align:middle; line-height:1.4; color:#0f172a;">
               ${escapeHtml(rb.locationText)}
             </td>
           </tr>
           <tr>
-            <td style="border:1px solid #cbd5e1; padding:8px 12px; font-weight:700; color:${accentHex}; background:#eff6ff;">
+            <td style="border:1px solid #cbd5e1; padding:7px 13px 9px; vertical-align:middle; line-height:1.4; font-weight:700; color:${accentHex}; background:#eff6ff;">
               ${L.clientLabel}
             </td>
-            <td style="border:1px solid #cbd5e1; padding:8px 12px; color:#0f172a; font-weight:700;">
+            <td style="border:1px solid #cbd5e1; padding:7px 13px 9px; vertical-align:middle; line-height:1.4; color:#0f172a; font-weight:700;">
               ${escapeHtml(rb.clientName)}
             </td>
           </tr>
           <tr>
-            <td style="border:1px solid #cbd5e1; padding:8px 12px; font-weight:700; color:${accentHex}; background:#eff6ff;">
+            <td style="border:1px solid #cbd5e1; padding:7px 13px 9px; vertical-align:middle; line-height:1.4; font-weight:700; color:${accentHex}; background:#eff6ff;">
               ${L.dateLabel}
             </td>
-            <td style="border:1px solid #cbd5e1; padding:8px 12px; color:#0f172a;">
+            <td style="border:1px solid #cbd5e1; padding:7px 13px 9px; vertical-align:middle; line-height:1.4; color:#0f172a;">
               ${escapeHtml(rb.inspectionDate)}
             </td>
           </tr>
@@ -950,8 +950,8 @@ export function buildSharedReportPages(
     .map(
       (item, idx) => `
         <tr style="${idx % 2 === 1 ? 'background:#f8fafc;' : ''}">
-          <td style="border:1px solid #cbd5e1; padding:11px 14px; font-weight:700; color:#0f172a; ${idx % 2 === 1 ? 'background:#f8fafc;' : ''}">${escapeHtml(item.label)}</td>
-          <td style="border:1px solid #cbd5e1; padding:11px 14px; text-align:center; font-weight:700; color:${accentHex}; ${idx % 2 === 1 ? 'background:#f8fafc;' : ''}">${escapeHtml(item.page)}</td>
+          <td style="border:1px solid #cbd5e1; padding:9px 15px 12px; vertical-align:middle; line-height:1.4; font-weight:700; color:#0f172a; ${idx % 2 === 1 ? 'background:#f8fafc;' : ''}">${escapeHtml(item.label)}</td>
+          <td style="border:1px solid #cbd5e1; padding:9px 15px 12px; vertical-align:middle; line-height:1.4; text-align:center; font-weight:700; color:${accentHex}; ${idx % 2 === 1 ? 'background:#f8fafc;' : ''}">${escapeHtml(item.page)}</td>
         </tr>
       `
     )
@@ -971,8 +971,8 @@ export function buildSharedReportPages(
         </colgroup>
         <thead>
           <tr style="background:${accentHex}; color:#ffffff;">
-            <th style="border:1px solid #cbd5e1; padding:7px 14px 10px; text-align:center; vertical-align:middle; line-height:1.4; color:#ffffff; background:${accentHex};">${L.tocColTopic}</th>
-            <th style="border:1px solid #cbd5e1; padding:7px 14px 10px; text-align:center; vertical-align:middle; line-height:1.4; color:#ffffff; background:${accentHex};">${L.tocColPage}</th>
+            <th style="border:1px solid #cbd5e1; padding:8px 14px 11px; text-align:center; vertical-align:middle; line-height:1.4; color:#ffffff; background:${accentHex};">${L.tocColTopic}</th>
+            <th style="border:1px solid #cbd5e1; padding:8px 14px 11px; text-align:center; vertical-align:middle; line-height:1.4; color:#ffffff; background:${accentHex};">${L.tocColPage}</th>
           </tr>
         </thead>
         <tbody>
@@ -992,19 +992,19 @@ export function buildSharedReportPages(
             <col style="width:25%;" />
           </colgroup>
           <tr>
-            <td style="border:1px solid #cbd5e1; padding:8px; text-align:center;">
+            <td style="border:1px solid #cbd5e1; padding:8px 10px 10px; text-align:center; vertical-align:middle; line-height:1.35;">
               <div style="color:#64748b; font-size:13.1px;">${L.statTotal}</div>
               <div style="font-size:22.5px; font-weight:800; color:#0f172a;">${total}</div>
             </td>
-            <td style="border:1px solid #cbd5e1; padding:8px; text-align:center;">
+            <td style="border:1px solid #cbd5e1; padding:8px 10px 10px; text-align:center; vertical-align:middle; line-height:1.35;">
               <div style="color:#64748b; font-size:13.1px;">${L.statUrgent}</div>
               <div style="font-size:22.5px; font-weight:800; color:#dc2626;">${urgent}</div>
             </td>
-            <td style="border:1px solid #cbd5e1; padding:8px; text-align:center;">
+            <td style="border:1px solid #cbd5e1; padding:8px 10px 10px; text-align:center; vertical-align:middle; line-height:1.35;">
               <div style="color:#64748b; font-size:13.1px;">${L.statPending}</div>
               <div style="font-size:22.5px; font-weight:800; color:#d97706;">${pending}</div>
             </td>
-            <td style="border:1px solid #cbd5e1; padding:8px; text-align:center;">
+            <td style="border:1px solid #cbd5e1; padding:8px 10px 10px; text-align:center; vertical-align:middle; line-height:1.35;">
               <div style="color:#64748b; font-size:13.1px;">${L.statFixed}</div>
               <div style="font-size:22.5px; font-weight:800; color:#059669;">${fixed}</div>
             </td>
@@ -1049,12 +1049,12 @@ export function buildSharedReportPages(
         <col style="width:46%;" />
       </colgroup>
       <tr>
-        <td style="border:1px solid #cbd5e1; padding:6px 10px;"><strong>${L.projectLabel}:</strong> ${escapeHtml(rb.coverTitle)}</td>
-        <td style="border:1px solid #cbd5e1; padding:6px 10px;"><strong>${L.clientLabel}:</strong> ${escapeHtml(rb.clientName)}</td>
+        <td style="border:1px solid #cbd5e1; padding:7px 12px 9px; vertical-align:middle; line-height:1.4;"><strong>${L.projectLabel}:</strong> ${escapeHtml(rb.coverTitle)}</td>
+        <td style="border:1px solid #cbd5e1; padding:7px 12px 9px; vertical-align:middle; line-height:1.4;"><strong>${L.clientLabel}:</strong> ${escapeHtml(rb.clientName)}</td>
       </tr>
       <tr>
-        <td style="border:1px solid #cbd5e1; padding:6px 10px;"><strong>${L.locationLabel}:</strong> ${escapeHtml(rb.locationText)}</td>
-        <td style="border:1px solid #cbd5e1; padding:6px 10px;"><strong>${L.dateLabel}:</strong> ${escapeHtml(rb.inspectionDate)}</td>
+        <td style="border:1px solid #cbd5e1; padding:7px 12px 9px; vertical-align:middle; line-height:1.4;"><strong>${L.locationLabel}:</strong> ${escapeHtml(rb.locationText)}</td>
+        <td style="border:1px solid #cbd5e1; padding:7px 12px 9px; vertical-align:middle; line-height:1.4;"><strong>${L.dateLabel}:</strong> ${escapeHtml(rb.inspectionDate)}</td>
       </tr>
     </table>
 
@@ -1073,9 +1073,7 @@ export function buildSharedReportPages(
       </tr>
     </table>
 
-    <div style="border:1px solid #e2e8f0; border-radius:6px; background:#f8fafc; padding:11px 14px; font-size:15px; line-height:1.65; color:#0f172a; white-space:pre-line; text-align:justify;">
-      ${escapeHtml(rb.introContent)}
-    </div>
+    <div style="border:1px solid #e2e8f0; border-radius:6px; background:#f8fafc; padding:14px 18px 16px; font-size:15px; line-height:1.5; color:#0f172a; white-space:pre-line; text-align:left; overflow-wrap:break-word;">${escapeHtml(rb.introContent.trim())}</div>
   `;
   if (showIntro) {
     pages.push(wrapPage('page-sec1', String(sec1Page), sec1Body));
@@ -1234,7 +1232,7 @@ export function buildSharedReportPages(
                           : `<div style="width:100%; height:${photoBoxH}px; background-color:#f8fafc; border:1px dashed #cbd5e1; border-radius:4px; display:flex; align-items:center; justify-content:center; margin:0 auto; color:#94a3b8; font-size:12.5px;">${L.noImg}</div>`
                       }
                     </td>
-                    <td style="border:1px solid #cbd5e1; padding:6px 8px; vertical-align:top; text-align:left; line-height:1.45; background:${rowBg}; height:auto; word-break:break-word;">
+                    <td style="border:1px solid #cbd5e1; padding:8px 12px 10px; vertical-align:top; text-align:left; line-height:1.45; background:${rowBg}; height:auto; word-break:break-word;">
                       <div style="font-weight:800; font-size:13.1px; color:${accentHex}; line-height:1.35; margin-bottom:2px;">
                         ${escapeHtml(zoneLabel)}
                       </div>
@@ -1314,7 +1312,7 @@ export function buildSharedReportPages(
           </colgroup>
           <thead>
             <tr>
-              ${[L.colSeq,L.colCheck1,L.colProblem,L.colCheck2,L.colFixed,L.colPartial,L.colUnfixed].map((label,index)=>`<th style="border:1px solid #cbd5e1; height:52px; padding:4px 3px 7px; text-align:center; vertical-align:middle; color:#ffffff; background:${index<4?accentHex:'#1e40af'}; font-size:${index<4?15:13}px; font-weight:700; line-height:1.15; overflow-wrap:break-word;">${escapeHtml(label)}</th>`).join('')}
+              ${[L.colSeq,L.colCheck1,L.colProblem,L.colCheck2,L.colFixed,L.colPartial,L.colUnfixed].map((label,index)=>`<th style="border:1px solid #cbd5e1; height:52px; padding:5px 4px 9px; text-align:center; vertical-align:middle; color:#ffffff; background:${index<4?accentHex:'#1e40af'}; font-size:${index<4?15:13}px; font-weight:700; line-height:1.15; overflow-wrap:break-word;">${escapeHtml(label)}</th>`).join('')}
             </tr>
           </thead>
           <tbody>
@@ -1338,10 +1336,10 @@ export function buildSharedReportPages(
           <td style="border:1px solid #cbd5e1; padding:6px 8px; text-align:center; font-weight:700; color:#0f172a; vertical-align:middle; height:auto;">
             ${idx + 1}
           </td>
-          <td style="border:1px solid #cbd5e1; padding:6px 8px; vertical-align:top; text-align:left; color:#0f172a; line-height:1.45; height:auto;">
+          <td style="border:1px solid #cbd5e1; padding:8px 12px 10px; vertical-align:top; text-align:left; color:#0f172a; line-height:1.45; height:auto;">
             ${escapeHtml(cleanItem)}
           </td>
-          <td style="border:1px solid #cbd5e1; padding:6px 8px; vertical-align:top; text-align:left; color:#1e3a8a; font-weight:600; line-height:1.45; height:auto;">
+          <td style="border:1px solid #cbd5e1; padding:8px 12px 10px; vertical-align:top; text-align:left; color:#1e3a8a; font-weight:600; line-height:1.45; height:auto;">
             ${escapeHtml(row.finding)}
           </td>
         </tr>
@@ -1369,9 +1367,9 @@ export function buildSharedReportPages(
       </colgroup>
       <thead>
         <tr style="background:${accentHex}; color:#ffffff;">
-          <th width="8%" style="border:1px solid #cbd5e1; padding:7px 8px; text-align:center; vertical-align:middle; color:#ffffff; background:${accentHex};">${L.t2ColNo}</th>
-          <th width="58%" style="border:1px solid #cbd5e1; padding:7px 8px; text-align:left; vertical-align:middle; color:#ffffff; background:${accentHex};">${L.t2ColItem}</th>
-          <th width="34%" style="border:1px solid #cbd5e1; padding:7px 8px; text-align:left; vertical-align:middle; color:#ffffff; background:${accentHex};">${L.t2ColFinding}</th>
+          <th width="8%" style="border:1px solid #cbd5e1; padding:7px 10px 10px; text-align:center; vertical-align:middle; line-height:1.35; color:#ffffff; background:${accentHex};">${L.t2ColNo}</th>
+          <th width="58%" style="border:1px solid #cbd5e1; padding:7px 12px 10px; text-align:center; vertical-align:middle; line-height:1.35; color:#ffffff; background:${accentHex};">${L.t2ColItem}</th>
+          <th width="34%" style="border:1px solid #cbd5e1; padding:7px 12px 10px; text-align:center; vertical-align:middle; line-height:1.35; color:#ffffff; background:${accentHex};">${L.t2ColFinding}</th>
         </tr>
       </thead>
       <tbody>
@@ -1379,16 +1377,14 @@ export function buildSharedReportPages(
       </tbody>
     </table>
 
-    <div style="border:1px solid #bfdbfe; border-radius:8px; background:#eff6ff; padding:12px 14px;">
-      <div style="font-size:15px; font-weight:800; color:${accentHex}; margin-bottom:6px;">
+    <div style="border:1px solid #bfdbfe; border-radius:8px; background:#eff6ff; padding:14px 18px 16px;">
+      <div style="font-size:15px; font-weight:800; color:${accentHex}; margin-bottom:8px; line-height:1.4;">
         ${L.statTotal}: ${total} ${L.itemsUnit} &nbsp;|&nbsp;
         ${L.statUrgent}: <span style="color:#dc2626;">${urgent}</span> ${L.itemsUnit} &nbsp;|&nbsp;
         ${L.statPending}: <span style="color:#d97706;">${pending}</span> ${L.itemsUnit} &nbsp;|&nbsp;
         ${L.statFixed}: <span style="color:#059669;">${fixed}</span> ${L.itemsUnit}
       </div>
-      <div style="font-size:15px; line-height:1.65; color:#0f172a; white-space:pre-line; text-align:justify;">
-        ${escapeHtml(rb.closingSummary)}
-      </div>
+      <div style="font-size:15px; line-height:1.65; color:#0f172a; white-space:pre-line; text-align:left; overflow-wrap:break-word;">${escapeHtml(rb.closingSummary.trim())}</div>
     </div>
   `;
   if (showSummary) {
@@ -1573,6 +1569,25 @@ export async function exportProjectPDF(
         windowWidth: 1123,
         width: pageWidthPx,
         height: pageHeightPx,
+        onclone: (clonedDoc, clonedPage) => {
+          // Compensate for the Thai font baseline in the raster renderer only.
+          // Move text paint, not cells, borders or the original photo geometry.
+          const walker=clonedDoc.createTreeWalker(clonedPage,NodeFilter.SHOW_TEXT);
+          const nodes: Text[]=[];
+          while(walker.nextNode()){
+            const textNode=walker.currentNode as Text;
+            if(textNode.data.trim()&&textNode.parentElement&&!/^(STYLE|SCRIPT)$/.test(textNode.parentElement.tagName)&&textNode.data.trim()!=='✓')nodes.push(textNode);
+          }
+          for(const textNode of nodes){
+            const parent=textNode.parentNode;
+            if(!parent)continue;
+            const span=clonedDoc.createElement('span');
+            span.style.position='relative';
+            span.style.top='-0.24em';
+            parent.insertBefore(span,textNode);
+            span.appendChild(textNode);
+          }
+        },
       });
 
       if (i > 0) {
@@ -1677,7 +1692,7 @@ function estimateRowHeight(texts: Array<{ text: string; colWidth: number }>): nu
     });
     if (totalLines > maxLines) maxLines = totalLines;
   });
-  return Math.min(240, Math.max(24, maxLines * 16 + 10));
+  return Math.min(300, Math.max(32, maxLines * 18 + 14));
 }
 
 export async function exportProjectExcel(
@@ -1786,7 +1801,7 @@ export async function exportProjectExcel(
         ];
 
     const headerRow = ws.getRow(6);
-    headerRow.height = 32;
+    headerRow.height = 36;
     const thinSlateBorder: Partial<ExcelJS.Borders> = {
       top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
       bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
@@ -1854,6 +1869,7 @@ export async function exportProjectExcel(
         cell.alignment = {
           vertical: 'middle',
           horizontal: centerCols ? 'center' : 'left',
+          indent: centerCols ? 0 : 1,
           wrapText: true,
         };
       });
