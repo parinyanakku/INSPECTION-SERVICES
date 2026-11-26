@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { AppLanguage } from '../types/inspection';
 
-type Release = {version:string; date:string; notes:string; build:number; storageSchema?:number};
+type Release = {version:string; date:string; notes:string; notesTh?:string; notesEn?:string; build:number; storageSchema?:number};
 type Manifest = {latest:string; releases:Release[]};
 const PIN = 'tis_preferred_release_v1';
 const VERSION = /^v1\.0\.\d+$/;
@@ -63,7 +63,7 @@ export function VersionUpdate({lang,onBackup,onPrepare}:{lang:AppLanguage;onBack
  <p className="text-sm text-slate-600">{tr('เลือกใช้เวอร์ชันเดิมต่อได้ โปรแกรมจะไม่บังคับเปลี่ยนเวอร์ชัน','You can keep using your current version. Updates are optional.')}</p>
  <div className="grid grid-cols-2 gap-3"><div className="rounded-xl bg-slate-100 p-3"><p className="text-xs">{tr('ปัจจุบัน','Current')}</p><strong>{current.toUpperCase()}</strong></div><div className="rounded-xl bg-blue-50 p-3"><p className="text-xs">{tr('ล่าสุด','Latest')}</p><strong>{manifest?.latest.toUpperCase()||'—'}</strong></div></div>
  {manifest&&target&&!newer&&<p className="text-sm font-semibold text-emerald-700">{tr('ไม่มีเวอร์ชันใหม่ให้ดาวน์โหลด','No newer compatible release is available.')}</p>}
- {target&&<div className="text-sm bg-slate-50 p-3 rounded-xl whitespace-pre-wrap"><strong>{tr('รายละเอียดเวอร์ชัน','Release notes')}</strong><p>{target.date.slice(0,10)} · {target.notes}</p></div>}
+ {target&&<div className="text-sm bg-slate-50 p-3 rounded-xl whitespace-pre-wrap"><strong>{tr('รายละเอียดเวอร์ชัน','Release notes')}</strong><p>{target.date.slice(0,10)} · {en?(target.notesEn||target.notes):(target.notesTh||(target.notes==='Prevent Excel A4 right-edge page splits with fit-to-page and safe print scale'?'แก้กรอบรายงาน Excel ขนาด A4 ถูกตัดด้านขวา โดยปรับให้พอดีกระดาษและกำหนดสเกลพิมพ์':undefined)||'ยังไม่มีรายละเอียดฉบับภาษาไทย')} </p>{!en&&!target.notesTh&&target.notes!=='Prevent Excel A4 right-edge page splits with fit-to-page and safe print scale'&&<details className="text-xs mt-2"><summary>อ่านรายละเอียดต้นฉบับภาษาอังกฤษ</summary><p>{target.notes}</p></details>}</div>}
  <p className="text-xs text-slate-600">{tr('เมื่ออัปเดต ระบบจะบันทึกงานลงเครื่องก่อนโดยอัตโนมัติ โครงการ รูปภาพ และรายงานจะอยู่ในบัญชีเดิมบนเบราว์เซอร์นี้ ไม่ต้องนำเข้าใหม่ สามารถดาวน์โหลดไฟล์สำรองเพิ่มเติมได้ตามต้องการ','Updates save the local workspace before switching. Projects, photos and reports remain in the same account on this browser. A downloadable backup is optional.')}</p>
  {error&&<p role="alert" className="text-sm text-red-700">{error}</p>}
  {backed&&<p className="text-sm text-emerald-700">{tr('สร้างไฟล์สำรองเพิ่มเติมแล้ว','Optional backup generated.')}</p>}

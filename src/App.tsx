@@ -142,8 +142,9 @@ function loadWorkspaceView(projects:ProjectFile[]):WorkspaceView {
   }catch{return empty;}
 }
 
-export default function App({isAdmin=false}:{isAdmin?:boolean}) {
-  const [lang, setLang] = useState<AppLanguage>(loadInitialLang);
+export default function App({isAdmin=false,language,onLanguageChange}:{isAdmin?:boolean;language?:AppLanguage;onLanguageChange?:(lang:AppLanguage)=>void}) {
+  const [localLang, setLang] = useState<AppLanguage>(loadInitialLang);
+  const lang=language??localLang;
   const t = UI_TEXT[lang];
 
   const [brand, setBrand] = useState<BrandConfig>(loadInitialBrand);
@@ -203,6 +204,7 @@ export default function App({isAdmin=false}:{isAdmin?:boolean}) {
 
   const handleChangeLang = (nextLang: AppLanguage) => {
     setLang(nextLang);
+    onLanguageChange?.(nextLang);
     try {
       workspaceStorage.setItem(STORAGE_KEY_LANG, nextLang);
     } catch {

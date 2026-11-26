@@ -1,3 +1,5 @@
+import type {AppLanguage} from '../types/inspection';
+import {readUiLanguage,saveUiLanguage,authMessage} from '../utils/uiLanguage';
 import React,{useEffect,useRef,useState} from 'react';
 import App from '../App';
 import { importLegacyAdminProjects } from '../utils/legacyAdminProjects';
@@ -34,6 +36,10 @@ async function request<T>(path:string,token?:string,body?:unknown):Promise<T>{
 }
 async function allowed(token:string){return (await request<boolean>('/rest/v1/rpc/inspection_has_access',token,{}))===true;}
 export default function AccountWorkspace(){
+ const [lang,setLang]=useState<AppLanguage>(readUiLanguage);
+ const tr=(th:string,en:string)=>lang==='en'?en:th;
+ const changeLang=(next:AppLanguage)=>{setLang(next);saveUiLanguage(next);};
+ useEffect(()=>{document.documentElement.lang=lang;},[lang]);
  const [session,setSession]=useState<Session|null>(null),[blocked,setBlocked]=useState(false),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[storage,setStorage]=useState(workspaceStatus);
  const [activationCode,setActivationCode]=useState('');
  const [legacyNotice,setLegacyNotice]=useState('');
@@ -94,7 +100,7 @@ export default function AccountWorkspace(){
  }
  async function logout(){
    if(busy)return;
-   if(!window.confirm('ออกจากระบบ? โปรดบันทึกหมุดและงานร่างที่ยังไม่บันทึกก่อน'))return;
+   if(!window.confirm(authMessage('ออกจากระบบ? โปรดบันทึกหมุดและงานร่างที่ยังไม่บันทึกก่อน',lang)))return;
    setBusy(true);setError('');closing.current=true;
    try{
      await inFlight.current;
@@ -132,21 +138,22 @@ export default function AccountWorkspace(){
    document.addEventListener('visibilitychange',focus);
    return()=>{disposed=true;clearInterval(timer);document.removeEventListener('visibilitychange',focus);};
  },[session?.user.id]);
- if(restoring)return <main className="min-h-screen bg-slate-100 flex items-center justify-center p-4"><section className="bg-white rounded-xl border p-6 text-center"><h1 className="font-bold text-blue-950">TEAM INSPECTION PRO ELITE</h1><p role="status" className="text-sm text-slate-600 mt-3">กำลังตรวจสอบบัญชีและเปิดแฟ้มงานเดิม…</p></section></main>;
+ if(restoring)return <main className="min-h-screen bg-slate-100 flex items-center justify-center p-4"><section className="bg-white rounded-xl border p-6 text-center"><h1 className="font-bold text-blue-950">TEAM INSPECTION PRO ELITE</h1><p role="status" className="text-sm text-slate-600 mt-3">{tr("กำลังตรวจสอบบัญชีและเปิดแฟ้มงานเดิม…","Verifying your account and opening your workspace…")}</p></section></main>;
  if(!session)return <main className="min-h-screen bg-slate-100 flex items-center justify-center p-4"><section className="bg-white border border-slate-200 rounded-2xl shadow-lg w-full max-w-md p-6 space-y-4">
- <h1 className="text-xl font-bold text-blue-950">TEAM INSPECTION PRO ELITE</h1><p className="text-sm text-slate-600">เข้าสู่ระบบเพื่อเปิดพื้นที่งานส่วนตัวบนอุปกรณ์นี้</p>
- <form onSubmit={login} className="space-y-3"><label className="block text-sm font-medium">อีเมล<input type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)} className="block w-full border rounded-lg p-2 mt-1"/></label>
- <label className="block text-sm font-medium">รหัสผ่าน<input type="password" autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)} className="block w-full border rounded-lg p-2 mt-1"/></label>
- <details className="border border-slate-200 rounded-lg p-3"><summary className="cursor-pointer text-sm font-semibold text-blue-800">มีรหัสลงทะเบียน / ต่ออายุ License</summary><label className="block text-sm font-medium mt-3">รหัสลงทะเบียน<input autoComplete="off" spellCheck={false} value={activationCode} onChange={e=>setActivationCode(e.target.value)} placeholder="TIP-..." className="block w-full border rounded-lg p-2 mt-1"/></label><p className="text-xs text-slate-500 mt-2">กรอกเฉพาะครั้งแรกที่เปิดใช้งานหรือต่ออายุ รหัสใช้ได้ครั้งเดียวและผูกกับบัญชีของคุณ</p></details>
- <button disabled={busy} className="w-full bg-blue-800 text-white font-bold p-3 rounded-lg disabled:opacity-50">{busy?'กำลังตรวจสอบ…':'เข้าสู่ระบบ'}</button></form>
- <a href={resetUrl} className="block text-center text-sm text-blue-700 underline">ลืมรหัสผ่าน?</a>
- {error&&<p className="text-sm text-red-700" role="alert">{error}</p>}<p className="text-xs text-slate-500">ไฟล์งานเก็บในเบราว์เซอร์นี้เท่านั้น ไม่ซิงก์ระหว่างเครื่อง โปรดสำรอง JSON เป็นประจำ รูปที่กดวิเคราะห์จะส่งไปยัง Google Gemini เพื่อวิเคราะห์</p></section></main>;
- return <><div className="bg-slate-900 text-white px-4 py-2 flex flex-wrap items-center gap-3 text-xs"><span>{session.user.email} · พื้นที่งานส่วนตัว {isAdmin&&!blocked&&<strong className="ml-2 text-amber-300">Admin</strong>}</span>{isAdmin&&!blocked&&<button type="button" disabled={busy} onClick={()=>setAdminOpen(true)} className="bg-blue-600 hover:bg-blue-500 rounded-lg px-3 py-1.5 font-semibold">จัดการบัญชีลูกค้า / License</button>}<span className="ml-auto">{storage.failed?'บันทึกไม่สำเร็จ — สำรอง JSON':storage.pending?'กำลังบันทึก…':'ข้อมูลอยู่ในเครื่องนี้'}</span><button type="button" disabled={busy||blocked} onClick={()=>setChangePasswordOpen(true)} className="border rounded px-2 py-1">เปลี่ยนรหัสผ่าน</button><button disabled={busy} onClick={logout} className="border rounded px-2 py-1">ออกจากระบบ</button></div>
- {error&&<p role="alert" className="bg-red-100 text-red-900 p-3 text-sm">{error}</p>}
- {isAdmin&&!blocked&&legacyNotice&&<div role="status" className="bg-blue-50 text-blue-900 p-3 text-sm flex justify-between gap-3">{legacyNotice}<button type="button" onClick={()=>setLegacyNotice('')}>ปิด</button></div>}
- {storage.failed&&<p role="alert" className="bg-red-100 text-red-900 p-3 text-sm">บันทึก IndexedDB ไม่สำเร็จ กรุณาบันทึกเป็นไฟล์ JSON ก่อนปิดหน้า</p>}
- {blocked?<div className="p-6">ระงับการเปิดพื้นที่งานจนกว่าจะเข้าสู่ระบบใหม่</div>:<App key={session.user.id} isAdmin={isAdmin}/>}
- {changePasswordOpen&&!blocked&&<PasswordChangeDialog onChangePassword={changePassword} onClose={()=>setChangePasswordOpen(false)}/>}
+ <div className="flex justify-end gap-1" role="group" aria-label={tr('ภาษา','Language')}>{(['th','en'] as const).map(code=><button key={code} type="button" aria-pressed={lang===code} onClick={()=>changeLang(code)} className={'rounded-lg border px-3 py-1.5 text-xs font-bold '+(lang===code?'bg-blue-800 text-white border-blue-800':'bg-white text-slate-600 border-slate-300')}>{code==='th'?'ไทย · TH':'EN · English'}</button>)}</div>
+ <h1 className="text-xl font-bold text-blue-950">TEAM INSPECTION PRO ELITE</h1><p className="text-sm text-slate-600">{tr("เข้าสู่ระบบเพื่อเปิดพื้นที่งานส่วนตัวบนอุปกรณ์นี้","Sign in to open your private workspace on this device.")}</p>
+ <form onSubmit={login} className="space-y-3"><label className="block text-sm font-medium">{tr("อีเมล","Email")}<input type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)} className="block w-full border rounded-lg p-2 mt-1"/></label>
+ <label className="block text-sm font-medium">{tr("รหัสผ่าน","Password")}<input type="password" autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)} className="block w-full border rounded-lg p-2 mt-1"/></label>
+ <details className="border border-slate-200 rounded-lg p-3"><summary className="cursor-pointer text-sm font-semibold text-blue-800">{tr("มีรหัสลงทะเบียน / ต่ออายุ License","Have an activation / renewal code?")}</summary><label className="block text-sm font-medium mt-3">{tr("รหัสลงทะเบียน","License code")}<input autoComplete="off" spellCheck={false} value={activationCode} onChange={e=>setActivationCode(e.target.value)} placeholder="TIP-..." className="block w-full border rounded-lg p-2 mt-1"/></label><p className="text-xs text-slate-500 mt-2">{tr("กรอกเฉพาะครั้งแรกที่เปิดใช้งานหรือต่ออายุ รหัสใช้ได้ครั้งเดียวและผูกกับบัญชีของคุณ","Enter a code only when activating or renewing. Each code is single-use and linked to your account.")}</p></details>
+ <button disabled={busy} className="w-full bg-blue-800 text-white font-bold p-3 rounded-lg disabled:opacity-50">{busy?tr('กำลังตรวจสอบ…','Verifying…'):tr('เข้าสู่ระบบ','Sign in')}</button></form>
+ <a href={resetUrl} className="block text-center text-sm text-blue-700 underline">{tr("ลืมรหัสผ่าน?","Forgot password?")}</a>
+ {error&&<p className="text-sm text-red-700" role="alert">{authMessage(error,lang)}</p>}<p className="text-xs text-slate-500">{tr("ไฟล์งานเก็บในเบราว์เซอร์นี้เท่านั้น ไม่ซิงก์ระหว่างเครื่อง โปรดสำรอง JSON เป็นประจำ รูปที่กดวิเคราะห์จะส่งไปยัง Google Gemini เพื่อวิเคราะห์","Work files stay in this browser and do not sync across devices. Export JSON backups regularly. Photos selected for analysis are sent to Google Gemini.")}</p></section></main>;
+ return <><div className="bg-slate-900 text-white px-4 py-2 flex flex-wrap items-center gap-3 text-xs"><span>{session.user.email} · {tr('พื้นที่งานส่วนตัว','Private workspace')} {isAdmin&&!blocked&&<strong className="ml-2 text-amber-300">Admin</strong>}</span>{isAdmin&&!blocked&&<button type="button" disabled={busy} onClick={()=>setAdminOpen(true)} className="bg-blue-600 hover:bg-blue-500 rounded-lg px-3 py-1.5 font-semibold">{tr("จัดการบัญชีลูกค้า / License","Manage customers / licenses")}</button>}<span className="ml-auto">{storage.failed?tr('บันทึกไม่สำเร็จ — สำรอง JSON','Save failed — export JSON'):storage.pending?tr('กำลังบันทึก…','Saving…'):tr('ข้อมูลอยู่ในเครื่องนี้','Data stored on this device')}</span><button type="button" disabled={busy||blocked} onClick={()=>setChangePasswordOpen(true)} className="border rounded px-2 py-1">{tr("เปลี่ยนรหัสผ่าน","Change password")}</button><button disabled={busy} onClick={logout} className="border rounded px-2 py-1">{tr("ออกจากระบบ","Sign out")}</button></div>
+ {error&&<p role="alert" className="bg-red-100 text-red-900 p-3 text-sm">{authMessage(error,lang)}</p>}
+ {isAdmin&&!blocked&&legacyNotice&&<div role="status" className="bg-blue-50 text-blue-900 p-3 text-sm flex justify-between gap-3">{lang==='en'?(legacyNotice.match(/\d+/)?'Imported '+legacyNotice.match(/\d+/)?.[0]+' legacy projects into your admin workspace.':'Legacy import could not be completed. Original data is preserved.'):legacyNotice}<button type="button" onClick={()=>setLegacyNotice('')}>{tr("ปิด","Close")}</button></div>}
+ {storage.failed&&<p role="alert" className="bg-red-100 text-red-900 p-3 text-sm">{tr("บันทึก IndexedDB ไม่สำเร็จ กรุณาบันทึกเป็นไฟล์ JSON ก่อนปิดหน้า","Local storage failed. Export a JSON backup before closing.")}</p>}
+ {blocked?<div className="p-6">{tr("ระงับการเปิดพื้นที่งานจนกว่าจะเข้าสู่ระบบใหม่","Workspace access is suspended until you sign in again.")}</div>:<App key={session.user.id} isAdmin={isAdmin} language={lang} onLanguageChange={changeLang}/>}
+ {changePasswordOpen&&!blocked&&<PasswordChangeDialog lang={lang} onChangePassword={changePassword} onClose={()=>setChangePasswordOpen(false)}/>}
  {adminOpen&&isAdmin&&!blocked&&<AdminLicensePanel key={session.user.id} rpc={(name,body={})=>request('/rest/v1/rpc/'+name,session.access_token,body)} createCustomer={async body=>{
    const r=await fetch(API+'/functions/v1/inspection-create-customer',{method:'POST',headers:{apikey:PUBLIC_KEY,Authorization:'Bearer '+session.access_token,'Content-Type':'application/json'},body:JSON.stringify(body),cache:'no-store',signal:AbortSignal.timeout(35000)});
    if(!r.ok)throw Error(r.status===409?'อีเมลนี้มีบัญชีอยู่แล้วหรือข้อมูลไม่ถูกต้อง':r.status===401||r.status===403?'ไม่มีสิทธิ์สร้างบัญชี กรุณาเข้าสู่ระบบใหม่':r.status===400?'ตรวจสอบชื่อ อีเมล และรหัสผ่าน':'สร้างบัญชีไม่สำเร็จ กรุณารีเฟรชรายชื่อก่อนลองใหม่');

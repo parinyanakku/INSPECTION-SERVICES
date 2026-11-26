@@ -10,10 +10,13 @@ const index=path.join(archive,'release-index.json');
 fs.mkdirSync(versions,{recursive:true});
 const releases=fs.existsSync(index)?JSON.parse(fs.readFileSync(index,'utf8')).releases:[];
 const dest=path.join(versions,version);
+const commitBody=execFileSync('git',['log','-1','--format=%b'],{encoding:'utf8'});
+const notesTh=commitBody.match(/^Notes-TH:\s*(.+)$/m)?.[1]?.trim();
 if(!fs.existsSync(dest)){
  fs.cpSync('dist',dest,{recursive:true});
- releases.push({version,build,storageSchema:2,date:new Date().toISOString(),notes:execFileSync('git',['log','-1','--format=%s'],{encoding:'utf8'}).trim(),commit:process.env.GITHUB_SHA});
+ releases.push({version,build,storageSchema:2,date:new Date().toISOString(),notes:execFileSync('git',['log','-1','--format=%s'],{encoding:'utf8'}).trim(),commit:process.env.GITHUB_SHA,...(notesTh?{notesTh}: {})});
 }
+for(const release of releases){if(release.version==='v1.0.37'&&!release.notesTh)release.notesTh='แก้กรอบรายงาน Excel ขนาด A4 ถูกตัดด้านขวา โดยปรับให้พอดีกระดาษและกำหนดสเกลพิมพ์';}
 releases.sort((a,b)=>b.build-a.build);
 if(!releases.length)throw Error('No releases');
 const compatible=releases.filter(r=>r.storageSchema===2);
