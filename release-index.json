@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.28",
+  "latest": "v1.0.29",
   "releases": [
+    {
+      "version": "v1.0.29",
+      "build": 29,
+      "storageSchema": 2,
+      "date": "2026-11-26T08:02:00.669Z",
+      "notes": "Add selectable report cover photo source with independent custom upload",
+      "commit": "f46e449c2797512ff28f8fad879d8b482993d3c6"
+    },
     {
       "version": "v1.0.28",
       "build": 28,
