@@ -15,6 +15,7 @@ import { translateDefectStatus, translateSeverity } from '../i18n/translations';
 import {
   createDefaultCustomExportSettings,
   loadReportBookData,
+  resolveCoverImage,
   sanitizeReportImageUrl,
 } from './reportBook';
 
@@ -574,7 +575,7 @@ export function buildSharedReportPages(
     : '#1e3a8a';
 
   const logoImgSrc = brand.customLogoDataUrl || assets?.logoPngDataUrl || '';
-  const coverGraphicSrc = sanitizeReportImageUrl(rb.frontHouseImg);
+  const coverGraphicSrc = resolveCoverImage(rb);
 
   const L = isEn
     ? {

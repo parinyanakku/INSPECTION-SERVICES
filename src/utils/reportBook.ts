@@ -227,6 +227,8 @@ export function createDefaultReportBookData(
     inspectionDate: proj.inspectionDate || '',
     locationMapImg: '',
     frontHouseImg: '',
+    coverImageMode: 'front-house',
+    coverCustomImg: '',
     introContent: createDefaultIntroText(proj, locationText, lang),
     inspectionSteps: steps,
     extraZonePlanImgs: [],
@@ -324,6 +326,8 @@ export function loadReportBookData(
       inspectionDate: parsed.inspectionDate ?? defaults.inspectionDate,
       locationMapImg: sanitizedLocationMapImg,
       frontHouseImg: sanitizedFrontHouseImg,
+      coverImageMode: parsed.coverImageMode === 'custom' || parsed.coverImageMode === 'none' ? parsed.coverImageMode : 'front-house',
+      coverCustomImg: sanitizeReportImageUrl(parsed.coverCustomImg),
       introContent: parsed.introContent ?? defaults.introContent,
       inspectionSteps: steps,
       extraZonePlanImgs: sanitizedExtraZonePlanImgs,
@@ -352,6 +356,11 @@ export function loadReportBookData(
   } catch {
     return defaults;
   }
+}
+
+export function resolveCoverImage(data: ReportBookData): string {
+  if(data.coverImageMode === 'none')return '';
+  return sanitizeReportImageUrl(data.coverImageMode === 'custom' ? data.coverCustomImg : data.frontHouseImg);
 }
 
 export function saveReportBookData(projectId: string, data: ReportBookData): void {

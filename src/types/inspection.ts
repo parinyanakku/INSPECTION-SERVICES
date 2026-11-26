@@ -157,6 +157,8 @@ export interface ReportBookData {
   inspectionDate: string;
   locationMapImg: string | null;
   frontHouseImg: string | null;
+  coverImageMode?: 'front-house' | 'custom' | 'none';
+  coverCustomImg?: string | null;
   introContent: string;
   inspectionSteps: string[];
   extraZonePlanImgs: string[];

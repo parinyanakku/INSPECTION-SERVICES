@@ -34,6 +34,7 @@ import {
   createDefaultReportBookData,
   isValidReportImageDataUrl,
   loadReportBookData,
+  resolveCoverImage,
   PROPERTY_CONDITION_OPTIONS,
   sanitizeReportImageUrl,
   saveReportBookData,
@@ -95,6 +96,8 @@ function sanitizeLoadedReportBook(data: ReportBookData): ReportBookData {
     ...data,
     locationMapImg: sanitizeReportImageUrl(data.locationMapImg),
     frontHouseImg: sanitizeReportImageUrl(data.frontHouseImg),
+    coverImageMode: data.coverImageMode === 'custom' || data.coverImageMode === 'none' ? data.coverImageMode : 'front-house',
+    coverCustomImg: sanitizeReportImageUrl(data.coverCustomImg),
     extraZonePlanImgs: (data.extraZonePlanImgs || [])
       .map((img) => sanitizeReportImageUrl(img))
       .filter((img) => img.length > 0),
@@ -126,7 +129,7 @@ export const ExportTab: React.FC<ExportTabProps> = ({
   });
   const [zonePreviewMap, setZonePreviewMap] = useState<Record<string, string>>({});
   const [dragTarget, setDragTarget] = useState<
-    'locationMapImg' | 'frontHouseImg' | 'extraZone' | null
+    'locationMapImg' | 'frontHouseImg' | 'coverCustomImg' | 'extraZone' | null
   >(null);
 
   const customConditionInputRef = useRef<HTMLInputElement | null>(null);
@@ -199,7 +202,7 @@ export const ExportTab: React.FC<ExportTabProps> = ({
 
   const processReportPhotoFile = async (
     file: File | undefined,
-    target: 'locationMapImg' | 'frontHouseImg' | 'extraZone'
+    target: 'locationMapImg' | 'frontHouseImg' | 'coverCustomImg' | 'extraZone'
   ) => {
     if (!file) return;
     try {
@@ -207,7 +210,9 @@ export const ExportTab: React.FC<ExportTabProps> = ({
       if (!isValidReportImageDataUrl(dataUrl)) {
         throw new Error('Invalid image output');
       }
-      if (target === 'extraZone') {
+      if (target === 'coverCustomImg') {
+        updateBook((prev) => ({ ...prev, coverCustomImg: dataUrl }));
+      } else if (target === 'extraZone') {
         updateBook((prev) => ({
           ...prev,
           extraZonePlanImgs: [...prev.extraZonePlanImgs, dataUrl],
@@ -226,7 +231,7 @@ export const ExportTab: React.FC<ExportTabProps> = ({
 
   const handlePhotoUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    target: 'locationMapImg' | 'frontHouseImg' | 'extraZone'
+    target: 'locationMapImg' | 'frontHouseImg' | 'coverCustomImg' | 'extraZone'
   ) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -235,7 +240,7 @@ export const ExportTab: React.FC<ExportTabProps> = ({
 
   const handleDropPhoto = async (
     e: React.DragEvent<HTMLElement>,
-    target: 'locationMapImg' | 'frontHouseImg' | 'extraZone'
+    target: 'locationMapImg' | 'frontHouseImg' | 'coverCustomImg' | 'extraZone'
   ) => {
     e.preventDefault();
     e.stopPropagation();
@@ -267,6 +272,8 @@ export const ExportTab: React.FC<ExportTabProps> = ({
   const withAfter = project.defects.filter((d) => d.afterImg).length;
 
   const conditionPresets = PROPERTY_CONDITION_OPTIONS[lang];
+  const coverMode = reportBook.coverImageMode || 'front-house';
+  const coverPreview = resolveCoverImage(reportBook);
   const customSettings: ReportCustomExportSettings = {
     ...createDefaultCustomExportSettings(),
     ...(reportBook.customExport || {}),
@@ -553,6 +560,31 @@ export const ExportTab: React.FC<ExportTabProps> = ({
                   </div>
                 </div>
               </div>
+
+              <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                <label htmlFor="report-cover-image-mode" className="block text-sm font-bold text-slate-800">{lang==='en'?'Cover image':'รูปภาพหน้าปก'}</label>
+                <select id="report-cover-image-mode" value={coverMode} onChange={ev=>{
+                  const mode=ev.target.value;
+                  if(mode==='front-house'||mode==='custom'||mode==='none')updateBook(prev=>({...prev,coverImageMode:mode}));
+                }} className="w-full sm:max-w-md px-3 py-2.5 text-sm rounded-xl border border-slate-300 bg-white">
+                  <option value="front-house">{lang==='en'?'Use front house photo (Figure 2)':'ใช้ภาพด้านหน้าบ้าน (รูปที่ 2)'}</option>
+                  <option value="custom">{lang==='en'?'Upload a custom cover photo':'อัปโหลดรูปหน้าปกเอง'}</option>
+                  <option value="none">{lang==='en'?'No cover image':'ไม่ใช้รูปหน้าปก'}</option>
+                </select>
+                <p className="text-xs text-slate-600">{coverMode==='front-house'?(lang==='en'?'Automatically uses the photo from Introduction & Site Photos.':'ดึงภาพจากหัวข้อ 2. บทนำ & รูปหน้างาน โดยอัตโนมัติ'):coverMode==='custom'?(lang==='en'?'This photo is separate from Figure 2.':'รูปนี้ใช้เฉพาะหน้าปก ไม่เปลี่ยนภาพด้านหน้าบ้านในรูปที่ 2'):(lang==='en'?'The cover is exported without a photo. Figure 2 is unchanged.':'หน้าปกจะไม่มีรูปภาพ โดยรูปที่ 2 ยังคงเดิม')}</p>
+                {coverMode!=='none'&&(
+                  <div className="rounded-lg border border-slate-200 bg-white p-3">
+                    {coverPreview?<img src={coverPreview} alt={lang==='en'?'Cover photo preview':'ตัวอย่างภาพหน้าปก'} className="mx-auto max-h-56 max-w-full object-contain rounded"/>:<div className="flex min-h-24 items-center justify-center text-xs text-slate-500">{lang==='en'?'No photo selected yet':'ยังไม่มีรูปภาพหน้าปก'}</div>}
+                    {coverMode==='custom'&&<div className="flex flex-wrap items-center gap-2 mt-3">
+                      <label className="inline-flex items-center gap-2 cursor-pointer border border-slate-300 rounded-lg px-3 py-2 bg-white text-xs font-semibold"><Upload className="w-4 h-4"/>{lang==='en'?'Upload / replace photo':'อัปโหลด / เปลี่ยนรูป'}
+                        <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={ev=>void handlePhotoUpload(ev,'coverCustomImg')}/>
+                      </label>
+                      {reportBook.coverCustomImg&&<button type="button" onClick={()=>updateBook(prev=>({...prev,coverCustomImg:''}))} className="inline-flex items-center gap-1 text-xs text-rose-700 rounded-lg px-3 py-2 bg-rose-50"><Trash2 className="w-4 h-4"/>{lang==='en'?'Remove custom photo':'ลบรูปที่อัปโหลดเอง'}</button>}
+                    </div>}
+                    {coverMode==='front-house'&&<button type="button" onClick={()=>setActiveSection('intro')} className="mt-3 text-xs font-semibold text-blue-700 underline">{lang==='en'?'Go to Figure 2':'ไปยังรูปที่ 2 เพื่อเพิ่มหรือเปลี่ยนภาพหน้าบ้าน'}</button>}
+                  </div>
+                )}
+              </section>
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5">
