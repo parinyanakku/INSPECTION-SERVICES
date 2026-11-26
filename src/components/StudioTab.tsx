@@ -3,6 +3,7 @@ import {
   Eye,
   EyeOff,
   MapPin,
+  Pencil,
   Plus,
   Settings2,
   Sparkles,
@@ -77,6 +78,8 @@ export const StudioTab: React.FC<StudioTabProps> = ({
     ? project.defects.filter((d) => d.floorId === activeFloor.id)
     : [];
 
+  const [renameFloor, setRenameFloor] = useState<{id:string;name:string}|null>(null);
+  useEffect(()=>{setRenameFloor(null);},[project.id,activeFloorId]);
   const [isZoneSetupMode, setIsZoneSetupMode] = useState(false);
   const [editingFloorId, setEditingFloorId] = useState<string | null>(null);
   const isEditingFloor = !!activeFloor && editingFloorId === activeFloor.id && !activeFloor.imageUrl;
@@ -283,8 +286,25 @@ export const StudioTab: React.FC<StudioTabProps> = ({
     }
   };
 
+  const handleRenameFloor = (event:React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if(!renameFloor||renameFloor.id!==activeFloor?.id)return;
+    const name=renameFloor.name.trim();
+    if(!name){onNotify(lang==='en'?'Enter a floor name':'กรุณากรอกชื่อชั้น','warning');return;}
+    if(project.floors.some(f=>f.id!==renameFloor.id&&f.name.trim().toLowerCase()===name.toLowerCase())){
+      onNotify(lang==='en'?'This floor name already exists':'ชื่อชั้นนี้มีอยู่แล้ว','warning');return;
+    }
+    const id=renameFloor.id;
+    if(activeFloor.name!==name){
+      onUpdateProject(prev=>({...prev,floors:prev.floors.map(f=>f.id===id?{...f,name}:f)}));
+      onNotify(lang==='en'?'Floor name updated':'บันทึกชื่อชั้นเรียบร้อยแล้ว','success');
+    }
+    setRenameFloor(null);
+  };
+
   const handleAddFloor = () => {
-    const nextNum = project.floors.length + 1;
+    let nextNum = project.floors.length + 1;
+    while(project.floors.some(f=>f.name.trim().toLowerCase()===`floor ${nextNum}`||f.name.trim()===`ชั้น ${nextNum}`))nextNum++;
     const newId = `fl_${Date.now()}`;
     const floorLabel = lang === 'en' ? `Floor ${nextNum}` : `ชั้น ${nextNum}`;
     onUpdateProject((prev) => ({
@@ -534,7 +554,8 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                     setIsZoneSetupMode(false);
                     setSelectedZoneId(null);
                   }}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-colors whitespace-nowrap cursor-pointer ${
+                  title={f.name}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-colors max-w-full break-words cursor-pointer ${
                     isActive
                       ? 'brand-bg text-white'
                       : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
@@ -552,6 +573,14 @@ export const StudioTab: React.FC<StudioTabProps> = ({
               <Plus className="w-3.5 h-3.5" />
               {t.addFloorBtn}
             </button>
+            {activeFloor && (
+              <button type="button"
+                onClick={()=>setRenameFloor({id:activeFloor.id,name:activeFloor.name})}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 whitespace-nowrap cursor-pointer flex items-center gap-1">
+                <Pencil className="w-3.5 h-3.5"/>
+                {lang==='en'?'Rename floor':'เปลี่ยนชื่อชั้น'}
+              </button>
+            )}
             {project.floors.length > 1 && activeFloor && (
               <button
                 type="button"
@@ -565,6 +594,20 @@ export const StudioTab: React.FC<StudioTabProps> = ({
             )}
           </div>
         </div>
+
+        {renameFloor&&renameFloor.id===activeFloor?.id&&(
+          <form onSubmit={handleRenameFloor} className="mb-3 p-3 rounded-xl border border-blue-200 bg-blue-50 space-y-2" onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setRenameFloor(null);}}}>
+            <label htmlFor="studio-floor-name" className="block text-xs font-semibold text-slate-700">{lang==='en'?'Floor name':'ชื่อชั้น'}</label>
+            <input id="studio-floor-name" type="text" autoFocus maxLength={80} required value={renameFloor.name}
+              onChange={e=>{const name=e.target.value;setRenameFloor(prev=>prev?{...prev,name}:null);}}
+              placeholder={lang==='en'?'e.g. Ground floor, Mezzanine, Roof':'เช่น ชั้น 1, ชั้นลอย, ดาดฟ้า'}
+              className="w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-blue-500"/>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button type="button" onClick={()=>setRenameFloor(null)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm">{lang==='en'?'Cancel':'ยกเลิก'}</button>
+              <button type="submit" disabled={!renameFloor.name.trim()} className="rounded-lg brand-bg text-white px-4 py-2 text-sm font-semibold disabled:opacity-50">{lang==='en'?'Save name':'บันทึกชื่อ'}</button>
+            </div>
+          </form>
+        )}
 
         {/* Floor Controls */}
         <div className="flex flex-wrap items-center gap-2 mb-3 pb-3 border-b border-slate-100">
