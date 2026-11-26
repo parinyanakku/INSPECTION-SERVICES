@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
 import { chromium } from 'playwright';
 const browser=await chromium.launch({headless:true});
 const origin='http://127.0.0.1:4173';
@@ -61,6 +62,23 @@ try {
  await page.getByRole('button',{name:'เข้าสู่ระบบ',exact:true}).click();
  await page.getByRole('button',{name:'ออกจากระบบ',exact:true}).waitFor();
  await page.getByText('a@example.test · พื้นที่งานส่วนตัว',{exact:true}).waitFor();
+ // Import a synthetic project, then export a real backup through the app's UI.
+ const fixture={format:'TIS_HOME_INSPECTION_BACKUP_V10',projects:[{id:'qa-synthetic',name:'QA synthetic inspection',houseNo:'TEST',clientName:'Test customer',address:'Test address',inspectionDate:'2026-01-01',inspectionRound:'1',projectStatus:'ตรวจเสร็จสิ้น',floors:[{id:'qa-floor',name:'ชั้น 1',imageUrl:null,svgPreset:0,zones:[]}],defects:[]}]};
+ const chooserPromise=page.waitForEvent('filechooser');
+ await page.getByRole('button',{name:'นำเข้าข้อมูล (JSON)',exact:true}).click();
+ const chooser=await chooserPromise;
+ await chooser.setFiles({name:'qa-synthetic.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(fixture))});
+ await page.getByRole('button',{name:'นำเข้าข้อมูลทั้งหมด',exact:true}).click();
+ await page.getByText('QA synthetic inspection',{exact:true}).waitFor();
+ await page.evaluate(()=>Object.defineProperty(window,'showSaveFilePicker',{value:undefined,configurable:true}));
+ const downloadPromise=page.waitForEvent('download');
+ await page.getByRole('button',{name:'สำรองข้อมูล (JSON)',exact:true}).click();
+ const download=await downloadPromise;
+ const saved=JSON.parse(await fs.readFile(await download.path(),'utf8'));
+ assert.equal(saved.projects[0].name,'QA synthetic inspection');
+ assert.equal(saved.projects[0].id,'qa-synthetic');
+ console.log('PASS: import and download synthetic project backup');
+
  page.once('dialog',d=>d.accept());
  await page.getByRole('button',{name:'ออกจากระบบ',exact:true}).click();
  await page.getByRole('button',{name:'เข้าสู่ระบบ',exact:true}).waitFor({timeout:30000});
