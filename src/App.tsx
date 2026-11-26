@@ -870,8 +870,8 @@ export default function App({isAdmin=false}:{isAdmin?:boolean}) {
     await exportProjectWord(activeProject, brand, lang, reportBook);
     notify(
       lang === 'en'
-        ? 'Downloaded Word report (.doc)'
-        : 'ดาวน์โหลดรายงาน Word (.doc) เรียบร้อยแล้ว',
+        ? 'Downloaded Word report (.docx)'
+        : 'ดาวน์โหลดรายงาน Word (.docx) เรียบร้อยแล้ว',
       'success'
     );
   };

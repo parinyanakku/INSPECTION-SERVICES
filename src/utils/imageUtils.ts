@@ -1,3 +1,4 @@
+import { downloadNativeWordReport } from './wordReport';
 import ExcelJS from 'exceljs';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -1642,42 +1643,8 @@ export async function exportProjectWord(
   const rb = reportBookInput || loadReportBookData(proj, lang);
   const assets = await prepareSharedReportAssets(proj, brand);
   const pages = buildSharedReportPages(proj, brand, lang, assets, rb);
-  const sections: BuiltReportPage[][]=[];
-  for(const page of pages){const last=sections[sections.length-1];if(!last||last[0].orientation!==page.orientation)sections.push([page]);else last.push(page);}
-  const bodyHtml=sections.map((group,index)=>{
-    const name=group[0].orientation==='landscape'?'DefectLandscape':'ReportPortrait';
-    const content=group.map((page,n)=>(n?'<br clear="all" style="page-break-before:always;" />':'')+page.html).join('');
-    const boundary=index<sections.length-1?'<br clear="all" style="mso-special-character:line-break;mso-break-type:section-break;" />':'';
-    return '<div class="'+name+'">'+content+boundary+'</div>';
-  }).join('');
-
-  const html = `
-    <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-    <head>
-      <meta charset='utf-8'>
-      <title>${escapeHtml(rb.coverTitle || proj.name)}</title>
-      <style>
-        @page ReportPortrait { size:595.3pt 841.9pt; margin:0; }
-        @page DefectLandscape { size:841.9pt 595.3pt; mso-page-orientation:landscape; margin:0; }
-        div.ReportPortrait { page:ReportPortrait; }
-        div.DefectLandscape { page:DefectLandscape; }
-        body { font-family: 'TH Sarabun New', Tahoma, sans-serif; color: #0f172a; background: #ffffff; margin: 0; padding: 0; }
-        table { border-collapse: collapse; }
-        tr { page-break-inside: avoid; }
-      </style>
-    </head>
-    <body>${bodyHtml}</body></html>`;
-
-  const blob = new Blob(['\ufeff', html], { type: 'application/msword;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
   const safeSlug = (proj.houseNo || 'Report').replace(/[^a-zA-Z0-9ก-๙_-]/g, '_');
-  a.download = `Inspection_Report_${safeSlug}.doc`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  await downloadNativeWordReport(pages, `Inspection_Report_${safeSlug}.docx`);
 }
 
 function estimateRowHeight(texts: Array<{ text: string; colWidth: number }>): number {
