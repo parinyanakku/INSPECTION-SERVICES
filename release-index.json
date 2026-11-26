@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.45",
+  "latest": "v1.0.46",
   "releases": [
+    {
+      "version": "v1.0.46",
+      "build": 46,
+      "storageSchema": 2,
+      "date": "2026-11-26T09:48:26.132Z",
+      "notes": "Remove duplicate language selector from main workspace header",
+      "commit": "2dc853a61b8e6e8f071e973771e860b684f06854",
+      "notesTh": "ตัดปุ่มสลับภาษา TH/EN ที่ซ้ำในหน้าหลัก ให้เลือกภาษาจากหน้าเข้าสู่ระบบและจดจำภาษาที่เลือกไว้"
+    },
     {
       "version": "v1.0.45",
       "build": 45,
