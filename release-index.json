@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.20",
+  "latest": "v1.0.21",
   "releases": [
+    {
+      "version": "v1.0.21",
+      "build": 21,
+      "storageSchema": 2,
+      "date": "2026-11-26T07:27:53.963Z",
+      "notes": "Fix project search and restore legacy work only to owner admin",
+      "commit": "fa0c054c38117bbfe541ad6610eb75f5d9c1dea7"
+    },
     {
       "version": "v1.0.20",
       "build": 20,
