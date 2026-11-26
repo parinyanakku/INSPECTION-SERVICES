@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.26",
+  "latest": "v1.0.27",
   "releases": [
+    {
+      "version": "v1.0.27",
+      "build": 27,
+      "storageSchema": 2,
+      "date": "2026-11-26T07:50:10.776Z",
+      "notes": "Lock report condition presets and enable blank custom entry only when selected",
+      "commit": "ad755efd8a528ec349fb6d0079040200af14f38e"
+    },
     {
       "version": "v1.0.26",
       "build": 26,
