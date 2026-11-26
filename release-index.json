@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.46",
+  "latest": "v1.0.47",
   "releases": [
+    {
+      "version": "v1.0.47",
+      "build": 47,
+      "storageSchema": 2,
+      "date": "2026-11-26T09:54:31.974Z",
+      "notes": "Unify fixed A4 report layout and fonts on mobile and desktop",
+      "commit": "0fb17535c95157eefc4c0c5fec89ccfc0a5053b1",
+      "notesTh": "ล็อกหน้ากระดาษและฟอนต์รายงานบนมือถือ ป้องกัน Safari ขยายข้อความอัตโนมัติ ลดภาระการสร้าง PDF ทีละหน้า และใช้ข้อมูลรายงานล่าสุดร่วมกันทั้ง PDF Word Excel"
+    },
     {
       "version": "v1.0.46",
       "build": 46,
