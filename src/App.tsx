@@ -128,6 +128,20 @@ function loadInitialProjects(): ProjectFile[] {
   return [];
 }
 
+const WORKSPACE_VIEW_KEY = 'tis_workspace_view_v1';
+type WorkspaceView = {projectId:string|null;tab:WorkspaceTab;floorId:string|null};
+function loadWorkspaceView(projects:ProjectFile[]):WorkspaceView {
+  const empty:WorkspaceView={projectId:null,tab:'studio',floorId:null};
+  try{
+    const saved=JSON.parse(workspaceStorage.getItem(WORKSPACE_VIEW_KEY)||'null');
+    const project=projects.find(p=>p.id===saved?.projectId);
+    if(!project)return empty;
+    const tab:WorkspaceTab=saved.tab==='list'||saved.tab==='export'?saved.tab:'studio';
+    const floorId=project.floors.some(f=>f.id===saved.floorId)?saved.floorId:project.floors[0]?.id||null;
+    return {projectId:project.id,tab,floorId};
+  }catch{return empty;}
+}
+
 export default function App({isAdmin=false}:{isAdmin?:boolean}) {
   const [lang, setLang] = useState<AppLanguage>(loadInitialLang);
   const t = UI_TEXT[lang];
@@ -142,9 +156,10 @@ export default function App({isAdmin=false}:{isAdmin?:boolean}) {
     }
   });
 
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>('studio');
-  const [activeFloorId, setActiveFloorId] = useState<string | null>(null);
+  const [initialView] = useState(()=>loadWorkspaceView(projects));
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(initialView.projectId);
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>(initialView.tab);
+  const [activeFloorId, setActiveFloorId] = useState<string | null>(initialView.floorId);
   const [hubSearch, setHubSearch] = useState('');
 
   // Toasts & PDF export state
@@ -245,6 +260,15 @@ export default function App({isAdmin=false}:{isAdmin?:boolean}) {
     }
     return activeProject.floors[0].id;
   }, [activeProject, activeFloorId]);
+
+  const saveWorkspaceView = useCallback(()=>{
+    const value:WorkspaceView={projectId:activeProject?.id||null,tab:activeProject?activeTab:'studio',floorId:currentFloorId||null};
+    const raw=JSON.stringify(value);
+    if(workspaceStorage.getItem(WORKSPACE_VIEW_KEY)!==raw)workspaceStorage.setItem(WORKSPACE_VIEW_KEY,raw);
+  },[activeProject?.id,activeTab,currentFloorId]);
+  useEffect(()=>{
+    try{saveWorkspaceView();}catch{/* Workspace storage status handles failed writes. */}
+  },[saveWorkspaceView]);
 
   const activeFloor = useMemo(() => {
     if (!activeProject) return null;
@@ -441,7 +465,8 @@ export default function App({isAdmin=false}:{isAdmin?:boolean}) {
 
   const handlePrepareVersionUpdate = async (): Promise<boolean> => {
     // Compatible releases use the same per-account IndexedDB workspace.
-    // Persist live state and wait for durable writes before leaving this page.
+    // Persist live state and navigation before leaving this page.
+    try{saveWorkspaceView();}catch{return false;}
     if (!persistAll(brand, projects, false)) return false;
     return await flushWorkspace();
   };
