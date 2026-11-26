@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.42",
+  "latest": "v1.0.43",
   "releases": [
+    {
+      "version": "v1.0.43",
+      "build": 43,
+      "storageSchema": 2,
+      "date": "2026-11-26T09:30:34.183Z",
+      "notes": "Fix first download on empty mobile workspaces and add receive-only action",
+      "commit": "be3281457f15349ab49498b88c92b618c54bf56d",
+      "notesTh": "แก้การรับแฟ้มงานบนมือถือ เพิ่มปุ่มโหลดจาก Google Drive โดยไม่ส่งข้อมูลว่างทับ และแสดงจำนวนแฟ้มที่โหลดสำเร็จ"
+    },
     {
       "version": "v1.0.42",
       "build": 42,
