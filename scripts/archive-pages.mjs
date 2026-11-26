@@ -30,5 +30,5 @@ for(const release of releases.filter(r=>r.storageSchema!==2)){
  const oldPath=path.join('dist/versions',release.version);fs.mkdirSync(oldPath,{recursive:true});
  fs.writeFileSync(path.join(oldPath,'index.html'),'<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=../../"><p>กรุณาเข้าสู่ระบบผ่าน <a href="../../">เว็บไซต์หลัก</a></p>');
 }
-fs.writeFileSync('dist/release-index.json',JSON.stringify({latest:manifest.latest,releases:compatible},null,2)+'\\n');
+fs.writeFileSync('dist/release-index.json',JSON.stringify({latest:manifest.latest,releases:compatible},null,2)+'\n');
 fs.copyFileSync('scripts/pages-launcher.html','dist/index.html');
