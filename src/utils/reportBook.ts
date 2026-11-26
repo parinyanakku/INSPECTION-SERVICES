@@ -30,7 +30,7 @@ export function createDefaultCustomExportSettings(): ReportCustomExportSettings 
     includeStepsAndZones: true,
     includeDefectTable: true,
     includeSummaryTable2: true,
-    defectsPerPage: 'auto',
+    defectsPerPage: 3,
     defectStatusFilter: 'all',
     defectSeverityFilter: 'all',
     defectSelectionMode: 'filter',

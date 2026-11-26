@@ -413,6 +413,7 @@ export interface BuiltReportPage {
   id: string;
   pageLabel: string;
   isCover?: boolean;
+  orientation?: 'portrait' | 'landscape';
   html: string;
 }
 
@@ -515,23 +516,23 @@ function estimateDefectRowHeight(
     (!showCause || normSolution !== normCause);
 
   let textHeight = 38; // Zone line + floor/severity line + gaps
-  textHeight += Math.max(1, Math.ceil(cleanTitle.length / 26)) * 16;
+  textHeight += Math.max(1, Math.ceil(cleanTitle.length / 39)) * 16;
   if (showCause) {
-    textHeight += 4 + Math.max(1, Math.ceil((causePrefix.length + 1 + cleanCause.length) / 28)) * 15;
+    textHeight += 4 + Math.max(1, Math.ceil((causePrefix.length + 1 + cleanCause.length) / 42)) * 15;
   }
   if (showSolution) {
     textHeight +=
-      4 + Math.max(1, Math.ceil((solutionPrefix.length + 1 + cleanSolution.length) / 28)) * 15;
+      4 + Math.max(1, Math.ceil((solutionPrefix.length + 1 + cleanSolution.length) / 42)) * 15;
   }
 
   const rowTextTotal = textHeight + 14;
-  const rowImageTotal = 150 + 14; // 150px photo box + vertical padding/border
+  const rowImageTotal = 142 + 14; // landscape photo box + vertical padding/border
   return Math.max(rowImageTotal, rowTextTotal);
 }
 
 /**
  * Builds the complete 5-part A4 Engineering Report Book (Cover, TOC, Intro, Steps & Zones,
- * 7-column Table 1 at up to 5 defects per page with auto-fit pagination, Summary & Table 2, and anchored Page Footer).
+ * 7-column landscape Table 1 at up to 3 defects per page with auto-fit pagination, Summary & Table 2, and anchored Page Footer).
  * Pure inline CSS with Hex/RGB colors only (safe for both Word .doc and html2canvas PDF).
  */
 export function buildSharedReportPages(
@@ -685,14 +686,14 @@ export function buildSharedReportPages(
         projectLabel: 'โครงการ',
       };
 
-  const perPage = custom.defectsPerPage === 'auto' ? 5 : custom.defectsPerPage;
+  const perPage = 3;
   const defectChunks: DefectItem[][] = [];
   if (filteredDefects.length === 0) {
     defectChunks.push([]);
   } else {
     let currentChunk: DefectItem[] = [];
     let currentHeight = 0;
-    const getPageBudget = (chunkIndex: number) => (chunkIndex === 0 ? 835 : 865);
+    const getPageBudget = (chunkIndex: number) => (chunkIndex === 0 ? 500 : 530);
 
     filteredDefects.forEach((d) => {
       const flName = getFloorNameById(proj, d.floorId);
@@ -833,18 +834,21 @@ export function buildSharedReportPages(
     id: string,
     pageLabel: string,
     bodyHtml: string,
-    isCover = false
+    isCover = false,
+    orientation: 'portrait' | 'landscape' = 'portrait'
   ): BuiltReportPage => {
+    const landscape=orientation==='landscape';
+    const dimensions=landscape?'width:1123px; height:794px; padding:24px 30px 24px 30px;':'width:794px; height:1123px; padding:34px 38px 28px 38px;';
     const inner = isCover
-      ? `<div class="report-page report-a4-page" style="width:794px; height:1123px; padding:34px 38px 28px 38px; box-sizing:border-box; display:flex; flex-direction:column; overflow:hidden; background:#ffffff; color:#0f172a; font-family:'TH Sarabun New', Tahoma, sans-serif;">
+      ? `<div class="report-page report-a4-page" data-orientation="${orientation}" style="${dimensions} box-sizing:border-box; display:flex; flex-direction:column; overflow:hidden; background:#ffffff; color:#0f172a; font-family:'TH Sarabun New', Tahoma, sans-serif;">
           ${bodyHtml}
         </div>`
-      : `<div class="report-page report-a4-page" style="width:794px; height:1123px; padding:34px 38px 28px 38px; box-sizing:border-box; display:flex; flex-direction:column; overflow:hidden; background:#ffffff; color:#0f172a; font-family:'TH Sarabun New', Tahoma, sans-serif;">
+      : `<div class="report-page report-a4-page" data-orientation="${orientation}" style="${dimensions} box-sizing:border-box; display:flex; flex-direction:column; overflow:hidden; background:#ffffff; color:#0f172a; font-family:'TH Sarabun New', Tahoma, sans-serif;">
           <div style="flex:0 0 auto;">${bodyHtml}</div>
           ${renderStandardFooter(pageLabel)}
         </div>`;
 
-    return { id, pageLabel, isCover, html: inner };
+    return { id, pageLabel, isCover, orientation, html: inner };
   };
 
   const pages: BuiltReportPage[] = [];
@@ -1176,10 +1180,10 @@ export function buildSharedReportPages(
       const pageNumStr = String(sec3StartPage + chunkIdx);
       const heading = chunkIdx === 0 ? L.sec3Title : L.sec3Cont;
       const caption = chunkIdx === 0 ? L.t1Caption : L.t1CaptionCont;
-      const available=chunkIdx===0?835:865;
+      const available=chunkIdx===0?500:530;
       const estimated=chunk.reduce((sum,d)=>sum+estimateDefectRowHeight(d,getFloorNameById(proj,d.floorId),custom.showCauseDetails,custom.showSolutionDetails,L.causePrefix,L.solutionPrefix),0);
       // Expand photo rows into unused page area without forcing extra rows or cutting off long notes.
-      const photoBoxH=chunk.length>=3?Math.min(205,150+Math.max(0,Math.floor((available-estimated-25)/chunk.length))):150;
+      const photoBoxH=chunk.length>=2?Math.min(205,142+Math.max(0,Math.floor((available-estimated-10)/chunk.length))):142;
 
       const rowsHtml =
         chunk.length === 0
@@ -1319,7 +1323,7 @@ export function buildSharedReportPages(
         </table>
       `;
 
-      pages.push(wrapPage(`page-sec3-${chunkIdx + 1}`, pageNumStr, sec3Body));
+      pages.push(wrapPage(`page-sec3-${chunkIdx + 1}`, pageNumStr, sec3Body, false, 'landscape'));
     });
   }
 
@@ -1466,7 +1470,7 @@ export async function exportProjectPDF(
   iframe.style.position = 'fixed';
   iframe.style.top = '0';
   iframe.style.left = '0';
-  iframe.style.width = '794px';
+  iframe.style.width = '1123px';
   iframe.style.height = '1123px';
   iframe.style.border = '0';
   iframe.style.opacity = '0';
@@ -1493,7 +1497,7 @@ export async function exportProjectPDF(
       html, body {
         margin: 0;
         padding: 0;
-        width: 794px;
+        width: 1123px;
         background: #ffffff;
         color: #0f172a;
         font-family: 'TH Sarabun New', Tahoma, sans-serif;
@@ -1529,15 +1533,15 @@ export async function exportProjectPDF(
     const pdf = new jsPDF({
       unit: 'mm',
       format: 'a4',
-      orientation: 'portrait',
+      orientation: pages[0]?.orientation || 'portrait',
       compress: true,
     });
 
-    const pageWidthMm = 210;
-    const pageHeightMm = 297;
-
     for (let i = 0; i < pageNodes.length; i++) {
       const node = pageNodes[i];
+      const landscape=node.dataset.orientation==='landscape';
+      const pageWidthPx=landscape?1123:794, pageHeightPx=landscape?794:1123;
+      const pageWidthMm=landscape?297:210, pageHeightMm=landscape?210:297;
       const pageRect = node.getBoundingClientRect();
       // Keep the raster page as fallback. Overlay native image objects at the
       // measured contain-fit position; never crop or stretch the evidence photo.
@@ -1547,7 +1551,7 @@ export async function exportProjectPDF(
         const ratio=Math.min(rect.width/img.naturalWidth,rect.height/img.naturalHeight);
         const w=img.naturalWidth*ratio,h=img.naturalHeight*ratio;
         const x=rect.left-pageRect.left+(rect.width-w)/2,y=rect.top-pageRect.top+(rect.height-h)/2;
-        if(w<=0||h<=0||x<0||y<0||x+w>794.5||y+h>1123.5)return [];
+        if(w<=0||h<=0||x<0||y<0||x+w>pageWidthPx+0.5||y+h>pageHeightPx+0.5)return [];
         // Do not overlay content that was clipped by an overflow-hidden ancestor.
         for(let parent=img.parentElement;parent&&parent!==node;parent=parent.parentElement){
           const style=iframe.contentWindow?.getComputedStyle(parent);
@@ -1566,13 +1570,13 @@ export async function exportProjectPDF(
         backgroundColor: '#ffffff',
         scrollX: 0,
         scrollY: 0,
-        windowWidth: 794,
-        width: 794,
-        height: 1123,
+        windowWidth: 1123,
+        width: pageWidthPx,
+        height: pageHeightPx,
       });
 
       if (i > 0) {
-        pdf.addPage('a4', 'portrait');
+        pdf.addPage('a4', landscape?'landscape':'portrait');
       }
 
       try {
@@ -1600,7 +1604,7 @@ export async function exportProjectPDF(
               ctx.drawImage(img,0,0);
               source=nativeCanvas.toDataURL('image/png');format='PNG';
             }
-            pdf.addImage(source,format,x/794*pageWidthMm,y/1123*pageHeightMm,w/794*pageWidthMm,h/1123*pageHeightMm);
+            pdf.addImage(source,format,x/pageWidthPx*pageWidthMm,y/pageHeightPx*pageHeightMm,w/pageWidthPx*pageWidthMm,h/pageHeightPx*pageHeightMm);
           }catch(error){console.warn('Native report photo unavailable; using high-resolution page fallback',error);}
           finally{if(nativeCanvas){nativeCanvas.width=0;nativeCanvas.height=0;}}
         }
@@ -1622,7 +1626,15 @@ export async function exportProjectWord(
 ): Promise<void> {
   const rb = reportBookInput || loadReportBookData(proj, lang);
   const assets = await prepareSharedReportAssets(proj, brand);
-  const bodyHtml = buildSharedReportHtml(proj, brand, lang, assets, rb);
+  const pages = buildSharedReportPages(proj, brand, lang, assets, rb);
+  const sections: BuiltReportPage[][]=[];
+  for(const page of pages){const last=sections[sections.length-1];if(!last||last[0].orientation!==page.orientation)sections.push([page]);else last.push(page);}
+  const bodyHtml=sections.map((group,index)=>{
+    const name=group[0].orientation==='landscape'?'DefectLandscape':'ReportPortrait';
+    const content=group.map((page,n)=>(n?'<br clear="all" style="page-break-before:always;" />':'')+page.html).join('');
+    const boundary=index<sections.length-1?'<br clear="all" style="mso-special-character:line-break;mso-break-type:section-break;" />':'';
+    return '<div class="'+name+'">'+content+boundary+'</div>';
+  }).join('');
 
   const html = `
     <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
@@ -1630,7 +1642,10 @@ export async function exportProjectWord(
       <meta charset='utf-8'>
       <title>${escapeHtml(rb.coverTitle || proj.name)}</title>
       <style>
-        @page { size: A4 portrait; margin: 0; }
+        @page ReportPortrait { size:595.3pt 841.9pt; margin:0; }
+        @page DefectLandscape { size:841.9pt 595.3pt; mso-page-orientation:landscape; margin:0; }
+        div.ReportPortrait { page:ReportPortrait; }
+        div.DefectLandscape { page:DefectLandscape; }
         body { font-family: 'TH Sarabun New', Tahoma, sans-serif; color: #0f172a; background: #ffffff; margin: 0; padding: 0; }
         table { border-collapse: collapse; }
         tr { page-break-inside: avoid; }

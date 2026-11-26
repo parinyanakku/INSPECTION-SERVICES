@@ -1274,24 +1274,10 @@ export const ExportTab: React.FC<ExportTabProps> = ({
                     <label className="block text-xs font-bold text-slate-700 mb-1.5">
                       {t.customPerPageLabel}
                     </label>
-                    <div className="flex gap-2">
-                      {(['auto', 2, 3, 4, 5] as const).map((n) => (
-                        <button
-                          key={n}
-                          type="button"
-                          onClick={() =>
-                            updateCustomExport((prev) => ({ ...prev, defectsPerPage: n }))
-                          }
-                          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
-                            customSettings.defectsPerPage === n
-                              ? 'bg-blue-700 border-blue-700 text-white'
-                              : 'bg-slate-50 border-slate-300 text-slate-700 hover:bg-slate-100'
-                          }`}
-                        >
-                          {n==='auto'?(lang==='en'?'Auto':'อัตโนมัติ'):`${n} ${lang==='en'?'items':'ข้อ'}`}
-                        </button>
-                      ))}
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800">
+                      {lang==='en'?'A4 landscape · up to 3 defects per page':'A4 แนวนอน · สูงสุด 3 รายการต่อหน้า'}
                     </div>
+                    <p className="text-xs text-slate-500 mt-1">{lang==='en'?'Other report pages remain portrait. Long details may use fewer rows.':'หน้าอื่นเป็นแนวตั้งตามเดิม หากข้อความยาว ระบบอาจลดจำนวนแถว'}</p>
                   </div>
 
                   <div>
@@ -1519,8 +1505,8 @@ export const ExportTab: React.FC<ExportTabProps> = ({
                 <div>
                   <strong>{t.customPreviewSummaryLabel}</strong>{' '}
                   {lang === 'en'
-                    ? `${enabledSectionsCount} sections · ${customFilteredDefects.length} defects (${customSettings.defectsPerPage==='auto'?'auto':customSettings.defectsPerPage}/page)`
-                    : `เปิดใช้งาน ${enabledSectionsCount} ส่วน · รายการ Defect ${customFilteredDefects.length} ข้อ (${customSettings.defectsPerPage==='auto'?'อัตโนมัติ สูงสุด 5':customSettings.defectsPerPage} ข้อ/หน้า)`}
+                    ? `${enabledSectionsCount} sections · ${customFilteredDefects.length} defects (up to 3/page)`
+                    : `เปิดใช้งาน ${enabledSectionsCount} ส่วน · รายการ Defect ${customFilteredDefects.length} ข้อ (สูงสุด 3 ข้อ/หน้า)`}
                 </div>
                 <span className="font-semibold text-blue-700">
                   {lang === 'en'
