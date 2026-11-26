@@ -1,4 +1,4 @@
-import { DriveSyncDialog } from './DriveSyncDialog';
+import { DriveSyncDialog,clearDriveSession } from './DriveSyncDialog';
 import type {AppLanguage} from '../types/inspection';
 import {readUiLanguage,saveUiLanguage,authMessage} from '../utils/uiLanguage';
 import React,{useEffect,useRef,useState} from 'react';
@@ -48,6 +48,7 @@ export default function AccountWorkspace(){
  const resetUrl='https://teaminspectionproelite.github.io/INSPECTION-SERVICES/reset-password.html';
  const [isAdmin,setIsAdmin]=useState(false),[adminOpen,setAdminOpen]=useState(false);
  const [driveOpen,setDriveOpen]=useState(false),[workspaceRevision,setWorkspaceRevision]=useState(0);
+ useEffect(()=>{if(!session||blocked)clearDriveSession();return ()=>clearDriveSession();},[session?.user.id,blocked]);
  const live=useRef<Session|null>(null);
  const [restoring,setRestoring]=useState(()=>!!readSession());
  const restoreStarted=useRef(false),closing=useRef(false);
@@ -101,6 +102,7 @@ export default function AccountWorkspace(){
    }
  }
  async function logout(){
+   clearDriveSession();
    if(busy)return;
    if(!window.confirm(authMessage('ออกจากระบบ? โปรดบันทึกหมุดและงานร่างที่ยังไม่บันทึกก่อน',lang)))return;
    setBusy(true);setError('');closing.current=true;

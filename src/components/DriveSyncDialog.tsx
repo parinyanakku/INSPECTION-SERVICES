@@ -1,8 +1,9 @@
 import React,{useEffect,useRef,useState} from 'react';
 import type {AppLanguage} from '../types/inspection';
+import {mirrorWorkspace} from '../utils/driveVisibleBackup';
 import {readSyncRecords,restoreSyncRecords,workspaceStorage,flushWorkspace} from '../utils/workspaceStorage';
 
-const SCOPE='https://www.googleapis.com/auth/drive.appdata';
+const SCOPE='https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file';
 const ROOT='https://www.googleapis.com/drive/v3/files';
 const MARK='tis_drive_sync_marker_v1';
 // Public OAuth client identifier; never include a client secret in this web app.
@@ -11,8 +12,14 @@ type Records=Record<string,string>;
 type FileMeta={id:string;appProperties?:Record<string,string>;createdTime?:string};
 type Snapshot={format:'TIS_DRIVE_V1';userId:string;records:Records};
 type Marker={id:string;hash:string};
+type Identity={id:string;email:string;folder?:string;lastSync?:string};
+const LINK='tis_drive_link_v2';
+let live:{userId:string;token:string;expires:number;identity:Identity}|null=null;
+export function clearDriveSession(){live=null;}
+function readLink():Identity|null{try{const v=JSON.parse(workspaceStorage.getItem(LINK)||'null');return v?.id&&v?.email?v:null;}catch{return null;}}
+function validToken(userId:string){return live?.userId===userId&&live.expires>Date.now()+60000?live.token:'';}
 type TokenClient={requestAccessToken:(options:{prompt:string})=>void};
-type GIS={accounts:{oauth2:{initTokenClient:(options:{client_id:string;scope:string;callback:(response:{access_token?:string;error?:string;scope?:string})=>void;error_callback:()=>void})=>TokenClient}}};
+type GIS={accounts:{oauth2:{initTokenClient:(options:{client_id:string;scope:string;login_hint?:string;callback:(response:{access_token?:string;error?:string;scope?:string;expires_in?:number|string})=>void;error_callback:()=>void})=>TokenClient}}};
 function gis(){return (window as unknown as {google?:GIS}).google;}
 async function hash(records:Records){
  const str=JSON.stringify(Object.entries(records).sort(([a],[b])=>a.localeCompare(b)));
@@ -48,7 +55,8 @@ async function upload(token:string,userId:string,records:Records,parent:string){
 }
 export function DriveSyncDialog({userId,lang,onClose,onRestored}:{userId:string;lang:AppLanguage;onClose:()=>void;onRestored:()=>void}){
  const tr=(th:string,en:string)=>lang==='en'?en:th;
- const [ready,setReady]=useState(!!gis()),[token,setToken]=useState(''),[busy,setBusy]=useState(false),[msg,setMsg]=useState('');
+ const [ready,setReady]=useState(!!gis()),[token,setToken]=useState(()=>validToken(userId)),[busy,setBusy]=useState(false),[msg,setMsg]=useState('');
+ const [link,setLink]=useState<Identity|null>(readLink);
  const active=useRef(true);
  useEffect(()=>{
   active.current=true;
@@ -61,19 +69,46 @@ export function DriveSyncDialog({userId,lang,onClose,onRestored}:{userId:string;
   }
   return()=>{active.current=false;script?.removeEventListener('load',loaded);script?.removeEventListener('error',failed);};
  },[]);
- function connect(){
-  if(!gis())return;
-  setToken('');setBusy(true);setMsg('');
+ async function saveLink(value:Identity){
+   if(!active.current)return;
+   workspaceStorage.setItem(LINK,JSON.stringify(value));
+   if(!await flushWorkspace())throw Error('Local connection settings could not be saved');
+   if(active.current){setLink(value);if(live?.userId===userId)live.identity=value;}
+ }
+ function connect(action:'connect'|'sync'|'download'='connect',choose=false){
+  if(!gis()||busy)return;
+  if(!choose&&validToken(userId)){
+   const access=validToken(userId);setToken(access);
+   if(action!=='connect')void sync(action==='download',access);
+   return;
+  }
+  const remembered=readLink();
+  setToken('');clearDriveSession();setBusy(true);setMsg('');
   try{
-   gis()!.accounts.oauth2.initTokenClient({client_id:CLIENT_ID,scope:SCOPE,callback:r=>{
-    if(!active.current)return;setBusy(false);
-    if(!r.access_token||r.error||!r.scope?.split(' ').includes(SCOPE)){setMsg(tr('เชื่อมต่อไม่ได้หรือไม่ได้อนุญาตสิทธิ์','Connection or permission failed'));return;}
-    setToken(r.access_token);setMsg(tr('เชื่อมต่อแล้ว ยังไม่ได้ส่งไฟล์งาน','Connected. No work files sent yet.'));
-   },error_callback:()=>{if(active.current){setBusy(false);setMsg(tr('ยกเลิกหรือเปิดหน้าต่าง Google ไม่สำเร็จ','Google connection cancelled or popup failed'));}}}).requestAccessToken({prompt:'select_account'});
+   gis()!.accounts.oauth2.initTokenClient({client_id:CLIENT_ID,scope:SCOPE,...(!choose&&remembered?{login_hint:remembered.email}:{}),callback:async r=>{
+    if(!active.current)return;
+    if(!r.access_token||r.error||!SCOPE.split(' ').every(scope=>r.scope?.split(' ').includes(scope))){setBusy(false);setMsg(tr('กรุณาอนุญาตสิทธิ์ Google Drive ทั้งสองรายการ','Please grant both requested Drive permissions.'));return;}
+    try{
+      const access=r.access_token;
+      const info=await (await api(access,'https://www.googleapis.com/drive/v3/about?fields=user(permissionId,emailAddress)')).json();
+      if(!active.current)return;
+      const id=info.user?.permissionId,email=info.user?.emailAddress;
+      if(typeof id!=='string'||typeof email!=='string'||!id||!email)throw Error('Cannot verify Google account');
+      if(remembered&&remembered.id!==id){setMsg(tr('บัญชี Google ไม่ตรงกับบัญชีที่ผูกไว้ เพื่อป้องกันไฟล์ผิดบัญชี กรุณาเลือกบัญชีเดิม หรือยกเลิกการเชื่อมต่อก่อน','Google account differs from the linked account. Select the original account or disconnect first.'));return;}
+      const next:Identity={...remembered,id,email};
+      live={userId,token:access,expires:Date.now()+Math.max(0,Number(r.expires_in)||0)*1000,identity:next};
+      await saveLink(next);if(!active.current)return;
+      setToken(access);
+      if(action==='connect')setMsg(tr('เชื่อมต่อ '+email+' แล้ว ยังไม่ได้ส่งไฟล์งาน','Connected to '+email+'. No work files sent yet.'));
+      else await sync(action==='download',access,true);
+    }catch(e){clearDriveSession();setToken('');if(active.current)setMsg(tr('เชื่อมต่อไม่สำเร็จ: ','Connection failed: ')+(e instanceof Error?e.message:String(e)));}
+    finally{if(active.current)setBusy(false);}
+   },error_callback:()=>{if(active.current){setBusy(false);setMsg(tr('ยกเลิกหรือเปิดหน้าต่าง Google ไม่สำเร็จ','Google connection cancelled or popup failed'));}}}).requestAccessToken({prompt:!choose&&remembered?'':'select_account'});
   }catch{setBusy(false);setMsg(tr('เชื่อม Google ไม่สำเร็จ','Google connection failed'));}
  }
- async function sync(downloadOnly=false){
-  if(!token||busy)return;setBusy(true);setMsg('');
+ async function sync(downloadOnly=false,access=token,fromConnect=false){
+  if(!access||(!fromConnect&&busy))return;
+  const token=access;setBusy(true);setMsg('');
   try{
    const records=await readSyncRecords(),localHash=await hash(records);
    const localProjects=JSON.parse(records.tis_wl_projects_v10||'[]');
@@ -81,6 +116,18 @@ export function DriveSyncDialog({userId,lang,onClose,onRestored}:{userId:string;
    let marker:Marker|null=null;try{marker=JSON.parse(workspaceStorage.getItem(MARK)||'null');}catch{}
    const remote=await files(token,userId);
    if(!active.current)return;
+   async function finish(confirmed:Records,message:string){
+    if(!active.current)return;
+    const identity=readLink();if(!identity)throw Error('Missing Google account link');
+    await saveLink({...identity,lastSync:new Date().toISOString()});
+    setMsg(message+' · '+tr('กำลังจัดสำเนาไฟล์ใน Drive…','Preparing visible Drive copies…'));
+    try{
+      const folder=await mirrorWorkspace(token,userId,confirmed,()=>active.current,(done,total)=>{if(active.current)setMsg(message+' · '+tr('สำเนารูปและไฟล์','Visible copies')+' '+done+'/'+total);});
+      if(!active.current)return;
+      await saveLink({...identity,folder,lastSync:new Date().toISOString()});
+      if(active.current)setMsg(message+' · '+tr('สำเนาไฟล์ใน Google Drive พร้อมแล้ว','Visible Drive copies are ready'));
+    }catch(e){if(active.current)setMsg(message+' · '+tr('ซิงค์หลักสำเร็จ แต่สำเนาที่มองเห็นยังไม่ครบ กดซิงค์อีกครั้ง: ','Main sync succeeded; visible backup incomplete. Sync again: ')+(e instanceof Error?e.message:String(e)));}
+   }
    if(!remote){
     if(downloadOnly||empty){setMsg(tr('ไม่พบแฟ้มงานบน Google Drive ของบัญชีนี้ กรุณาตรวจสอบว่าเลือกบัญชี Google และบัญชีโปรแกรมเดียวกับเครื่องที่ส่งข้อมูลแล้ว ระบบไม่ได้ส่งข้อมูลว่างขึ้นไป','No cloud workspace found. Check that both the Google and app accounts match the device that uploaded the work. No empty workspace was uploaded.'));return;}
     if(marker)throw Error('CONFLICT');
@@ -88,22 +135,22 @@ export function DriveSyncDialog({userId,lang,onClose,onRestored}:{userId:string;
     const id=await upload(token,userId,records,'');
     if(!active.current)return;
     workspaceStorage.setItem(MARK,JSON.stringify({id,hash:localHash}));if(!await flushWorkspace())throw Error('Local marker save failed');
-    setMsg(tr('ส่งข้อมูลครั้งแรกสำเร็จ','First upload completed'));return;
+    await finish(records,tr('ส่งข้อมูลครั้งแรกสำเร็จ','First upload completed'));return;
    }
-   if(marker?.id===remote.id&&marker.hash===localHash){setMsg(tr('ข้อมูลตรงกันแล้ว','Already synchronized'));return;}
+   if(marker?.id===remote.id&&marker.hash===localHash){await finish(records,tr('ข้อมูลตรงกันแล้ว','Already synchronized'));return;}
    if(marker?.id===remote.id&&!downloadOnly){
     if(!window.confirm(tr('ส่งงานที่แก้ไขล่าสุดไปยัง Google Drive หรือไม่?','Upload your latest saved changes?')))return;
     if((await files(token,userId))?.id!==remote.id)throw Error('CONFLICT');
     const id=await upload(token,userId,records,remote.id);
     if(!active.current)return;
     workspaceStorage.setItem(MARK,JSON.stringify({id,hash:localHash}));if(!await flushWorkspace())throw Error('Local marker save failed');
-    setMsg(tr('อัปโหลดข้อมูลล่าสุดแล้ว','Latest saved work uploaded'));return;
+    await finish(records,tr('อัปโหลดข้อมูลล่าสุดแล้ว','Latest saved work uploaded'));return;
    }
    const data=await (await api(token,ROOT+'/'+encodeURIComponent(remote.id)+'?alt=media')).json() as Snapshot;
    if(data.format!=='TIS_DRIVE_V1'||data.userId!==userId||!data.records||typeof data.records!=='object')throw Error('Invalid snapshot');
    const remoteHash=await hash(data.records);
    if(!active.current)return;
-   if(remoteHash===localHash){workspaceStorage.setItem(MARK,JSON.stringify({id:remote.id,hash:localHash}));if(!await flushWorkspace())throw Error('Local marker save failed');setMsg(tr('ข้อมูลตรงกันแล้ว','Already synchronized'));return;}
+   if(remoteHash===localHash){workspaceStorage.setItem(MARK,JSON.stringify({id:remote.id,hash:localHash}));if(!await flushWorkspace())throw Error('Local marker save failed');await finish(records,tr('ข้อมูลตรงกันแล้ว','Already synchronized'));return;}
    const remoteProjects=JSON.parse(data.records.tis_wl_projects_v10||'null');
    if(!Array.isArray(remoteProjects))throw Error('Invalid cloud projects');
    if(!empty&&(!marker||marker.hash!==localHash))throw Error('CONFLICT');
@@ -112,23 +159,24 @@ export function DriveSyncDialog({userId,lang,onClose,onRestored}:{userId:string;
    if((await files(token,userId))?.id!==remote.id)throw Error('CONFLICT');
    if(!active.current)return;
    await restoreSyncRecords(data.records,records,JSON.stringify({id:remote.id,hash:remoteHash}));
-   if(active.current){onRestored();setMsg(tr('โหลดข้อมูลสำเร็จ '+remoteProjects.length+' แฟ้มโครงการ ปิดหน้าต่างเพื่อดูงาน','Downloaded '+remoteProjects.length+' projects successfully. Close this dialog to view them.'));}
+   if(active.current){onRestored();await finish(data.records,tr('โหลดข้อมูลสำเร็จ '+remoteProjects.length+' แฟ้มโครงการ','Downloaded '+remoteProjects.length+' projects successfully'));}
   }catch(e){
    if(!active.current)return;
    const message=e instanceof Error?e.message:'Unknown error';
    if(message==='CONFLICT')setMsg(tr('พบข้อมูลคนละชุดหรือแก้ไขทั้งสองเครื่อง ระบบหยุดซิงค์เพื่อไม่เขียนทับ กรุณาสำรอง JSON และติดต่อผู้ดูแล','Different or concurrent changes detected. Sync stopped to prevent overwriting. Export JSON and contact support.'));
-   else{if(message.includes('401'))setToken('');setMsg(tr('ซิงค์ไม่สำเร็จ: ','Sync failed: ')+message);}
+   else{if(message.includes('401')){clearDriveSession();setToken('');}setMsg(tr('ซิงค์ไม่สำเร็จ: ','Sync failed: ')+message);}
   }finally{if(active.current)setBusy(false);}
  }
  return <div className="fixed inset-0 z-[80] bg-slate-900/60 flex items-center justify-center p-4"><section role="dialog" aria-modal="true" className="bg-white rounded-2xl p-5 max-w-lg w-full max-h-[90vh] overflow-auto space-y-4">
  <div className="flex justify-between items-center"><h2 className="font-bold text-blue-950">Google Drive Sync · {tr('ทดลอง','Beta')}</h2><button disabled={busy} onClick={onClose} className="border rounded px-3 py-1">{tr('ปิด','Close')}</button></div>
- <p className="text-sm text-slate-600">{tr('เลือกใช้ได้ตามต้องการ ไฟล์งานอยู่ในพื้นที่เฉพาะแอปบน Google Drive ของคุณ ไม่ส่งรหัสผ่านหรือ Gemini API Key และไม่ใช้พื้นที่ Supabase สำหรับรูปภาพ','Optional sync uses your Google Drive app data. Passwords and Gemini API keys are excluded. No photos are sent to Supabase.')}</p>
- <p className="text-sm text-slate-600">{tr('เลือกบัญชี Google ของคุณเอง โดยใช้บัญชี Google และบัญชีโปรแกรมเดียวกันทั้งบนมือถือและคอมพิวเตอร์ ไม่ต้องสร้าง Client ID เอง','Choose your own Google account. Use the same Google and app accounts on mobile and desktop. No client ID setup is required.')}</p>
- <button disabled={!ready||busy} onClick={connect} className="w-full rounded bg-blue-800 text-white p-2 disabled:opacity-50">{token?tr('เปลี่ยนบัญชี Google','Change Google account'):tr('เชื่อม Google Drive','Connect Google Drive')}</button>
- <button disabled={!token||busy} onClick={()=>void sync(false)} className="w-full rounded bg-emerald-700 text-white p-2 disabled:opacity-50">{busy?tr('กำลังดำเนินการ…','Working…'):tr('ซิงค์ข้อมูลที่บันทึกแล้ว','Sync saved workspace')}</button>
- <button disabled={!token||busy} onClick={()=>void sync(true)} className="w-full rounded border border-blue-700 text-blue-800 p-2 font-semibold disabled:opacity-50">{tr('โหลดข้อมูลจาก Google Drive ลงเครื่อง','Download workspace from Google Drive')}</button>
- {token&&<button disabled={busy} onClick={()=>{setToken('');setMsg(tr('ตัดการเชื่อมต่อในหน้านี้แล้ว','Disconnected for this dialog'));}} className="text-xs underline">{tr('ตัดการเชื่อมต่อ','Disconnect')}</button>}
+ <p className="text-sm text-slate-600">{tr('ไฟล์งานซิงค์ผ่าน Google Drive ส่วนตัวของคุณ พร้อมสำเนา JSON และรูปที่เปิดดูได้ใน My Drive ไม่ส่งรหัสผ่านหรือ Gemini API Key','Sync through your own Google Drive, with visible JSON and image copies in My Drive. Passwords and Gemini API keys are excluded.')}</p>
+ {link&&<div className="rounded-lg bg-emerald-50 p-3 text-sm break-all"><strong>{tr('จดจำบัญชี Google แล้ว','Google account remembered')}</strong><div>{link.email}</div>{link.lastSync&&<div className="text-xs mt-1">{tr('ซิงค์ล่าสุด: ','Last sync: ')}{new Date(link.lastSync).toLocaleString(lang==='th'?'th-TH':'en-GB')}</div>}</div>}
+ {!link&&<button disabled={!ready||busy} onClick={()=>connect('connect',true)} className="w-full rounded bg-blue-800 text-white p-3 disabled:opacity-50">{tr('เชื่อม Google Drive','Connect Google Drive')}</button>}
+ <button disabled={!ready||busy||!link} onClick={()=>connect('sync')} className="w-full rounded bg-emerald-700 text-white p-3 disabled:opacity-50">{busy?tr('กำลังดำเนินการ…','Working…'):tr('ซิงค์ข้อมูลล่าสุด','Sync latest workspace')}</button>
+ <button disabled={!ready||busy||!link} onClick={()=>connect('download')} className="w-full rounded border border-blue-700 text-blue-800 p-3 font-semibold disabled:opacity-50">{tr('โหลดข้อมูลจาก Google Drive ลงเครื่อง','Download workspace from Google Drive')}</button>
+ {link?.folder&&/^[A-Za-z0-9_-]+$/.test(link.folder)&&<a className="block text-center rounded border border-slate-300 p-3 font-semibold text-blue-800" href={'https://drive.google.com/drive/folders/'+link.folder} target="_blank" rel="noopener noreferrer">{tr('เปิดโฟลเดอร์ Google Drive','Open Google Drive folder')}</a>}
+ {link&&<div className="flex justify-between gap-2"><button disabled={!ready||busy} onClick={()=>connect('connect',true)} className="text-xs underline">{tr('ยืนยันบัญชี Google ใหม่','Reconnect Google account')}</button><button disabled={busy} onClick={async()=>{if(!window.confirm(tr('ยกเลิกการจดจำบัญชีบนเครื่องนี้? ไฟล์ Drive และแฟ้มงานจะไม่ถูกลบ','Forget this Google account on this device? No Drive or local files will be deleted.')))return;clearDriveSession();setToken('');try{workspaceStorage.removeItem(LINK);if(!await flushWorkspace())throw Error('Local save failed');setLink(null);setMsg(tr('ยกเลิกการจดจำบัญชีแล้ว','Account link forgotten'));}catch(e){setMsg(String(e));}}} className="text-xs text-red-700 underline">{tr('ยกเลิกการเชื่อมต่อ','Disconnect')}</button></div>}
  {msg&&<p role="status" className="text-sm bg-slate-100 rounded p-3 break-words">{msg}</p>}
- <p className="text-xs text-slate-500">{tr('รุ่นทดลอง: กดซิงค์เองหลังบันทึกงาน ใช้บัญชีโปรแกรมและบัญชี Google เดียวกันทั้งสองเครื่อง หากแก้ไขพร้อมกันจะหยุดแทนการเขียนทับ','Beta: sync manually after saving. Use the same app and Google accounts on both devices. Concurrent edits stop sync instead of overwriting.')}</p>
+ <p className="text-xs text-slate-500">{tr('กดซิงค์หลังบันทึกงาน ใช้บัญชีเดิมทั้งสองเครื่อง หาก Google หมดอายุสิทธิ์อาจเปิดหน้าขออนุญาตอีกครั้ง สำเนาใน My Drive เป็นไฟล์สำหรับเปิดดู ไม่ใช่ต้นทางซิงค์ และเก็บรุ่นเก่าไว้','Sync after saving. Use the same accounts on both devices. Google may request authorization again when access expires. Visible copies are for viewing, not the sync source, and older copies are retained.')}</p>
  </section></div>;
 }
