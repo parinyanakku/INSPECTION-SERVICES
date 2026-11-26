@@ -5,7 +5,8 @@ import {readSyncRecords,restoreSyncRecords,workspaceStorage,flushWorkspace} from
 const SCOPE='https://www.googleapis.com/auth/drive.appdata';
 const ROOT='https://www.googleapis.com/drive/v3/files';
 const MARK='tis_drive_sync_marker_v1';
-const CLIENT='tis_drive_client_id_v1';
+// Public OAuth client identifier; never include a client secret in this web app.
+const CLIENT_ID='386487455938-nda2mj55c5f3cdr8pvqmq4pu4o775fv2.apps.googleusercontent.com';
 type Records=Record<string,string>;
 type FileMeta={id:string;appProperties?:Record<string,string>;createdTime?:string};
 type Snapshot={format:'TIS_DRIVE_V1';userId:string;records:Records};
@@ -13,7 +14,6 @@ type Marker={id:string;hash:string};
 type TokenClient={requestAccessToken:(options:{prompt:string})=>void};
 type GIS={accounts:{oauth2:{initTokenClient:(options:{client_id:string;scope:string;callback:(response:{access_token?:string;error?:string;scope?:string})=>void;error_callback:()=>void})=>TokenClient}}};
 function gis(){return (window as unknown as {google?:GIS}).google;}
-function readClient(){try{return localStorage.getItem(CLIENT)||'';}catch{return '';}}
 async function hash(records:Records){
  const str=JSON.stringify(Object.entries(records).sort(([a],[b])=>a.localeCompare(b)));
  return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str)))).map(n=>n.toString(16).padStart(2,'0')).join('');
@@ -48,7 +48,7 @@ async function upload(token:string,userId:string,records:Records,parent:string){
 }
 export function DriveSyncDialog({userId,lang,onClose,onRestored}:{userId:string;lang:AppLanguage;onClose:()=>void;onRestored:()=>void}){
  const tr=(th:string,en:string)=>lang==='en'?en:th;
- const [client,setClient]=useState(readClient),[ready,setReady]=useState(!!gis()),[token,setToken]=useState(''),[busy,setBusy]=useState(false),[msg,setMsg]=useState('');
+ const [ready,setReady]=useState(!!gis()),[token,setToken]=useState(''),[busy,setBusy]=useState(false),[msg,setMsg]=useState('');
  const active=useRef(true);
  useEffect(()=>{
   active.current=true;
@@ -62,13 +62,10 @@ export function DriveSyncDialog({userId,lang,onClose,onRestored}:{userId:string;
   return()=>{active.current=false;script?.removeEventListener('load',loaded);script?.removeEventListener('error',failed);};
  },[]);
  function connect(){
-  const id=client.trim();
-  if(!/^[a-zA-Z0-9_-]+\.apps\.googleusercontent\.com$/.test(id)){setMsg(tr('กรุณากรอก OAuth Client ID ที่ถูกต้อง','Enter a valid OAuth Client ID'));return;}
   if(!gis())return;
-  try{localStorage.setItem(CLIENT,id);}catch{}
   setToken('');setBusy(true);setMsg('');
   try{
-   gis()!.accounts.oauth2.initTokenClient({client_id:id,scope:SCOPE,callback:r=>{
+   gis()!.accounts.oauth2.initTokenClient({client_id:CLIENT_ID,scope:SCOPE,callback:r=>{
     if(!active.current)return;setBusy(false);
     if(!r.access_token||r.error||!r.scope?.split(' ').includes(SCOPE)){setMsg(tr('เชื่อมต่อไม่ได้หรือไม่ได้อนุญาตสิทธิ์','Connection or permission failed'));return;}
     setToken(r.access_token);setMsg(tr('เชื่อมต่อแล้ว ยังไม่ได้ส่งไฟล์งาน','Connected. No work files sent yet.'));
@@ -121,8 +118,7 @@ export function DriveSyncDialog({userId,lang,onClose,onRestored}:{userId:string;
  return <div className="fixed inset-0 z-[80] bg-slate-900/60 flex items-center justify-center p-4"><section role="dialog" aria-modal="true" className="bg-white rounded-2xl p-5 max-w-lg w-full max-h-[90vh] overflow-auto space-y-4">
  <div className="flex justify-between items-center"><h2 className="font-bold text-blue-950">Google Drive Sync · {tr('ทดลอง','Beta')}</h2><button disabled={busy} onClick={onClose} className="border rounded px-3 py-1">{tr('ปิด','Close')}</button></div>
  <p className="text-sm text-slate-600">{tr('เลือกใช้ได้ตามต้องการ ไฟล์งานอยู่ในพื้นที่เฉพาะแอปบน Google Drive ของคุณ ไม่ส่งรหัสผ่านหรือ Gemini API Key และไม่ใช้พื้นที่ Supabase สำหรับรูปภาพ','Optional sync uses your Google Drive app data. Passwords and Gemini API keys are excluded. No photos are sent to Supabase.')}</p>
- <label className="block text-sm">Google OAuth Client ID<input className="w-full border rounded p-2 mt-1" value={client} disabled={busy||!!token} onChange={e=>setClient(e.target.value)} placeholder="…apps.googleusercontent.com"/></label>
- <p className="text-xs text-slate-500">{tr('ตั้ง Client ID เดียวกันทุกเครื่อง เปิด Drive API และอนุญาตโดเมนเว็บไซต์ใน Google Cloud Console','Use the same Client ID on every device. Enable Drive API and authorize the website origin in Google Cloud Console.')}</p>
+ <p className="text-sm text-slate-600">{tr('เลือกบัญชี Google ของคุณเอง โดยใช้บัญชี Google และบัญชีโปรแกรมเดียวกันทั้งบนมือถือและคอมพิวเตอร์ ไม่ต้องสร้าง Client ID เอง','Choose your own Google account. Use the same Google and app accounts on mobile and desktop. No client ID setup is required.')}</p>
  <button disabled={!ready||busy} onClick={connect} className="w-full rounded bg-blue-800 text-white p-2 disabled:opacity-50">{token?tr('เปลี่ยนบัญชี Google','Change Google account'):tr('เชื่อม Google Drive','Connect Google Drive')}</button>
  <button disabled={!token||busy} onClick={()=>void sync()} className="w-full rounded bg-emerald-700 text-white p-2 disabled:opacity-50">{busy?tr('กำลังดำเนินการ…','Working…'):tr('ซิงค์ข้อมูลที่บันทึกแล้ว','Sync saved workspace')}</button>
  {token&&<button disabled={busy} onClick={()=>{setToken('');setMsg(tr('ตัดการเชื่อมต่อในหน้านี้แล้ว','Disconnected for this dialog'));}} className="text-xs underline">{tr('ตัดการเชื่อมต่อ','Disconnect')}</button>}
