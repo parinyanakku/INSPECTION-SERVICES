@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.33",
+  "latest": "v1.0.34",
   "releases": [
+    {
+      "version": "v1.0.34",
+      "build": 34,
+      "storageSchema": 2,
+      "date": "2026-11-26T08:29:57.964Z",
+      "notes": "Export formatted Excel report sheets with A4 page breaks and embedded photos",
+      "commit": "2948e02eb2102f8d9d8235afebfd245563cefab0"
+    },
     {
       "version": "v1.0.33",
       "build": 33,
