@@ -12,7 +12,7 @@ const releases=fs.existsSync(index)?JSON.parse(fs.readFileSync(index,'utf8')).re
 const dest=path.join(versions,version);
 if(!fs.existsSync(dest)){
  fs.cpSync('dist',dest,{recursive:true});
- releases.push({version,build,date:new Date().toISOString(),notes:execFileSync('git',['log','-1','--format=%s'],{encoding:'utf8'}).trim(),commit:process.env.GITHUB_SHA});
+ releases.push({version,build,storageSchema:2,date:new Date().toISOString(),notes:execFileSync('git',['log','-1','--format=%s'],{encoding:'utf8'}).trim(),commit:process.env.GITHUB_SHA});
 }
 releases.sort((a,b)=>b.build-a.build);
 if(!releases.length)throw Error('No releases');

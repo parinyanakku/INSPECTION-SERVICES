@@ -1,3 +1,4 @@
+import { workspaceStorage } from './workspaceStorage';
 import type {
   AppLanguage,
   ProjectFile,
@@ -241,7 +242,7 @@ export function loadReportBookData(
 ): ReportBookData {
   const defaults = createDefaultReportBookData(proj, lang);
   try {
-    const raw = localStorage.getItem(`${REPORT_BOOK_STORAGE_PREFIX}${proj.id}`);
+    const raw = workspaceStorage.getItem(`${REPORT_BOOK_STORAGE_PREFIX}${proj.id}`);
     if (!raw) return defaults;
     const parsed = JSON.parse(raw) as Partial<ReportBookData> & {
       locationPhoto?: unknown;
@@ -355,7 +356,7 @@ export function loadReportBookData(
 
 export function saveReportBookData(projectId: string, data: ReportBookData): void {
   try {
-    localStorage.setItem(
+    workspaceStorage.setItem(
       `${REPORT_BOOK_STORAGE_PREFIX}${projectId}`,
       JSON.stringify(data)
     );

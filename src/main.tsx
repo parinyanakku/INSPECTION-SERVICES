@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client';
-import App from './App.tsx';
+import AccountWorkspace from './components/AccountWorkspace';
 import './index.css';
 
 // Filter transient Vite/iframe WebSocket rejections on Cloud Run preview
@@ -19,4 +19,4 @@ window.addEventListener('unhandledrejection', (event) => {
   }
 });
 
-createRoot(document.getElementById('root')!).render(<App />);
+createRoot(document.getElementById('root')!).render(<AccountWorkspace />);

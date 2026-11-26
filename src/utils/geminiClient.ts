@@ -1,3 +1,4 @@
+import { workspaceStorage } from './workspaceStorage';
 import type {
   AppLanguage,
   GeminiApiConfig,
@@ -52,7 +53,7 @@ function modelPriorityScore(modelId: string): number {
 
 export function loadCachedGeminiModels(): string[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_GEMINI_MODELS_CACHE);
+    const raw = workspaceStorage.getItem(STORAGE_KEY_GEMINI_MODELS_CACHE);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
@@ -68,7 +69,7 @@ export function loadCachedGeminiModels(): string[] {
 
 export function saveCachedGeminiModels(models: string[]): void {
   try {
-    localStorage.setItem(STORAGE_KEY_GEMINI_MODELS_CACHE, JSON.stringify(models));
+    workspaceStorage.setItem(STORAGE_KEY_GEMINI_MODELS_CACHE, JSON.stringify(models));
   } catch {
     // ignore storage quota errors
   }
@@ -76,11 +77,11 @@ export function saveCachedGeminiModels(models: string[]): void {
 
 export function loadGeminiConfig(): GeminiApiConfig {
   try {
-    const apiKey = (localStorage.getItem(STORAGE_KEY_GEMINI_API_KEY) || '').trim();
-    const rawModel = (localStorage.getItem(STORAGE_KEY_GEMINI_MODEL) || '').trim();
+    const apiKey = (workspaceStorage.getItem(STORAGE_KEY_GEMINI_API_KEY) || '').trim();
+    const rawModel = (workspaceStorage.getItem(STORAGE_KEY_GEMINI_MODEL) || '').trim();
     if (!rawModel || LEGACY_MODELS_TO_UPGRADE.has(rawModel)) {
       if (rawModel && LEGACY_MODELS_TO_UPGRADE.has(rawModel)) {
-        localStorage.setItem(STORAGE_KEY_GEMINI_MODEL, DEFAULT_GEMINI_MODEL);
+        workspaceStorage.setItem(STORAGE_KEY_GEMINI_MODEL, DEFAULT_GEMINI_MODEL);
       }
       return { apiKey, model: DEFAULT_GEMINI_MODEL };
     }
@@ -95,11 +96,11 @@ export function saveGeminiConfig(config: GeminiApiConfig): void {
     const cleanKey = config.apiKey.trim();
     const cleanModel = (config.model || '').trim() || DEFAULT_GEMINI_MODEL;
     if (cleanKey) {
-      localStorage.setItem(STORAGE_KEY_GEMINI_API_KEY, cleanKey);
+      workspaceStorage.setItem(STORAGE_KEY_GEMINI_API_KEY, cleanKey);
     } else {
-      localStorage.removeItem(STORAGE_KEY_GEMINI_API_KEY);
+      workspaceStorage.removeItem(STORAGE_KEY_GEMINI_API_KEY);
     }
-    localStorage.setItem(STORAGE_KEY_GEMINI_MODEL, cleanModel);
+    workspaceStorage.setItem(STORAGE_KEY_GEMINI_MODEL, cleanModel);
   } catch {
     // ignore storage quota errors
   }
@@ -107,8 +108,8 @@ export function saveGeminiConfig(config: GeminiApiConfig): void {
 
 export function clearGeminiApiKey(): void {
   try {
-    localStorage.removeItem(STORAGE_KEY_GEMINI_API_KEY);
-    localStorage.removeItem(STORAGE_KEY_GEMINI_MODELS_CACHE);
+    workspaceStorage.removeItem(STORAGE_KEY_GEMINI_API_KEY);
+    workspaceStorage.removeItem(STORAGE_KEY_GEMINI_MODELS_CACHE);
   } catch {
     // ignore storage errors
   }

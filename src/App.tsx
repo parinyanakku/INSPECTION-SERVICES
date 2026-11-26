@@ -1,3 +1,4 @@
+import { workspaceStorage, flushWorkspace } from './utils/workspaceStorage';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
@@ -80,7 +81,7 @@ import {
 
 function loadInitialLang(): AppLanguage {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY_LANG);
+    const saved = workspaceStorage.getItem(STORAGE_KEY_LANG);
     if (saved === 'en' || saved === 'th') return saved;
   } catch {
     // ignore storage errors
@@ -90,7 +91,7 @@ function loadInitialLang(): AppLanguage {
 
 function loadInitialBrand(): BrandConfig {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_BRAND);
+    const raw = workspaceStorage.getItem(STORAGE_KEY_BRAND);
     if (raw) {
       const parsed = JSON.parse(raw);
       return {
@@ -113,23 +114,18 @@ function loadInitialBrand(): BrandConfig {
 
 function loadInitialProjects(): ProjectFile[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_PROJECTS);
+    const raw = workspaceStorage.getItem(STORAGE_KEY_PROJECTS);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return parsed.map(migrateProject);
       }
     }
   } catch {
     // ignore storage errors
   }
-  const initial = [createDefaultSirinaphaProject()];
-  try {
-    localStorage.setItem(STORAGE_KEY_PROJECTS, JSON.stringify(initial));
-  } catch {
-    // ignore quota
-  }
-  return initial;
+  // New accounts start empty; legacy projects are imported only from a chosen backup.
+  return [];
 }
 
 export default function App() {
@@ -140,7 +136,7 @@ export default function App() {
   const [projects, setProjects] = useState<ProjectFile[]>(loadInitialProjects);
   const [lastSavedAt, setLastSavedAt] = useState<string>(() => {
     try {
-      return localStorage.getItem(STORAGE_KEY_LAST_SAVED) || '';
+      return workspaceStorage.getItem(STORAGE_KEY_LAST_SAVED) || '';
     } catch {
       return '';
     }
@@ -193,7 +189,7 @@ export default function App() {
   const handleChangeLang = (nextLang: AppLanguage) => {
     setLang(nextLang);
     try {
-      localStorage.setItem(STORAGE_KEY_LANG, nextLang);
+      workspaceStorage.setItem(STORAGE_KEY_LANG, nextLang);
     } catch {
       // ignore storage errors
     }
@@ -214,18 +210,15 @@ export default function App() {
     (nextBrand: BrandConfig, nextProjects: ProjectFile[], showToastMsg = false) => {
       try {
         const ts = formatCurrentTime(lang);
-        localStorage.setItem(STORAGE_KEY_BRAND, JSON.stringify(nextBrand));
-        localStorage.setItem(STORAGE_KEY_PROJECTS, JSON.stringify(nextProjects));
-        localStorage.setItem(STORAGE_KEY_LAST_SAVED, ts);
-        setLastSavedAt(ts);
-        if (showToastMsg) {
-          notify(
-            lang === 'en'
-              ? `Saved locally (${ts})`
-              : `บันทึกข้อมูลลงเครื่องเรียบร้อยแล้ว (${ts})`,
-            'success'
-          );
-        }
+        workspaceStorage.setItem(STORAGE_KEY_BRAND, JSON.stringify(nextBrand));
+        workspaceStorage.setItem(STORAGE_KEY_PROJECTS, JSON.stringify(nextProjects));
+        workspaceStorage.setItem(STORAGE_KEY_LAST_SAVED, ts);
+        void flushWorkspace().then(ok => {
+          if(ok) {
+            setLastSavedAt(ts);
+            if(showToastMsg) notify(lang==='en'?'Saved locally':'บันทึกข้อมูลลงเครื่องเรียบร้อยแล้ว','success');
+          } else if(showToastMsg) notify(lang==='en'?'Local save failed; export a backup':'บันทึกไม่สำเร็จ กรุณาสำรองไฟล์ JSON','danger');
+        });
         return true;
       } catch {
         notify(
@@ -415,8 +408,14 @@ export default function App() {
     });
   };
 
+  const collectReportBooks = () => {
+    const reportBooks: Record<string, unknown> = {};
+    for(const project of projects){const raw=workspaceStorage.getItem('tis_report_book_v1_'+project.id);if(raw){try{reportBooks[project.id]=JSON.parse(raw);}catch{}}}
+    return reportBooks;
+  };
   const handleBackupAllJson = async () => {
     const payload = {
+      reportBooks: collectReportBooks(),
       format: 'TIS_HOME_INSPECTION_BACKUP_V10',
       exportedAt: new Date().toISOString(),
       brand,
@@ -439,9 +438,10 @@ export default function App() {
   const handleVersionBackup = async (): Promise<boolean> => {
     // Snapshot live project state, not a potentially stale browser copy.
     if (!persistAll(brand, projects, false)) return false;
+    if (!await flushWorkspace()) return false;
     const reportBooks: Record<string, unknown> = {};
     for (const project of projects) {
-      const raw = localStorage.getItem('tis_report_book_v1_' + project.id);
+      const raw = workspaceStorage.getItem('tis_report_book_v1_' + project.id);
       if (raw) { try { reportBooks[project.id] = JSON.parse(raw); } catch { /* ignore corrupt report data */ } }
     }
     const result = await saveJsonFileWithPickerOrDownload({
@@ -477,6 +477,7 @@ export default function App() {
     let payload: unknown;
     if (scope === 'ALL') {
       payload = {
+        reportBooks: collectReportBooks(),
         format: 'TIS_HOME_INSPECTION_BACKUP_V10',
         exportedAt: new Date().toISOString(),
         brand,
@@ -511,7 +512,7 @@ export default function App() {
     reader.onload = (ev) => {
       try {
         const parsed = JSON.parse(String(ev.target?.result || ''));
-        if (Array.isArray(parsed.projects) && parsed.projects.length > 0) {
+        if (Array.isArray(parsed.projects)) {
           setConfirmState({
             title: lang === 'en' ? 'Import Full Backup' : 'นำเข้าไฟล์สำรองข้อมูลทั้งหมด',
             message:
@@ -531,7 +532,7 @@ export default function App() {
                 try {
                   for (const project of nextProjects) {
                     if (Object.prototype.hasOwnProperty.call(parsed.reportBooks, project.id)) {
-                      localStorage.setItem('tis_report_book_v1_' + project.id, JSON.stringify(parsed.reportBooks[project.id]));
+                      workspaceStorage.setItem('tis_report_book_v1_' + project.id, JSON.stringify(parsed.reportBooks[project.id]));
                     }
                   }
                 } catch {

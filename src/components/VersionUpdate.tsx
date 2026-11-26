@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { AppLanguage } from '../types/inspection';
 
-type Release = {version:string; date:string; notes:string; build:number};
+type Release = {version:string; date:string; notes:string; build:number; storageSchema?:number};
 type Manifest = {latest:string; releases:Release[]};
 const PIN = 'tis_preferred_release_v1';
 const VERSION = /^v1\.0\.\d+$/;
@@ -20,7 +20,7 @@ export function VersionUpdate({lang,onBackup}:{lang:AppLanguage;onBackup:()=>Pro
      if(!r.ok)throw Error('Manifest unavailable');
      const m=await r.json() as Manifest;
      if(!VERSION.test(m.latest)||!Array.isArray(m.releases)||!m.releases.some(v=>v.version===m.latest))throw Error('Invalid manifest');
-     setManifest({...m,releases:m.releases.filter(v=>VERSION.test(v.version))});setError('');
+     setManifest({...m,releases:m.releases.filter(v=>VERSION.test(v.version)&&v.storageSchema===2)});setError('');
    }catch{setError(tr('ยังตรวจสอบเวอร์ชันล่าสุดไม่ได้','Cannot check the latest version'));}
  }
  useEffect(()=>{if(!current)return;void load();const timer=window.setInterval(()=>void load(),120000);return()=>clearInterval(timer);},[lang]);
