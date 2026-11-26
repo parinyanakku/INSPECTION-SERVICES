@@ -7,6 +7,8 @@ import {
   Eraser,
   Maximize2,
   Pen,
+  RotateCcw,
+  RotateCw,
   Square,
   Trash2,
   Type as TypeIcon,
@@ -30,6 +32,25 @@ interface MarkupCanvasEditorProps {
   aspectClass?: string;
 }
 
+type OrientedShape = MarkupShape & { orientation?: number };
+const quarter = (n: number) => ((n % 4) + 4) % 4;
+function orientedSize(w: number, h: number, turns: number) {
+  return quarter(turns) % 2 ? { w: h, h: w } : { w, h };
+}
+// Draw source coordinates into a rotated rectangle without resampling the source.
+function withQuarterTurn(ctx: CanvasRenderingContext2D, w: number, h: number, turns: number, draw: (w: number, h: number) => void) {
+  ctx.save();
+  try {
+    ctx.translate(w / 2, h / 2);
+    ctx.rotate(quarter(turns) * Math.PI / 2);
+    const size = orientedSize(w, h, turns);
+    ctx.translate(-size.w / 2, -size.h / 2);
+    draw(size.w, size.h);
+  } finally { ctx.restore(); }
+}
+function drawOrientedShape(ctx: CanvasRenderingContext2D, shape: OrientedShape, w: number, h: number, rotation: number) {
+  withQuarterTurn(ctx, w, h, rotation - (shape.orientation ?? 0), (sw, sh) => drawMarkupShape(ctx, shape, sw, sh));
+}
 const COLOR_SWATCHES = ['#ef4444', '#facc15', '#2563eb', '#16a34a', '#ffffff'];
 
 
@@ -174,7 +195,9 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   const [tool, setTool] = useState<MarkupTool>('pen');
   const [color, setColor] = useState('#ef4444');
   const [lineWidth, setLineWidth] = useState<number>(4.5);
-  const [shapes, setShapes] = useState<MarkupShape[]>([]);
+  const [shapes, setShapes] = useState<OrientedShape[]>([]);
+  const rotationRef = useRef(0);
+  const undoRef = useRef<Array<{ rotation: number; shapes: OrientedShape[] }>>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Inline text input popup at image-normalized coordinates [0..1]
@@ -188,11 +211,11 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
 
   const loadedImageRef = useRef<HTMLImageElement | null>(null);
   const imageSrcRef = useRef<string | null>(imageSrc);
-  const shapesRef = useRef<MarkupShape[]>(shapes);
+  const shapesRef = useRef<OrientedShape[]>(shapes);
   const isFullscreenRef = useRef(isFullscreen);
   const pendingTextPosRef = useRef(pendingTextPos);
   const isDrawingRef = useRef(false);
-  const currentShapeRef = useRef<MarkupShape | null>(null);
+  const currentShapeRef = useRef<OrientedShape | null>(null);
 
   imageSrcRef.current = imageSrc;
   shapesRef.current = shapes;
@@ -213,16 +236,15 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     ctx.fillStyle = '#0f172a';
     ctx.fillRect(0, 0, w, h);
 
-    const { dx, dy, dw, dh } = getImageDrawRect(img.width, img.height, w, h);
-    ctx.drawImage(img, dx, dy, dw, dh);
-
-    const activeShapes = shapesRef.current;
-    for (let i = 0; i < activeShapes.length; i++) {
-      drawMarkupShape(ctx, activeShapes[i], dw, dh, dx, dy);
-    }
-    if (currentShapeRef.current) {
-      drawMarkupShape(ctx, currentShapeRef.current, dw, dh, dx, dy);
-    }
+    const rotation = rotationRef.current;
+    const size = orientedSize(img.naturalWidth, img.naturalHeight, rotation);
+    const { dx, dy, dw, dh } = getImageDrawRect(size.w, size.h, w, h);
+    ctx.save();
+    ctx.translate(dx, dy);
+    withQuarterTurn(ctx, dw, dh, rotation, (iw, ih) => ctx.drawImage(img, 0, 0, iw, ih));
+    for (const shape of shapesRef.current) drawOrientedShape(ctx, shape, dw, dh, rotation);
+    if (currentShapeRef.current) drawOrientedShape(ctx, currentShapeRef.current, dw, dh, rotation);
+    ctx.restore();
   }, []);
 
   const drawActiveCanvases = useCallback(() => {
@@ -231,6 +253,43 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       paintCanvas(fullscreenCanvasRef.current);
     }
   }, [paintCanvas]);
+
+  const remember = () => {
+    undoRef.current.push({ rotation: rotationRef.current, shapes: shapesRef.current });
+    if (undoRef.current.length > 100) undoRef.current.shift();
+  };
+  const rotatePhoto = (delta: number) => {
+    if (!loadedImageRef.current?.naturalWidth || !imageSrcRef.current || isDrawingRef.current) return;
+    if (pendingTextPosRef.current) {
+      onNotify(lang === 'en' ? 'Finish the text annotation before rotating.' : 'กรุณาบันทึกข้อความก่อนหมุนรูป', 'info');
+      return;
+    }
+    remember();
+    rotationRef.current = quarter(rotationRef.current + delta);
+    drawActiveCanvases();
+  };
+  const undoEdit = () => {
+    if (isDrawingRef.current) return;
+    const last = undoRef.current.pop();
+    if (!last) return;
+    rotationRef.current = last.rotation;
+    shapesRef.current = last.shapes;
+    setShapes(last.shapes);
+    setPendingTextPos(null);
+    setPendingTextValue('');
+    drawActiveCanvases();
+  };
+  const clearMarks = () => {
+    if (isDrawingRef.current) return;
+    if (shapesRef.current.length) {
+      remember();
+      shapesRef.current = [];
+      setShapes([]);
+    }
+    setPendingTextPos(null);
+    setPendingTextValue('');
+    drawActiveCanvases();
+  };
 
   // Pure canvas size synchronizer (never calls setState)
   const syncDimensions = useCallback(() => {
@@ -262,6 +321,9 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   // Load image ONLY when imageSrc actually changes; guard all state resets
   useEffect(() => {
     shapesRef.current = [];
+    rotationRef.current = 0;
+    undoRef.current = [];
+    loadedImageRef.current = null;
     currentShapeRef.current = null;
     isDrawingRef.current = false;
     setShapes((prev) => (prev.length === 0 ? prev : []));
@@ -349,12 +411,12 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       exportDataUrl: () => {
         const src = imageSrcRef.current;
         if (!src) return null;
-        if (shapesRef.current.length === 0) return src;
+        if (shapesRef.current.length === 0 && rotationRef.current === 0) return src;
 
         const img = loadedImageRef.current;
         if (img && img.complete) {
-          const outW = img.naturalWidth || img.width;
-          const outH = img.naturalHeight || img.height;
+          const rotation = rotationRef.current;
+          const { w: outW, h: outH } = orientedSize(img.naturalWidth || img.width, img.naturalHeight || img.height, rotation);
           if (outW > 0 && outH > 0) {
             try {
               const offscreen = document.createElement('canvas');
@@ -362,11 +424,8 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
               offscreen.height = outH;
               const ctx = offscreen.getContext('2d');
               if (ctx) {
-                ctx.drawImage(img, 0, 0, outW, outH);
-                const list = shapesRef.current;
-                for (let i = 0; i < list.length; i++) {
-                  drawMarkupShape(ctx, list[i], outW, outH, 0, 0);
-                }
+                withQuarterTurn(ctx, outW, outH, rotation, (iw, ih) => ctx.drawImage(img, 0, 0, iw, ih));
+                for (const shape of shapesRef.current) drawOrientedShape(ctx, shape, outW, outH, rotation);
                 return offscreen.toDataURL('image/jpeg', 0.95);
               }
             } catch {
@@ -409,12 +468,8 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
         ny: Math.max(0, Math.min(1, py / Math.max(1, canvas.height))),
       };
     }
-    const { dx, dy, dw, dh } = getImageDrawRect(
-      img.width,
-      img.height,
-      canvas.width,
-      canvas.height
-    );
+    const size = orientedSize(img.naturalWidth, img.naturalHeight, rotationRef.current);
+    const { dx, dy, dw, dh } = getImageDrawRect(size.w, size.h, canvas.width, canvas.height);
     return {
       nx: Math.max(0, Math.min(1, (px - dx) / Math.max(1, dw))),
       ny: Math.max(0, Math.min(1, (py - dy) / Math.max(1, dh))),
@@ -423,7 +478,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = e.currentTarget;
-    if (!canvas) return;
+    if (!canvas || !loadedImageRef.current?.naturalWidth) return;
     const { nx, ny } = getPos(e, canvas);
 
     if (tool === 'text') {
@@ -436,6 +491,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     canvas.setPointerCapture(e.pointerId);
     isDrawingRef.current = true;
     currentShapeRef.current = {
+      orientation: rotationRef.current,
       tool,
       color,
       lineWidth,
@@ -472,7 +528,10 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
         ? (s.points?.length || 0) > 1
         : Math.hypot(s.x2 - s.x1, s.y2 - s.y1) > 0.012;
     if (hasMovement) {
-      setShapes((prev) => [...prev, s]);
+      remember();
+      const next = [...shapesRef.current, s];
+      shapesRef.current = next;
+      setShapes(next);
     } else {
       drawActiveCanvases();
     }
@@ -485,7 +544,8 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       setPendingTextValue('');
       return;
     }
-    const newShape: MarkupShape = {
+    const newShape: OrientedShape = {
+      orientation: rotationRef.current,
       tool: 'text',
       color,
       lineWidth,
@@ -495,7 +555,10 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       y2: pendingTextPos.y,
       text: clean,
     };
-    setShapes((prev) => [...prev, newShape]);
+    remember();
+    const next = [...shapesRef.current, newShape];
+    shapesRef.current = next;
+    setShapes(next);
     setPendingTextPos(null);
     setPendingTextValue('');
   };
@@ -524,12 +587,8 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
         top: Math.min(82, Math.max(8, pos.y * 100)),
       };
     }
-    const { dx, dy, dw, dh } = getImageDrawRect(
-      img.width,
-      img.height,
-      canvas.width,
-      canvas.height
-    );
+    const size = orientedSize(img.naturalWidth, img.naturalHeight, rotationRef.current);
+    const { dx, dy, dw, dh } = getImageDrawRect(size.w, size.h, canvas.width, canvas.height);
     const leftPct = ((dx + pos.x * dw) / canvas.width) * 100;
     const topPct = ((dy + pos.y * dh) / canvas.height) * 100;
     return {
@@ -537,6 +596,13 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       top: Math.min(82, Math.max(6, topPct)),
     };
   };
+
+  const rotationButtons = (dark = false) => imageSrc && ([[-1, RotateCcw, 'หมุนซ้าย 90°', 'Rotate left 90°'], [1, RotateCw, 'หมุนขวา 90°', 'Rotate right 90°']] as const).map(([delta, Icon, th, en]) => (
+    <button key={delta} type="button" onClick={() => rotatePhoto(delta)} aria-label={lang === 'en' ? en : th} title={lang === 'en' ? en : th}
+      className={'inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border text-xs font-semibold whitespace-nowrap '+(dark?'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700':'bg-white border-slate-200 text-slate-700 hover:bg-slate-100')}>
+      <Icon className="w-4 h-4" /><span>{lang === 'en' ? en : th}</span>
+    </button>
+  ));
 
   const tools: Array<{ id: MarkupTool; label: string; icon: React.ReactNode }> = [
     { id: 'pen', label: t.toolPen, icon: <Pen className="w-3.5 h-3.5" /> },
@@ -611,9 +677,10 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
             <span className="text-xs tabular-nums min-w-8">{lineWidth}</span>
           </div>
 
+          {rotationButtons()}
           <button
             type="button"
-            onClick={() => setShapes((prev) => (prev.length > 0 ? prev.slice(0, -1) : prev))}
+            onClick={undoEdit}
             className="p-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer"
             title={t.undoTooltip}
           >
@@ -621,10 +688,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => {
-              setShapes((prev) => (prev.length === 0 ? prev : []));
-              setPendingTextPos(null);
-            }}
+            onClick={clearMarks}
             className="p-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer"
             title={t.clearTooltip}
           >
@@ -815,12 +879,11 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
             <span className="text-xs tabular-nums min-w-8">{lineWidth}</span>
                 </div>
 
-                {/* Undo & Clear */}
+                {/* Rotation, Undo & Clear */}
+                {rotationButtons(true)}
                 <button
                   type="button"
-                  onClick={() =>
-                    setShapes((prev) => (prev.length > 0 ? prev.slice(0, -1) : prev))
-                  }
+                  onClick={undoEdit}
                   className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 cursor-pointer"
                   title={t.undoTooltip}
                 >
@@ -828,10 +891,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setShapes((prev) => (prev.length === 0 ? prev : []));
-                    setPendingTextPos(null);
-                  }}
+                  onClick={clearMarks}
                   className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 cursor-pointer"
                   title={t.clearTooltip}
                 >
