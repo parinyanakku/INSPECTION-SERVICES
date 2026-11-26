@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.22",
+  "latest": "v1.0.23",
   "releases": [
+    {
+      "version": "v1.0.23",
+      "build": 23,
+      "storageSchema": 2,
+      "date": "2026-11-26T07:33:44.198Z",
+      "notes": "Support admin-only local project enrichment imports without replacing other projects",
+      "commit": "8aaa3d7e7a30416e79a66b8cae1506a3f87b6ff2"
+    },
     {
       "version": "v1.0.22",
       "build": 22,
