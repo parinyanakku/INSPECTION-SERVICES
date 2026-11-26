@@ -78,6 +78,10 @@ export default function AccountWorkspace(){
    const r=await fetch(API+'/functions/v1/inspection-create-customer',{method:'POST',headers:{apikey:PUBLIC_KEY,Authorization:'Bearer '+session.access_token,'Content-Type':'application/json'},body:JSON.stringify(body),cache:'no-store',signal:AbortSignal.timeout(35000)});
    if(!r.ok)throw Error(r.status===409?'อีเมลนี้มีบัญชีอยู่แล้วหรือข้อมูลไม่ถูกต้อง':r.status===401||r.status===403?'ไม่มีสิทธิ์สร้างบัญชี กรุณาเข้าสู่ระบบใหม่':r.status===400?'ตรวจสอบชื่อ อีเมล และรหัสผ่าน':'สร้างบัญชีไม่สำเร็จ กรุณารีเฟรชรายชื่อก่อนลองใหม่');
    return await r.json();
+ }} deleteCustomer={async body=>{
+ const r=await fetch(API+'/functions/v1/inspection-delete-customer',{method:'POST',headers:{apikey:PUBLIC_KEY,Authorization:'Bearer '+session.access_token,'Content-Type':'application/json'},body:JSON.stringify(body),cache:'no-store',signal:AbortSignal.timeout(40000)});
+ const data=await r.json().catch(()=>({}));
+ if(!r.ok||data.deleted!==true)throw Error(data.access_revoked?'ระงับสิทธิ์แล้ว แต่ยังยืนยันการลบไม่ได้ กรุณารีเฟรชรายชื่อก่อนลองใหม่':r.status===401||r.status===403?'ไม่มีสิทธิ์ลบบัญชี':r.status===409?'บัญชีหรืออีเมลยืนยันไม่ตรงกัน กรุณารีเฟรช':'ยังยืนยันการลบไม่ได้ กรุณารีเฟรชรายชื่อก่อนลองใหม่');
  }} onClose={()=>setAdminOpen(false)}/>}
  </>;
 }

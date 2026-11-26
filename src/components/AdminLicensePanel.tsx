@@ -11,11 +11,19 @@ function localDate(value:string|null){if(!value)return '';const d=new Date(value
 function expiry(plan:Plan){if(plan==='lifetime')return '';const d=new Date();d.setDate(d.getDate()+({trial:7,monthly:30,yearly:365,custom:30,lifetime:0}[plan]));return localDate(d.toISOString());}
 function initial(u:Account):Edit{const plan=u.plan||'trial';return {display_name:u.display_name||'',plan,active:!!u.active,expires_at:localDate(u.expires_at)||expiry(plan)};}
 function state(u:Account){return !u.plan?'ยังไม่ได้รับสิทธิ์':!u.active?'ระงับสิทธิ์':u.expires_at&&Date.parse(u.expires_at)<=Date.now()?'หมดอายุ':'ใช้งานได้';}
-function AccountRow({u,rpc,onSaved}:{u:Account;rpc:Rpc;onSaved:()=>Promise<void>}){
+type DeleteCustomer=(input:{user_id:string;confirm_email:string})=>Promise<void>;
+function AccountRow({u,rpc,onSaved,onDeleted,deleteCustomer}:{u:Account;rpc:Rpc;onSaved:()=>Promise<void>;onDeleted:()=>Promise<void>;deleteCustomer:DeleteCustomer}){
  const [edit,setEdit]=useState(()=>initial(u)),[busy,setBusy]=useState(false),[error,setError]=useState('');
  useEffect(()=>{setEdit(initial(u));},[u]);
  const [issued,setIssued]=useState<IssuedCode|null>(null),[days,setDays]=useState(()=>daysFor(u.plan||'trial')),[codeMessage,setCodeMessage]=useState('');
  const readOnly=u.role==='admin';
+ const [deleteOpen,setDeleteOpen]=useState(false),[confirmEmail,setConfirmEmail]=useState(''),[deleteError,setDeleteError]=useState('');
+ async function removeAccount(){
+   if(readOnly||busy||!u.email||confirmEmail.trim().toLowerCase()!==u.email.toLowerCase())return;
+   setBusy(true);setDeleteError('');
+   try{await deleteCustomer({user_id:u.user_id,confirm_email:confirmEmail.trim()});setDeleteOpen(false);await onDeleted();}
+   catch(e){setDeleteError(e instanceof Error?e.message:'ไม่สามารถยืนยันการลบได้ กรุณารีเฟรชรายชื่อก่อนลองใหม่');}finally{setBusy(false);}
+ }
  async function issue(){
    if(readOnly||busy)return;
    if(edit.plan!=='lifetime'&&(!Number.isInteger(days)||days<1||days>3650)){setError('ระบุจำนวนวัน 1–3650 วัน');return;}
@@ -65,15 +73,24 @@ function AccountRow({u,rpc,onSaved}:{u:Account;rpc:Rpc;onSaved:()=>Promise<void>
  {edit.plan!=='lifetime'&&<label className="block text-xs">จำนวนวันสำหรับรหัส<input type="number" min="1" max="3650" step="1" aria-label="จำนวนวันสำหรับรหัส" disabled={busy} value={days} onChange={e=>setDays(Number(e.target.value))} className={inputClass}/></label>}
  <button type="button" disabled={busy} onClick={issue} className="block bg-emerald-700 text-white rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-40">สร้างรหัส License</button>
  <button type="button" disabled={busy} onClick={revoke} className="block border border-red-200 text-red-700 rounded-lg px-3 py-2 text-xs">ยกเลิกรหัสที่ยังไม่ใช้</button>
+ <button type="button" disabled={busy||!u.email} onClick={()=>{setConfirmEmail('');setDeleteError('');setDeleteOpen(true);}} className="block bg-red-700 hover:bg-red-800 text-white rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-40">ลบผู้ใช้</button>
  </div>}
  {issued&&<div className="fixed inset-0 z-[150] bg-slate-900/60 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="รหัสลงทะเบียนที่สร้าง"><div className="bg-white rounded-2xl p-5 max-w-lg w-full space-y-3 shadow-xl"><h3 className="font-bold text-lg">รหัสลงทะเบียนลูกค้า</h3><p className="text-xs text-slate-600">แสดงรหัสนี้ครั้งเดียว กรุณาคัดลอกก่อนปิด รหัสใช้ได้ 7 วันสำหรับเปิดใช้งาน</p><textarea readOnly rows={9} value={instructions} className="border rounded-lg p-2 w-full text-xs"/><div className="flex gap-2"><button type="button" onClick={copy} className="bg-blue-700 text-white px-3 py-2 rounded-lg">คัดลอกข้อความส่งลูกค้า</button><button type="button" onClick={()=>{if(window.confirm('ปิดรหัสนี้? จะไม่สามารถเรียกดูรหัสเดิมได้อีก'))setIssued(null);}} className="border rounded-lg px-3 py-2">ปิด</button></div>{codeMessage&&<p role="status" className="text-xs text-emerald-700">{codeMessage}</p>}</div></div>}
+ {deleteOpen&&<div className="fixed inset-0 z-[160] bg-slate-900/65 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="ยืนยันการลบผู้ใช้"><div className="bg-white rounded-2xl p-5 max-w-md w-full space-y-3 shadow-xl">
+ <h3 className="font-bold text-lg text-red-700">ยืนยันการลบผู้ใช้ถาวร</h3>
+ <p className="text-sm break-all">บัญชี: <strong>{u.email}</strong></p>
+ <p className="text-sm text-slate-600">บัญชีและสิทธิ์ License จะถูกลบ รหัสที่ยังไม่ใช้จะถูกยกเลิก และไม่สามารถกู้คืนบัญชีเดิมได้ ไฟล์งานในเครื่องลูกค้าจะไม่ถูกลบ แต่บัญชีใหม่จะไม่สามารถเปิดพื้นที่บัญชีเดิมโดยอัตโนมัติ ควรให้ลูกค้าสำรองไฟล์ก่อนลบ หากต้องการหยุดใช้งานชั่วคราวให้ระงับสิทธิ์แทน</p>
+ <label className="block text-sm font-semibold">พิมพ์อีเมลของบัญชีเพื่อยืนยัน<input autoComplete="off" value={confirmEmail} disabled={busy} onChange={e=>setConfirmEmail(e.target.value)} className={inputClass+' mt-1'}/></label>
+ {deleteError&&<p role="alert" className="text-sm text-red-700">{deleteError}</p>}
+ <div className="flex justify-end gap-2"><button type="button" disabled={busy} onClick={()=>setDeleteOpen(false)} className="border rounded-lg px-3 py-2">ยกเลิก</button><button type="button" disabled={busy||!u.email||confirmEmail.trim().toLowerCase()!==u.email.toLowerCase()} onClick={()=>void removeAccount()} className="bg-red-700 text-white rounded-lg px-3 py-2 font-semibold disabled:opacity-40">{busy?'กำลังลบ…':'ยืนยันลบผู้ใช้'}</button></div>
+ </div></div>}
  {!issued&&codeMessage&&<p role="status" className="text-xs text-emerald-700 mt-1">{codeMessage}</p>}
  {error&&<p role="alert" className="text-xs text-red-700 mt-1">{error}</p>}</td>
  </tr>;
 }
 type CustomerInput={email:string;display_name:string;password:string};
 type CreateResult={user_id:string;email:string;license_initialized:boolean};
-export function AdminLicensePanel({rpc,onClose,createCustomer}:{rpc:Rpc;onClose:()=>void;createCustomer:(input:CustomerInput)=>Promise<CreateResult>}){
+export function AdminLicensePanel({rpc,onClose,createCustomer,deleteCustomer}:{rpc:Rpc;onClose:()=>void;createCustomer:(input:CustomerInput)=>Promise<CreateResult>;deleteCustomer:DeleteCustomer}){
  const [createOpen,setCreateOpen]=useState(false),[createBusy,setCreateBusy]=useState(false);
  const [customerName,setCustomerName]=useState(''),[customerEmail,setCustomerEmail]=useState(''),[customerPassword,setCustomerPassword]=useState(''),[showPassword,setShowPassword]=useState(false),[createError,setCreateError]=useState('');
  function closeCreate(){if(createBusy)return;setCreateOpen(false);setCustomerPassword('');setShowPassword(false);setCreateError('');}
@@ -115,7 +132,7 @@ export function AdminLicensePanel({rpc,onClose,createCustomer}:{rpc:Rpc;onClose:
  <div className="flex flex-wrap items-center gap-2"><input aria-label="ค้นหาบัญชี" placeholder="ค้นหาอีเมลหรือชื่อ" value={query} onChange={e=>setQuery(e.target.value)} className="border rounded-lg p-2 flex-1 min-w-[160px] text-sm"/><button type="button" onClick={()=>void load()} disabled={loading} className="border rounded-lg px-3 py-2 text-sm">รีเฟรช</button><button type="button" onClick={()=>{setCreateError('');setCreateOpen(true);}} className="bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-semibold">+ สร้างบัญชีลูกค้า</button></div>
  <p className="text-xs text-slate-500">สร้างบัญชีลูกค้าในหน้านี้ แล้วเลือกแพ็กเกจและจำนวนวันเพื่อออกรหัส License หรือบันทึกสิทธิ์โดยตรง รหัสใช้ได้ครั้งเดียว ไม่จัดเก็บไฟล์งานลูกค้า</p>
  {error&&<p role="alert" className="text-red-700 text-sm">{error}</p>}{message&&<p role="status" className="text-emerald-700 text-sm">{message}</p>}
- {loading?<p className="text-sm text-slate-500">กำลังโหลดรายชื่อ...</p>:<div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-100 text-left"><tr>{['อีเมล / ชื่อ','สิทธิ์ / สถานะ','แพ็กเกจ','หมดอายุ (เวลาท้องถิ่น)','การใช้งาน','จัดการ'].map(x=><th className="p-3 whitespace-nowrap" key={x}>{x}</th>)}</tr></thead><tbody>{rows.map(u=><AccountRow key={u.user_id} u={u} rpc={rpcRef.current} onSaved={()=>load(true)}/>)}</tbody></table>{!rows.length&&!error&&<p className="p-4 text-slate-500">ไม่พบบัญชี</p>}</div>}
+ {loading?<p className="text-sm text-slate-500">กำลังโหลดรายชื่อ...</p>:<div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-100 text-left"><tr>{['อีเมล / ชื่อ','สิทธิ์ / สถานะ','แพ็กเกจ','หมดอายุ (เวลาท้องถิ่น)','การใช้งาน','จัดการ'].map(x=><th className="p-3 whitespace-nowrap" key={x}>{x}</th>)}</tr></thead><tbody>{rows.map(u=><AccountRow key={u.user_id} u={u} rpc={rpcRef.current} onSaved={()=>load(true)} deleteCustomer={deleteCustomer} onDeleted={async()=>{await load();if(alive.current)setMessage('ลบบัญชีผู้ใช้สำเร็จ');}}/>)}</tbody></table>{!rows.length&&!error&&<p className="p-4 text-slate-500">ไม่พบบัญชี</p>}</div>}
  {createOpen&&<div className="fixed inset-0 z-[140] bg-slate-900/60 flex items-center justify-center p-3" role="dialog" aria-modal="true" aria-labelledby="create-customer-title"><form onSubmit={submitCustomer} className="bg-white w-full max-w-md max-h-[90vh] overflow-auto rounded-2xl p-5 shadow-xl space-y-3">
  <h3 id="create-customer-title" className="text-lg font-bold">สร้างบัญชีลูกค้าใหม่</h3><p className="text-sm text-slate-500">บัญชีใหม่จะยังไม่เปิดสิทธิ์ใช้งาน จนกว่าจะได้รับ License</p>
  <label className="block text-sm font-semibold">ชื่อ-นามสกุล<input required maxLength={150} value={customerName} onChange={e=>setCustomerName(e.target.value)} disabled={createBusy} className="block w-full border border-slate-300 rounded-lg p-2 mt-1"/></label>
