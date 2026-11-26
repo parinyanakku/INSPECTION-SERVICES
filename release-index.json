@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.44",
+  "latest": "v1.0.45",
   "releases": [
+    {
+      "version": "v1.0.45",
+      "build": 45,
+      "storageSchema": 2,
+      "date": "2026-11-26T09:46:35.141Z",
+      "notes": "Separate fast workspace sync and visible export with cancellation",
+      "commit": "2a4538840a4c70abbc8be4287bf323a1844d24fe",
+      "notesTh": "แยกซิงค์ข้อมูลจากส่งสำเนาไฟล์ Google Drive เพิ่มปุ่มยกเลิก และส่งสำเนาพร้อมกันสูงสุด 4 ไฟล์"
+    },
     {
       "version": "v1.0.44",
       "build": 44,
