@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.14",
+  "latest": "v1.0.17",
   "releases": [
+    {
+      "version": "v1.0.17",
+      "build": 17,
+      "storageSchema": 2,
+      "date": "2026-11-26T07:13:20.260Z",
+      "notes": "Fix update dialog English string build error",
+      "commit": "520b88ef601c8a222653c665d45460584d6439fb"
+    },
     {
       "version": "v1.0.14",
       "build": 14,
