@@ -31,11 +31,7 @@ interface MarkupCanvasEditorProps {
 }
 
 const COLOR_SWATCHES = ['#ef4444', '#facc15', '#2563eb', '#16a34a', '#ffffff'];
-const STROKE_SIZES = [
-  { label: 'S', value: 2.5 },
-  { label: 'M', value: 4.5 },
-  { label: 'L', value: 7.5 },
-];
+
 
 /**
  * Computes the letterboxed/contained draw rectangle (dx, dy, dw, dh) of an image
@@ -610,20 +606,9 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
           </div>
 
           <div className="flex items-center gap-0.5 pr-1 border-r border-slate-200" title={t.sizeLabel}>
-            {STROKE_SIZES.map((sz) => (
-              <button
-                key={sz.label}
-                type="button"
-                onClick={() => setLineWidth(sz.value)}
-                className={`px-1.5 py-1 rounded text-[11px] font-bold cursor-pointer ${
-                  lineWidth === sz.value
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-white text-slate-600 border border-slate-200'
-                }`}
-              >
-                {sz.label}
-              </button>
-            ))}
+            <span className="text-xs">{lang==='en'?'Stroke':'ขนาดเส้น'}</span>
+            <input type="range" min={1} max={15} step={0.5} value={lineWidth} onChange={e=>setLineWidth(Number(e.target.value))} aria-label={lang==='en'?'Stroke width':'ความหนาเส้น'} className="w-20 accent-blue-500"/>
+            <span className="text-xs tabular-nums min-w-8">{lineWidth}</span>
           </div>
 
           <button
@@ -825,20 +810,9 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
                   className="flex items-center gap-1 pr-2 border-r border-slate-700"
                   title={t.sizeLabel}
                 >
-                  {STROKE_SIZES.map((sz) => (
-                    <button
-                      key={sz.label}
-                      type="button"
-                      onClick={() => setLineWidth(sz.value)}
-                      className={`px-2 py-1 rounded text-xs font-bold cursor-pointer ${
-                        lineWidth === sz.value
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700'
-                      }`}
-                    >
-                      {sz.label}
-                    </button>
-                  ))}
+                  <span className="text-xs">{lang==='en'?'Stroke':'ขนาดเส้น'}</span>
+            <input type="range" min={1} max={15} step={0.5} value={lineWidth} onChange={e=>setLineWidth(Number(e.target.value))} aria-label={lang==='en'?'Stroke width':'ความหนาเส้น'} className="w-20 accent-blue-500"/>
+            <span className="text-xs tabular-nums min-w-8">{lineWidth}</span>
                 </div>
 
                 {/* Undo & Clear */}

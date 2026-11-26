@@ -25,6 +25,7 @@ import {
   loadGeminiConfig,
 } from '../utils/geminiClient';
 import { compressImageFile } from '../utils/imageUtils';
+import { workspaceStorage } from '../utils/workspaceStorage';
 import { FloorPlanSvg } from './FloorPlanSvg';
 import { CustomFloorEditor } from './CustomFloorEditor';
 import { customFloorDataUrl } from '../utils/customFloorSvg';
@@ -83,6 +84,16 @@ export const StudioTab: React.FC<StudioTabProps> = ({
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
   const [isFloorDropActive, setIsFloorDropActive] = useState(false);
 
+  const viewKey='tis_plan_view_v1_'+project.id;
+  const [initialPlanView]=useState(()=>{try{return JSON.parse(workspaceStorage.getItem(viewKey)||'{}');}catch{return {};}});
+  const [pinSize,setPinSize]=useState<number>(()=>Number.isFinite(initialPlanView.pinSize)?Math.max(14,Math.min(32,initialPlanView.pinSize)):20);
+  const [planZoom,setPlanZoom]=useState<number>(()=>Number.isFinite(initialPlanView.zoom)?Math.max(50,Math.min(300,initialPlanView.zoom)):100);
+  const [panMode,setPanMode]=useState(false);
+  const planViewport=useRef<HTMLDivElement|null>(null);
+  const panStart=useRef<{x:number;y:number;left:number;top:number;id:number}|null>(null);
+  useEffect(()=>{try{workspaceStorage.setItem(viewKey,JSON.stringify({pinSize,zoom:planZoom}));}catch{}},[viewKey,pinSize,planZoom]);
+  useEffect(()=>{const vp=planViewport.current;if(vp){vp.scrollLeft=Math.max(0,(vp.scrollWidth-vp.clientWidth)/2);vp.scrollTop=Math.max(0,(vp.scrollHeight-vp.clientHeight)/2);}},[planZoom,activeFloorId,isEditingFloor]);
+  const changeZoom=(n:number)=>setPlanZoom(Math.max(50,Math.min(300,n)));
   // Pin & Zone drag state refs
   const floorStageRef = useRef<HTMLDivElement | null>(null);
   const draggingPinRef = useRef<{
@@ -651,6 +662,25 @@ export const StudioTab: React.FC<StudioTabProps> = ({
             onChange={updated => onUpdateProject(prev => ({...prev, floors:prev.floors.map(fl=>fl.id===updated.id?{...fl,isCustomBuilder:true,zones:updated.zones,elements:updated.elements}:fl)}))}
             onDone={() => {setEditingFloorId(null); setShowZoneOverlays(true);}} />
         ) : (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 border border-slate-200 p-2 text-xs">
+            <span className="font-semibold">{lang==='en'?'Pin size':'ขนาดหมุด'}</span>
+            <input aria-label={lang==='en'?'Pin size':'ขนาดหมุด'} type="range" min={14} max={32} step={1} value={pinSize} onChange={ev=>setPinSize(+ev.target.value)} className="w-24 accent-blue-700"/>
+            <span className="tabular-nums min-w-9">{pinSize}px</span>
+            <span className="font-semibold ml-1">{lang==='en'?'Zoom':'ซูมแปลน'}</span>
+            <button type="button" onClick={()=>changeZoom(planZoom-25)} className="border bg-white rounded px-2 py-1 font-bold" aria-label="Zoom out">−</button>
+            <input aria-label={lang==='en'?'Plan zoom':'ซูมแปลน'} type="range" min={50} max={300} step={10} value={planZoom} onChange={ev=>changeZoom(+ev.target.value)} className="w-20 accent-blue-700"/>
+            <button type="button" onClick={()=>changeZoom(planZoom+25)} className="border bg-white rounded px-2 py-1 font-bold" aria-label="Zoom in">+</button>
+            <span className="tabular-nums">{planZoom}%</span>
+            <button type="button" onClick={()=>{changeZoom(100);const vp=planViewport.current;if(vp){vp.scrollLeft=0;vp.scrollTop=0;}}} className="border bg-white rounded px-2 py-1">{lang==='en'?'Fit':'พอดีจอ'}</button>
+            <button type="button" aria-pressed={panMode} onClick={()=>setPanMode(v=>!v)} className={'border rounded px-2 py-1 '+(panMode?'bg-blue-700 text-white':'bg-white')}>{lang==='en'?'Pan':'เลื่อนแปลน'}</button>
+          </div>
+          <div ref={planViewport} className={'relative w-full aspect-[4/3] overflow-auto rounded-xl border border-slate-300 bg-slate-50 '+(panMode?'cursor-grab active:cursor-grabbing touch-none':'')}
+            onPointerDownCapture={ev=>{if(!panMode||ev.button!==0)return;const vp=ev.currentTarget;ev.preventDefault();ev.stopPropagation();vp.setPointerCapture(ev.pointerId);panStart.current={x:ev.clientX,y:ev.clientY,left:vp.scrollLeft,top:vp.scrollTop,id:ev.pointerId};}}
+            onPointerMove={ev=>{const p=panStart.current;if(!p||p.id!==ev.pointerId)return;ev.currentTarget.scrollLeft=p.left-(ev.clientX-p.x);ev.currentTarget.scrollTop=p.top-(ev.clientY-p.y);}}
+            onPointerUp={ev=>{panStart.current=null;if(ev.currentTarget.hasPointerCapture(ev.pointerId))ev.currentTarget.releasePointerCapture(ev.pointerId);}}
+            onPointerCancel={()=>{panStart.current=null;}}
+            onClickCapture={ev=>{if(panMode){ev.preventDefault();ev.stopPropagation();}}}>
         <div
           id="floorStage"
           ref={floorStageRef}
@@ -665,7 +695,8 @@ export const StudioTab: React.FC<StudioTabProps> = ({
             setIsFloorDropActive(false);
             handleFloorImageUpload(e.dataTransfer.files?.[0]);
           }}
-          className={`relative w-full aspect-[4/3] rounded-xl overflow-hidden border border-slate-300 bg-slate-50 select-none ${
+          style={{width:planZoom+'%',marginLeft:planZoom<100?'auto':0,marginRight:planZoom<100?'auto':0}}
+          className={`relative aspect-[4/3] overflow-hidden bg-slate-50 select-none ${
             isZoneSetupMode ? 'zone-setup-active' : ''
           } ${placingDraftId ? 'cursor-crosshair ring-2 ring-blue-400' : ''} ${
             isFloorDropActive ? 'floor-drop-active' : ''
@@ -793,15 +824,18 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                   left: `${d.x}%`,
                   top: `${d.y}%`,
                   transform: 'translate(-50%,-50%)',
+                  width:pinSize,height:pinSize,fontSize:Math.max(8,Math.round(pinSize*0.52)),touchAction:'none',
                 }}
                 title={`#${d.number} ${d.title} (${translateDefectStatus(d.status, lang)})`}
-                className={`pin-marker absolute z-20 w-7 h-7 sm:w-8 sm:h-8 rounded-full text-white text-[11px] sm:text-xs font-extrabold border-2 shadow-md flex items-center justify-center tabular-nums cursor-pointer ${getPinColorClass(
+                className={`pin-marker absolute z-20 rounded-full text-white font-extrabold border shadow-sm flex items-center justify-center tabular-nums cursor-pointer ${getPinColorClass(
                   d
                 )}`}
               >
                 {d.number}
               </button>
             ))}
+        </div>
+        </div>
         </div>
         )}
 

@@ -53,9 +53,11 @@ export async function appendPrintableExcelReport(workbook:ExcelJS.Workbook,pages
    const name=(names?.[lang==='en'?2:1]||'Report').slice(0,31);
    const sheet=workbook.addWorksheet(name,{
     views:[{state:'normal',style:'pageBreakPreview',showGridLines:false,zoomScale:75,zoomScaleNormal:100}],
-    pageSetup:{paperSize:9,orientation:landscape?'landscape':'portrait',fitToPage:false,scale:90,horizontalCentered:true,margins:{left:0.25,right:0.25,top:0.25,bottom:0.25,header:0,footer:0},pageOrder:'downThenOver'},
+    pageSetup:{paperSize:9,orientation:landscape?'landscape':'portrait',fitToPage:false,scale:90,horizontalCentered:true,verticalCentered:true,margins:{left:0.25,right:0.25,top:0.25,bottom:0.25,header:0,footer:0},pageOrder:'downThenOver'},
    });
-   for(let c=1;c<=cols;c++)sheet.getColumn(c).width=0.83;
+   // OOXML column width is measured in maximum digit widths, not CSS pixels.
+   // Calibri 11 (Excel's default) has a 7px digit; 1.43 units is ~10px.
+   for(let c=1;c<=cols;c++)sheet.getColumn(c).width=1.43;
    sheet.properties.defaultRowHeight=7.5;
    group={sheet,count:0,cols,rows};groups.set(key,group);
  }
@@ -88,6 +90,7 @@ export async function appendPrintableExcelReport(workbook:ExcelJS.Workbook,pages
  }
  // Paint outer panels and cell boundaries before merging the editable text.
  for(const el of Array.from(root.querySelectorAll<HTMLElement>('div,table,td,th,h1,h2,h3,span'))){
+   if(key==='page-cover'&&el!==root.firstElementChild)continue;
    const b=bounds(el);if(b)decorate(el,b);
  }
  const occupied=new Set<string>();
@@ -110,11 +113,13 @@ export async function appendPrintableExcelReport(workbook:ExcelJS.Workbook,pages
    if(r1!==r2||c1!==c2)ws.mergeCells(r1,c1,r2,c2);
    for(let r=r1;r<=r2;r++)for(let c=c1;c<=c2;c++)occupied.add(r+':'+c);
    const cell=ws.getCell(r1,c1);cell.value=content;
-   const size=Math.max(10,Math.min(26,Math.round(parseFloat(st.fontSize)*0.75)));
+   const desired=Math.max(9,Math.min(26,Math.round(parseFloat(st.fontSize)*0.75)));
+   const size=Math.max(8,Math.min(desired,Math.floor((r2-r1+1)*7.5/1.15)));
+   // Use a bounded font for short merged boxes; Excel cannot autofit merged rows.
    const bold=Number(st.fontWeight)>=600||st.fontWeight==='bold';
    cell.font={name:'TH Sarabun New',size,bold,color:{argb:color(st.color)||'FF0F172A'}};
    const align=st.textAlign==='center'?'center':st.textAlign==='right'?'right':'left';
-   cell.alignment={horizontal:align,vertical:st.verticalAlign==='top'?'top':'middle',wrapText:true,indent:align==='left'&&c2-c1>8?1:0};
+   cell.alignment={horizontal:align,vertical:st.verticalAlign==='top'?'top':'middle',wrapText:true,shrinkToFit:false,indent:0};
    cell.border=border;
  }
  function visit(el:HTMLElement){
@@ -129,18 +134,64 @@ export async function appendPrintableExcelReport(workbook:ExcelJS.Workbook,pages
    }
    for(const child of children)visit(child);
  }
+ function putImage(img:HTMLImageElement,left:number,top:number,right:number,bottom:number){
+   if(!img.naturalWidth||!img.naturalHeight)throw Error('Missing report photo');
+   // Use integer two-cell anchors. This prevents images escaping the cell box
+   // when Excel uses a slightly different digit width on another machine.
+   const c0=Math.max(0,Math.ceil(left/GRID)),c1=Math.min(cols,Math.floor(right/GRID));
+   const r0=Math.max(0,Math.ceil(top/GRID)),r1=Math.min(rows,Math.floor(bottom/GRID));
+   if(c1<=c0||r1<=r0)return;
+   const ratio=Math.min((c1-c0)*GRID/img.naturalWidth,(r1-r0)*GRID/img.naturalHeight);
+   const cw=Math.max(1,Math.min(c1-c0,Math.floor(img.naturalWidth*ratio/GRID)));
+   const rh=Math.max(1,Math.min(r1-r0,Math.floor(img.naturalHeight*ratio/GRID)));
+   const c=c0+Math.floor((c1-c0-cw)/2),r=r0+Math.floor((r1-r0-rh)/2);
+   const raw=img.getAttribute('src')||'';
+   let id=imageIds.get(raw);if(id===undefined){id=workbook.addImage(getImageData(img));imageIds.set(raw,id);}
+   ws.addImage(id,{tl:{col:c,row:offset+r},br:{col:c+cw,row:offset+r+rh},editAs:'twoCell'});
+ }
+ if(key==='page-cover'){
+   // Cover is a dedicated editable layout: do not infer its text rows from
+   // the flexible HTML cover, which may collapse in Excel.
+   const cover=root.firstElementChild as HTMLElement;
+   const [header,main,footer]=Array.from(cover.children) as HTMLElement[];
+   const logo=header.querySelector('img');
+   const headerText=Array.from(header.children).filter(el=>!el.querySelector('img')) as HTMLElement[];
+   const mainText=Array.from(main.children).filter(el=>!el.querySelector('img')&&el.tagName!=='TABLE') as HTMLElement[];
+   const photo=main.querySelector('img');
+   const footText=Array.from(footer.children) as HTMLElement[];
+   const textAt=(el:HTMLElement|undefined,from:number,to:number,c1=8,c2=cols-7)=>{
+     if(el&&el.innerText.trim())writeText(el,{r1:offset+from,r2:offset+to,c1,c2},el.innerText.trim());
+   };
+   if(logo)putImage(logo,340,60,460,170);
+   textAt(headerText[0],19,24);
+   textAt(headerText[1],25,28);
+   textAt(headerText[2],29,32);
+   if(photo)putImage(photo,145,365,650,660);
+   const titleRow=photo?68:51;
+   textAt(mainText[0],titleRow,titleRow+5);
+   textAt(mainText[1],titleRow+6,titleRow+9,23,cols-22);
+   const table=main.querySelector('table');
+   if(table)Array.from(table.rows).forEach((tr,index)=>{
+     const rr=titleRow+12+index*5;
+     Array.from(tr.cells).forEach((cell,i)=>{
+       const b={r1:offset+rr,r2:offset+rr+4,c1:i===0?8:30,c2:i===0?29:cols-7};
+       decorate(cell,b);writeText(cell,b,cell.innerText.trim());
+     });
+   });
+   textAt(footText[0],103,106);
+   textAt(footText[1],107,110);
+ }else{
  for(const ch of Array.from(root.children))visit(ch as HTMLElement);
  for(const img of Array.from(root.querySelectorAll<HTMLImageElement>('img'))){
    if(!img.naturalWidth||!img.naturalHeight)throw Error('Missing report photo');
-   const r=img.getBoundingClientRect(),ratio=Math.min(r.width/img.naturalWidth,r.height/img.naturalHeight);
-   const w=img.naturalWidth*ratio,h=img.naturalHeight*ratio;
-   if(w<=0||h<=0)continue;
-   const x=Math.max(0,r.left-origin.left+(r.width-w)/2),y=Math.max(0,r.top-origin.top+(r.height-h)/2);
-   if(x>=W||y>=H)throw Error('Report photo exceeds page boundary');
-   const raw=img.getAttribute('src')||'';
-   let id=imageIds.get(raw);if(id===undefined){id=workbook.addImage(getImageData(img));imageIds.set(raw,id);}
-   ws.addImage(id,{tl:{col:x/GRID,row:offset+y/GRID},ext:{width:Math.min(w,W-x),height:Math.min(h,H-y)},editAs:'oneCell'});
+   const r=img.getBoundingClientRect();
+   let left=Math.max(0,r.left-origin.left),top=Math.max(0,r.top-origin.top),right=Math.min(W,r.right-origin.left),bottom=Math.min(H,r.bottom-origin.top);
+   const cell=img.closest('td,th');
+   if(cell){const b=cell.getBoundingClientRect();left=Math.max(left,b.left-origin.left+3);right=Math.min(right,b.right-origin.left-3);top=Math.max(top,b.top-origin.top+3);bottom=Math.min(bottom,b.bottom-origin.top-3);}
+   putImage(img,left,top,right,bottom);
  }
+ }
+
  // Explicit break at the end of each report page in the same section.
  if(pi+1<pages.length&&groupKey(pages[pi+1])===key)ws.getRow(offset+rows).addPageBreak();
  ws.pageSetup.printArea='A1:'+colName(cols)+(offset+rows);
