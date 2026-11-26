@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.49",
+  "latest": "v1.0.50",
   "releases": [
+    {
+      "version": "v1.0.50",
+      "build": 50,
+      "storageSchema": 2,
+      "date": "2026-11-26T15:52:33.143Z",
+      "notes": "Add lossless preview quarter-turn controls to photo markup",
+      "commit": "53ea106718fe5ecc5a81f40bcf6a6a5caa717f4d",
+      "notesTh": "เพิ่มหมุนภาพซ้ายขวา 90 องศา ทั้งหน้าเครื่องมือและเต็มจอ หมุนเครื่องหมายตามรูป ย้อนกลับได้ และส่งออกรูปตามขนาดเดิม"
+    },
     {
       "version": "v1.0.49",
       "build": 49,
