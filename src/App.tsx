@@ -859,6 +859,7 @@ export default function App({isAdmin=false,language}:{isAdmin?:boolean;language?
 
   const handleExportWord = async (reportBook?: ReportBookData) => {
     if (!activeProject) return;
+    try {
     await exportProjectWord(activeProject, brand, lang, reportBook);
     notify(
       lang === 'en'
@@ -866,12 +867,13 @@ export default function App({isAdmin=false,language}:{isAdmin?:boolean;language?
         : 'ดาวน์โหลดรายงาน Word (.docx) เรียบร้อยแล้ว',
       'success'
     );
+    } catch(err) {console.error(err);notify(lang==='en'?'Word report export failed. Please try again.':'สร้างเล่มรายงาน Word ไม่สำเร็จ กรุณาลองใหม่','danger');}
   };
 
-  const handleExportExcel = async () => {
+  const handleExportExcel = async (reportBook?: ReportBookData) => {
     if (!activeProject) return;
     try {
-    const kind = await exportProjectExcel(activeProject, brand, lang);
+    const kind = await exportProjectExcel(activeProject, brand, lang, reportBook);
     notify(
       kind === 'xlsx'
         ? lang === 'en'

@@ -24,7 +24,7 @@ function style(el:HTMLElement,parent:TextStyle):TextStyle{
  line:css.lineHeight&&Number.isFinite(Number(css.lineHeight))?Math.round(Math.max(1.12,Math.min(1.5,Number(css.lineHeight)))*240):parent.line};
 }
 function run(text:string,s:TextStyle){
- const props='<w:rPr><w:rFonts w:ascii="TH Sarabun New" w:hAnsi="TH Sarabun New" w:eastAsia="TH Sarabun New" w:cs="TH Sarabun New"/>'+ (s.bold?'<w:b/><w:bCs/>':'')+'<w:color w:val="'+s.color+'"/><w:sz w:val="'+s.size+'"/><w:szCs w:val="'+s.size+'"/></w:rPr>';
+ const props='<w:rPr><w:rFonts w:ascii="TH Sarabun New" w:hAnsi="TH Sarabun New" w:eastAsia="TH Sarabun New" w:cs="TH Sarabun New"/>'+ (s.bold?'<w:b/><w:bCs/>':'')+'<w:color w:val="'+s.color+'"/><w:sz w:val="'+s.size+'"/><w:szCs w:val="'+s.size+'"/><w:lang w:val="th-TH" w:bidi="th-TH"/></w:rPr>';
  return text.split(/\r?\n/).map((part,i)=>'<w:r>'+props+(i?'<w:br/>':'')+'<w:t xml:space="preserve">'+xml(part)+'</w:t></w:r>').join('');
 }
 function para(runs:string,s:TextStyle,after=35,before=0,keep=false){

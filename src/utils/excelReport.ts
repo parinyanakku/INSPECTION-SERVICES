@@ -1,3 +1,4 @@
+import { configureReportFrame, reportDocument, waitForReportFonts } from './reportLayout';
 import type ExcelJS from 'exceljs';
 
 type Page={id:string;html:string;orientation?:'portrait'|'landscape'};
@@ -29,13 +30,12 @@ function getImageData(img:HTMLImageElement):{base64:string;extension:'png'|'jpeg
 export async function appendPrintableExcelReport(workbook:ExcelJS.Workbook,pages:Page[],lang:'th'|'en'){
  if(!pages.length)throw Error('No report pages');
  const iframe=document.createElement('iframe');
- iframe.setAttribute('aria-hidden','true');
- Object.assign(iframe.style,{position:'fixed',left:'0',top:'0',width:'1123px',height:'1123px',border:'0',opacity:'0',pointerEvents:'none'});
+ configureReportFrame(iframe);
  document.body.appendChild(iframe);
  try{
  const doc=iframe.contentDocument,win=iframe.contentWindow;if(!doc||!win)throw Error('Report layout unavailable');
- doc.open();doc.write('<!doctype html><html><head><meta charset="utf-8"><style>@font-face{font-family:"TH Sarabun New";font-weight:400;src:local("TH Sarabun New"),url("https://cdn.jsdelivr.net/gh/Phonbopit/sarabun-webfont@8d6f2f4223d025670b70aa344462971678516216/fonts/thsarabunnew-webfont.woff")} @font-face{font-family:"TH Sarabun New";font-weight:600 900;src:local("TH Sarabun New Bold"),url("https://cdn.jsdelivr.net/gh/Phonbopit/sarabun-webfont@8d6f2f4223d025670b70aa344462971678516216/fonts/thsarabunnew_bold-webfont.woff")} *{box-sizing:border-box}body{margin:0;width:1123px;background:white;font-family:"TH Sarabun New",Tahoma,sans-serif}table{border-collapse:collapse}</style></head><body>'+pages.map(p=>p.html).join('')+'</body></html>');doc.close();
- if(doc.fonts?.ready){await Promise.all([doc.fonts.load('400 16px "TH Sarabun New"','ภาษาไทย'),doc.fonts.load('700 16px "TH Sarabun New"','ภาษาไทย')]);await doc.fonts.ready;}
+ doc.open();doc.write(reportDocument(pages.map(p=>p.html).join('')));doc.close();
+ await waitForReportFonts(doc);
  const imgs=Array.from(doc.images);
  await Promise.all(imgs.map(async img=>{try{await img.decode();}catch{if(!img.complete||!img.naturalWidth)throw Error('Report image failed to load');}}));
  const roots=Array.from(doc.querySelectorAll<HTMLElement>('.report-page'));

@@ -85,7 +85,7 @@ interface ExportTabProps {
   isExportingPdf: boolean;
   onExportPDF: (reportBook: ReportBookData) => void;
   onExportWord: (reportBook: ReportBookData) => void;
-  onExportExcel: () => void;
+  onExportExcel: (reportBook: ReportBookData) => void;
   onNotify: (msg: string, type?: 'success' | 'info' | 'warning' | 'danger') => void;
 }
 
@@ -418,7 +418,10 @@ export const ExportTab: React.FC<ExportTabProps> = ({
             </div>
             <button
               type="button"
-              onClick={onExportExcel}
+              onClick={() => {
+                if (enabledSectionsCount === 0) {onNotify(t.customNoSectionWarning, 'warning');setActiveSection('custom');return;}
+                onExportExcel(reportBookRef.current);
+              }}
               className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors whitespace-nowrap flex items-center justify-center gap-2 cursor-pointer"
             >
               <FileSpreadsheet className="w-4 h-4" />

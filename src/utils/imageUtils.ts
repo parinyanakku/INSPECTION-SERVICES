@@ -1,3 +1,4 @@
+import { configureReportFrame, reportDocument, waitForReportFonts, prepareReportCanvasFonts } from './reportLayout';
 import { appendPrintableExcelReport } from './excelReport';
 import { downloadNativeWordReport } from './wordReport';
 import ExcelJS from 'exceljs';
@@ -250,7 +251,7 @@ export async function renderFloorplanWithPinsToPng(
     ctx.fill();
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = `bold ${13 * dpiScale}px sans-serif`;
+    ctx.font = `bold ${13 * dpiScale}px 'TIS Report Sarabun', sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(String(p.number), px, py + 1);
@@ -328,7 +329,7 @@ export async function renderFloorplanZonesToPng(floor: FloorPlan): Promise<strin
     ctx.stroke();
     ctx.setLineDash([]);
 
-    ctx.font = `bold ${13 * dpiScale}px 'TH Sarabun New', sans-serif`;
+    ctx.font = `bold ${13 * dpiScale}px 'TIS Report Sarabun', sans-serif`;
     const labelText = z.name || '';
     const textW = ctx.measureText(labelText).width;
     const badgeW = Math.min(zw - 12 * dpiScale, textW + 18 * dpiScale);
@@ -371,6 +372,7 @@ export async function prepareSharedReportAssets(
   proj: ProjectFile,
   brand: BrandConfig
 ): Promise<SharedReportAssets> {
+  await prepareReportCanvasFonts();
   const sorted = [...proj.defects].sort((a, b) => (a.number || 0) - (b.number || 0));
 
   const logoPromise = brand.customLogoDataUrl
@@ -1461,20 +1463,10 @@ export async function exportProjectPDF(
   const rb = reportBookInput || loadReportBookData(proj, lang);
   const assets = await prepareSharedReportAssets(proj, brand);
   const pages = buildSharedReportPages(proj, brand, lang, assets, rb);
-  const joinedPagesHtml = pages.map((p) => p.html).join('\n');
+  if (!pages.length) throw Error('No report pages generated');
 
   const iframe = document.createElement('iframe');
-  iframe.setAttribute('aria-hidden', 'true');
-  iframe.style.position = 'fixed';
-  iframe.style.top = '0';
-  iframe.style.left = '0';
-  iframe.style.width = '1123px';
-  iframe.style.height = '1123px';
-  iframe.style.border = '0';
-  iframe.style.opacity = '0';
-  iframe.style.pointerEvents = 'none';
-  iframe.style.zIndex = '9998';
-  iframe.style.background = '#ffffff';
+  configureReportFrame(iframe);
   document.body.appendChild(iframe);
 
   try {
@@ -1484,49 +1476,9 @@ export async function exportProjectPDF(
     }
 
     iframeDoc.open();
-    iframeDoc.write(`<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <style>
-      @font-face { font-family:'TH Sarabun New'; font-style:normal; font-weight:400; src:local('TH Sarabun New'),local('TH SarabunNew'),local('THSarabunNew'),url('https://cdn.jsdelivr.net/gh/Phonbopit/sarabun-webfont@8d6f2f4223d025670b70aa344462971678516216/fonts/thsarabunnew-webfont.woff') format('woff'); }
-      @font-face { font-family:'TH Sarabun New'; font-style:normal; font-weight:600 900; src:local('TH Sarabun New Bold'),local('TH SarabunNew Bold'),local('THSarabunNew-Bold'),url('https://cdn.jsdelivr.net/gh/Phonbopit/sarabun-webfont@8d6f2f4223d025670b70aa344462971678516216/fonts/thsarabunnew_bold-webfont.woff') format('woff'); }
-      * { box-sizing: border-box; }
-      html, body {
-        margin: 0;
-        padding: 0;
-        width: 1123px;
-        background: #ffffff;
-        color: #0f172a;
-        font-family: 'TH Sarabun New', Tahoma, sans-serif;
-      }
-      table { border-collapse: collapse; }
-      tr { break-inside: avoid; page-break-inside: avoid; }
-    </style>
-  </head>
-  <body>${joinedPagesHtml}</body>
-</html>`);
+    iframeDoc.write(reportDocument(''));
     iframeDoc.close();
-
-    if (document.fonts?.ready) {
-      await document.fonts.ready;
-    }
-    if (iframeDoc.fonts?.ready) {
-      const loaded=await Promise.all([iframeDoc.fonts.load("400 16px 'TH Sarabun New'",'ภาษาไทย'),iframeDoc.fonts.load("700 16px 'TH Sarabun New'",'ภาษาไทย')]);
-      if(loaded.some(f=>!f.length))throw Error('TH Sarabun New font is unavailable; check your connection or installed fonts');
-      await iframeDoc.fonts.ready;
-    }
-    await waitForImagesInDoc(iframeDoc);
-    await new Promise((resolve) => setTimeout(resolve, 350));
-
-    const totalBodyHeight = Math.max(1123, iframeDoc.body.scrollHeight);
-    iframe.style.height = `${totalBodyHeight}px`;
-    await new Promise((resolve) => setTimeout(resolve, 80));
-
-    const pageNodes = Array.from(iframeDoc.querySelectorAll('.report-page')) as HTMLElement[];
-    if (pageNodes.length === 0) {
-      throw new Error('No report pages generated');
-    }
+    await waitForReportFonts(iframeDoc);
 
     const pdf = new jsPDF({
       unit: 'mm',
@@ -1535,8 +1487,14 @@ export async function exportProjectPDF(
       compress: true,
     });
 
-    for (let i = 0; i < pageNodes.length; i++) {
-      const node = pageNodes[i];
+    for (let i = 0; i < pages.length; i++) {
+      // Only one A4 page is mounted at once; avoid very tall mobile Safari
+      // documents, excessive image decoding and large scroll coordinates.
+      iframeDoc.body.innerHTML=pages[i].html;
+      await waitForImagesInDoc(iframeDoc);
+      const node=iframeDoc.querySelector<HTMLElement>('.report-page');
+      if(!node)throw Error('Missing report page '+(i+1));
+      await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
       const landscape=node.dataset.orientation==='landscape';
       const pageWidthPx=landscape?1123:794, pageHeightPx=landscape?794:1123;
       const pageWidthMm=landscape?297:210, pageHeightMm=landscape?210:297;
@@ -1569,9 +1527,13 @@ export async function exportProjectPDF(
         scrollX: 0,
         scrollY: 0,
         windowWidth: 1123,
+        windowHeight: 1123,
         width: pageWidthPx,
         height: pageHeightPx,
-        onclone: (clonedDoc, clonedPage) => {
+        onclone: async (clonedDoc, clonedPage) => {
+          await waitForReportFonts(clonedDoc);
+          clonedDoc.documentElement.style.setProperty('-webkit-text-size-adjust','none');
+          clonedPage.style.setProperty('-webkit-text-size-adjust','none');
           // Compensate for the Thai font baseline in the raster renderer only.
           // Move text paint, not cells, borders or the original photo geometry.
           const walker=clonedDoc.createTreeWalker(clonedPage,NodeFilter.SHOW_TEXT);
@@ -1666,7 +1628,8 @@ function estimateRowHeight(texts: Array<{ text: string; colWidth: number }>): nu
 export async function exportProjectExcel(
   proj: ProjectFile,
   brand: BrandConfig,
-  lang: AppLanguage = 'th'
+  lang: AppLanguage = 'th',
+  reportBookInput?: ReportBookData
 ): Promise<'xlsx' | 'csv'> {
   const sorted = [...proj.defects].sort((a, b) => (a.number || 0) - (b.number || 0));
   const isEn = lang === 'en';
@@ -1682,7 +1645,7 @@ export async function exportProjectExcel(
     workbook.creator = brand.companyName || 'TEAM INSPECTION SERVICES';
     workbook.created = new Date();
 
-    const rb=loadReportBookData(proj,lang);
+    const rb=reportBookInput || loadReportBookData(proj,lang);
     const assets=await prepareSharedReportAssets(proj,brand);
     const pages=buildSharedReportPages(proj,brand,lang,assets,rb);
     await appendPrintableExcelReport(workbook,pages,lang);
