@@ -42,9 +42,9 @@ function delay(ms: number): Promise<void> {
 
 function modelPriorityScore(modelId: string): number {
   const m = modelId.toLowerCase();
-  if (m === 'gemini-3.8-flash') return 0;
-  if (m.includes('flash') && !m.includes('lite') && !m.includes('image')) return 1;
-  if (m.includes('flash-lite') && !m.includes('image')) return 2;
+  if (m === 'gemini-3.5-flash-lite') return 0;
+  if (m.includes('flash-lite') && !m.includes('image') && !m.includes('preview') && !m.includes('experimental')) return 1;
+  if (m.includes('flash') && !m.includes('image') && !m.includes('preview') && !m.includes('experimental')) return 2;
   if (m.includes('flash')) return 3;
   if (m.includes('pro') && !m.includes('image')) return 4;
   return 5;
@@ -196,7 +196,7 @@ function xhrGetJson<T>(url: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('GET', url, true);
-    xhr.timeout = 5000;
+    xhr.timeout = 3000;
 
     xhr.onload = () => {
       const bodyText = xhr.responseText || '';
@@ -517,11 +517,11 @@ function parseDefectJson(rawText: string): {
 function optimizeAnalysisImage(source: string): Promise<string> {
   return new Promise(resolve => {
     const image = new Image();
-    const timer = setTimeout(() => resolve(source), 2500);
+    const timer = setTimeout(() => resolve(source), 1200);
     const finish = (value: string) => { clearTimeout(timer); resolve(value); };
     image.onload = () => {
       try {
-        const ratio = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight));
+        const ratio = Math.min(1, 1280 / Math.max(image.naturalWidth, image.naturalHeight));
         const canvas = document.createElement('canvas');
         canvas.width = Math.max(1, Math.round(image.naturalWidth * ratio));
         canvas.height = Math.max(1, Math.round(image.naturalHeight * ratio));
@@ -530,7 +530,7 @@ function optimizeAnalysisImage(source: string): Promise<string> {
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-        const compressed = canvas.toDataURL('image/jpeg', 0.86);
+        const compressed = canvas.toDataURL('image/jpeg', 0.78);
         finish(compressed.length < source.length ? compressed : source);
       } catch { finish(source); }
     };
@@ -551,7 +551,21 @@ export async function analyzeDefectWithGeminiClient(params: {
     throw new Error('MISSING_API_KEY');
   }
 
-  const deadline = Date.now() + 45000;
+  const deadline = Date.now() + 20000;
+  // Resolve a cached model and prepare the image concurrently; no extra list
+  // request before analysis when a valid explicit or cached model is available.
+  const preferred = String(params.preferredModel || 'auto').trim();
+  const cached = loadCachedGeminiModels().filter(m =>
+    m.includes('flash') && !m.includes('image') &&
+    !EXCLUDED_MODEL_KEYWORDS.some(kw => m.toLowerCase().includes(kw))
+  ).sort((a,b) => modelPriorityScore(a) - modelPriorityScore(b) || b.localeCompare(a));
+  const configured = preferred !== 'auto' && !LEGACY_MODELS_TO_UPGRADE.has(preferred) ? preferred : '';
+  const fastCandidates = Array.from(new Set([
+    ...(configured ? [configured] : []),
+    ...cached,
+    'gemini-3.5-flash-lite',
+    'gemini-3.8-flash',
+  ]));
   const optimizedImage = await optimizeAnalysisImage(params.imageDataUrl);
   const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/.exec(optimizedImage);
   if (!match) {
@@ -566,18 +580,16 @@ export async function analyzeDefectWithGeminiClient(params: {
     params.lang === 'en'
       ? `You are a senior building & home inspection engineer. Inspect this site photo (including any red/colored circles, arrows, lines, or text annotations drawn on the image) and identify the construction defect.
 ${note ? `Inspector note: "${note}"` : ''}
-Respond in clear professional English for title, cause, and solution.
+Use a short title and at most 1–2 concise sentences each for cause and solution. State uncertainty when the image cannot establish a cause; do not invent a diagnosis. Respond in English.
 For "severity", you MUST return strictly one of these three exact strings: "เร่งด่วน", "ปานกลาง", or "เล็กน้อย".
 Return valid JSON only with keys: title, severity, cause, solution.`
       : `คุณคือวิศวกรผู้เชี่ยวชาญด้านการตรวจรับบ้านและอาคาร โปรดวิเคราะห์ภาพถ่ายหน้างานนี้ (รวมถึงรอยวงกลม ลูกศร เส้นมาร์ค หรือข้อความที่ผู้ตรวจวงไว้บนภาพ) และสรุปปัญหา Defect ทางวิศวกรรม
 ${note ? `หมายเหตุจากผู้ตรวจ: "${note}"` : ''}
-ตอบเป็นภาษาไทยที่กระชับ เป็นมืออาชีพ สำหรับ title, cause และ solution
+ตอบภาษาไทย ชื่อรายการสั้น สาเหตุและวิธีแก้ไขอย่างละ 1–2 ประโยค ระบุความไม่แน่นอนหากยืนยันจากภาพไม่ได้ ห้ามสรุปสาเหตุเกินหลักฐาน
 สำหรับ "severity" ให้เลือกตอบเพียง 1 ค่าจาก ["เร่งด่วน", "ปานกลาง", "เล็กน้อย"] เท่านั้น
 ส่งผลลัพธ์กลับเป็น JSON ที่มีคีย์ title, severity, cause, solution`;
 
-  const { candidates } = await resolveCandidateModels(cleanKey, params.preferredModel);
-  // Respect explicitly selected model, but avoid cycling through every available model.
-  const boundedCandidates = candidates.slice(0, 2);
+  const boundedCandidates = fastCandidates.slice(0, 2);
 
   const requestBody = {
     contents: [
@@ -621,7 +633,14 @@ ${note ? `หมายเหตุจากผู้ตรวจ: "${note}"` : '
     const remaining = deadline - Date.now();
     if (remaining <= 0) throw new Error(timeoutMessage);
     try {
-      const payload = await callGeminiDirect(cleanKey, model, requestBody, Math.min(20000, remaining));
+      const fastThinking = /^gemini-3(?:[.-]|$)/i.test(model) && model.includes('flash') && !model.includes('thinking');
+      const payload = await callGeminiDirect(cleanKey, model, {
+        ...requestBody,
+        generationConfig: {
+          ...requestBody.generationConfig,
+          ...(fastThinking ? { thinkingConfig: { thinkingLevel: 'MINIMAL' } } : {}),
+        },
+      }, Math.min(15000, remaining));
       const rawOutput = payload?.candidates?.[0]?.content?.parts
         ?.map(p => p.text || '').join('') || '';
       if (!rawOutput) throw new Error('Empty response from ' + model);
@@ -634,8 +653,9 @@ ${note ? `หมายเหตุจากผู้ตรวจ: "${note}"` : '
           ? 'Gemini quota or rate limit reached. Check your API quota and try again.'
           : 'Gemini มีการจำกัดโควตาหรือจำนวนคำขอ กรุณาตรวจสอบโควตา API แล้วลองใหม่');
       }
-      lastError = message === 'GEMINI_TIMEOUT' ? timeoutMessage : message;
-      // On overload or timeout, try only one alternative instead of retrying the same model.
+      if (message === 'GEMINI_TIMEOUT') throw new Error(timeoutMessage);
+      lastError = message;
+      // Only try one alternate model on a quick failure. Never retry after a timeout.
     }
   }
   throw new Error(lastError);
