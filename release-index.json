@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.17",
+  "latest": "v1.0.18",
   "releases": [
+    {
+      "version": "v1.0.18",
+      "build": 18,
+      "storageSchema": 2,
+      "date": "2026-11-26T07:19:49.799Z",
+      "notes": "Add confirmed admin-only permanent customer deletion",
+      "commit": "dda0ec0077e575da6d178985c0f506de3ed05bd6"
+    },
     {
       "version": "v1.0.17",
       "build": 17,
