@@ -185,13 +185,19 @@ export async function appendPrintableExcelReport(workbook:ExcelJS.Workbook,pages
    textAt(mainText[0],titleRow,titleRow+5);
    textAt(mainText[1],titleRow+6,titleRow+9,23,cols-22);
    const table=main.querySelector('table');
-   if(table)Array.from(table.rows).forEach((tr,index)=>{
-     const rr=titleRow+12+index*5;
-     Array.from(tr.cells).forEach((cell,i)=>{
-       const b={r1:offset+rr,r2:offset+rr+4,c1:i===0?8:30,c2:i===0?29:cols-7};
-       decorate(cell,b);writeText(cell,b,cell.innerText.trim());
+   if(table){
+     let rr=titleRow+12;
+     Array.from(table.rows).forEach((tr,index)=>{
+       const lines=Array.from(tr.cells).reduce((n,c)=>Math.max(n,c.innerText.trim().split(/\n/).length),1);
+       const extra=index===1?Math.min(7,Math.max(0,lines-1)*2):0;
+       const height=5+extra;
+       Array.from(tr.cells).forEach((cell,i)=>{
+         const b={r1:offset+rr,r2:offset+rr+height-1,c1:i===0?8:30,c2:i===0?29:cols-7};
+         decorate(cell,b);writeText(cell,b,cell.innerText.trim());
+       });
+       rr+=height;
      });
-   });
+   }
    textAt(footText[0],103,106);
    textAt(footText[1],107,110);
  }else{
