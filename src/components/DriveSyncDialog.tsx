@@ -1,6 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {flushSync} from 'react-dom';
 import type {AppLanguage} from '../types/inspection';
+import {hashWorkspaceRecords} from '../utils/driveRecordHash';
 import {mirrorWorkspace} from '../utils/driveVisibleBackup';
 import {mergeDriveRecords,readVisibleWorkspace,recoverVisibleRecords,validateDriveRecords,listRecoverySources,readRecoverySource,recoveryPreview,restoreSelectedProject,type DriveRecoverySource} from '../utils/driveRecovery';
 import {readSyncRecords,restoreSyncRecords,workspaceStorage,flushWorkspace} from '../utils/workspaceStorage';
@@ -27,19 +28,23 @@ function validToken(userId:string){return live?.userId===userId&&live.expires>Da
 type TokenClient={requestAccessToken:(options:{prompt:string})=>void};
 type GIS={accounts:{oauth2:{initTokenClient:(options:{client_id:string;scope:string;login_hint?:string;callback:(response:{access_token?:string;error?:string;scope?:string;expires_in?:number|string})=>void;error_callback:()=>void})=>TokenClient}}};
 function gis(){return (window as unknown as {google?:GIS}).google;}
-async function hash(records:Records){
- const str=JSON.stringify(Object.entries(records).map(([key,value])=>[key,JSON.stringify(JSON.parse(value))]).sort(([a],[b])=>a.localeCompare(b)));
- return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str)))).map(n=>n.toString(16).padStart(2,'0')).join('');
+const digestCache=new WeakMap<Records,Promise<string>>();
+function hash(records:Records){
+ let result=digestCache.get(records);if(!result){result=hashWorkspaceRecords(records);digestCache.set(records,result);}
+ return result;
 }
+function equalRecords(a:Records,b:Records){const keys=Object.keys(a);return keys.length===Object.keys(b).length&&keys.every(k=>a[k]===b[k]);}
 async function api(token:string,url:string,init:RequestInit={}){
  const result=await fetch(url,{...init,headers:{...init.headers,Authorization:'Bearer '+token},cache:'no-store'});
  if(!result.ok){let reason='';try{const detail=await result.json();reason=detail.error?.errors?.[0]?.reason||detail.error?.message||'';}catch{}throw Error('Google Drive HTTP '+result.status+(reason?' · '+reason.slice(0,180):''));}
  return result;
 }
 const PROJECTS='tis_wl_projects_v10',BRAND='tis_wl_brand_v10',REPORT='tis_report_book_v1_';
+const countCache=new WeakMap<Records,{projects:number;defects:number}>();
 function counts(records:Records){
+ const known=countCache.get(records);if(known)return known;
  const p=JSON.parse(records[PROJECTS]||'[]') as {defects:unknown[]}[];
- return {projects:p.length,defects:p.reduce((n,x)=>n+x.defects.length,0)};
+ const c={projects:p.length,defects:p.reduce((n,x)=>n+x.defects.length,0)};countCache.set(records,c);return c;
 }
 function cloudInfo(file:FileMeta,records?:Records):CloudSummary|null{
  const p=file.appProperties||{};
@@ -70,16 +75,28 @@ async function files(token:string,userId:string,signal?:AbortSignal,explicitChoi
  }
  return undefined;
 }
-async function readSnapshot(token:string,userId:string,id:string,signal?:AbortSignal):Promise<Snapshot>{
- const data=await (await api(token,ROOT+'/'+encodeURIComponent(id)+'?alt=media',{signal})).json();
+async function readSnapshot(token:string,userId:string,id:string,signal?:AbortSignal,progress?:(received:number,total:number)=>void):Promise<Snapshot>{
+ const response=await api(token,ROOT+'/'+encodeURIComponent(id)+'?alt=media',{signal});
+ const total=Number(response.headers.get('Content-Length'))||0;
+ let data;
+ if(progress&&response.body){
+  const reader=response.body.getReader();let parts:Uint8Array<ArrayBuffer>[]=[];let received=0;
+  try{for(;;){const chunk=await reader.read();if(chunk.done)break;parts.push(new Uint8Array(chunk.value));received+=chunk.value.byteLength;progress(received,total);}}finally{reader.releaseLock();}
+  const blob=new Blob(parts,{type:'application/json'});parts=[];
+  progress(received,received);data=JSON.parse(await blob.text());
+ }else data=await response.json();
  if(data.userId!==userId)throw Error('Backup account mismatch');
  if(data.format==='TIS_DRIVE_V1')return {...data,records:validateDriveRecords(data.records)};
  if(data.format!=='TIS_HOME_INSPECTION_BACKUP_V10'||!Array.isArray(data.projects)||!data.reportBooks||typeof data.reportBooks!=='object')throw Error('Invalid JSON backup');
+ const expectedHash=data.contentHash;
  const records:Records={[PROJECTS]:JSON.stringify(data.projects)};
  if(data.brand&&typeof data.brand==='object')records[BRAND]=JSON.stringify(data.brand);
  for(const [id,report] of Object.entries(data.reportBooks))records[REPORT+id]=JSON.stringify(report);
- validateDriveRecords(records);
- if(data.contentHash!==await hash(records))throw Error('JSON backup integrity check failed');
+ if(data.projects.some((p:{id?:unknown;floors?:unknown;defects?:unknown})=>!p||typeof p.id!=='string'||!Array.isArray(p.floors)||!Array.isArray(p.defects))||new Set(data.projects.map((p:{id:string})=>p.id)).size!==data.projects.length)throw Error('Invalid cloud projects');
+ for(const report of Object.values(data.reportBooks))if(!report||typeof report!=='object'||Array.isArray(report))throw Error('Invalid report data');
+ countCache.set(records,{projects:data.projects.length,defects:data.projects.reduce((n:number,p:{defects:unknown[]})=>n+p.defects.length,0)});
+ data=null;
+ if(expectedHash!==await hash(records))throw Error('JSON backup integrity check failed');
  return {format:'TIS_DRIVE_V1',userId,records};
 }
 async function jsonFolder(token:string,userId:string,signal?:AbortSignal){
@@ -325,7 +342,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   const prior=remote?cloudInfo(remote):null;check(op);
   if(!window.confirm(tr('ส่ง JSON จากเครื่องนี้เป็นฉบับล่าสุดบน Drive: ','Publish this device as the latest Drive JSON: ')+describe(c)+(prior?'\nDrive: '+describe(prior)+' · '+showTime(prior.date):'')+'\n'+tr('ฉบับก่อนหน้าจะยังอยู่ใน Drive ไม่ลบไฟล์เดิม ยืนยันเฉพาะเมื่อเครื่องนี้มีงานล่าสุดจริง','Previous versions are retained. Confirm only if this device has the intended latest work.')))return;
   check(op);if((await files(token,userId,op.signal,true))?.id!==remote?.id)throw Error('CONFLICT');
-  const current=await readSyncRecords();if(await hash(current)!==await hash(records))throw Error(tr('งานเปลี่ยนระหว่างยืนยัน กรุณากดส่งอีกครั้ง','Work changed during confirmation; publish again.'));
+  const current=await readSyncRecords();if(!equalRecords(current,records))throw Error(tr('งานเปลี่ยนระหว่างยืนยัน กรุณากดส่งอีกครั้ง','Work changed during confirmation; publish again.'));
   check(op);setMsg(tr('กำลังส่ง JSON ฉบับล่าสุด…','Uploading latest JSON…'));
   const file=await upload(token,userId,records,remote?.id||'',op.signal,uploadProgress);check(op);
   workspaceStorage.setItem(MARK,JSON.stringify({id:file.id,hash:await hash(records)}));if(!await flushWorkspace())throw Error('Local marker save failed');
@@ -337,8 +354,8 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   setMsg(tr('กำลังตรวจสอบข้อมูลซิงค์…','Checking sync data…'));
   {
    const records=await readSyncRecords(),localHash=await hash(records);check(op);
-   const localProjects=JSON.parse(records.tis_wl_projects_v10||'[]');
-   const empty=Array.isArray(localProjects)&&localProjects.length===0&&!Object.keys(records).some(k=>k.startsWith('tis_report_book_v1_'));
+   const localCount=counts(records).projects;
+   const empty=localCount===0&&!Object.keys(records).some(k=>k.startsWith('tis_report_book_v1_'));
    let marker:Marker|null=null;try{marker=JSON.parse(workspaceStorage.getItem(MARK)||'null');}catch{}
    const remote=await files(token,userId,op.signal,downloadOnly);check(op);setCheckedAt(new Date().toISOString());
    if(remote){setCloud(cloudInfo(remote));}else setCloud(null);
@@ -373,12 +390,13 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
     await rememberCloud(file,records);
     await finish(records,tr('อัปโหลดข้อมูลล่าสุดแล้ว','Latest saved work uploaded'));return;
    }
-   const data=await readSnapshot(token,userId,remote.id,op.signal);
+   setMsg(tr('กำลังดาวน์โหลด JSON จาก Drive…','Downloading JSON from Drive…'));
+   const data=await readSnapshot(token,userId,remote.id,op.signal,(received,total)=>{if(active.current&&!op.signal.aborted)setMsg(tr('ดาวน์โหลด JSON ','Downloading JSON ')+(received/1048576).toFixed(1)+' MB'+(total?' / '+(total/1048576).toFixed(1)+' MB':''));});
+   setMsg(tr('กำลังตรวจสอบไฟล์ JSON…','Verifying JSON…'));
    if(data.format!=='TIS_DRIVE_V1'||data.userId!==userId||!data.records||typeof data.records!=='object')throw Error('Invalid snapshot');
    const remoteHash=await hash(data.records);check(op);await rememberCloud(remote,data.records);check(op);
    if(remoteHash===localHash){workspaceStorage.setItem(MARK,JSON.stringify({id:remote.id,hash:localHash}));if(!await flushWorkspace())throw Error('Local marker save failed');await finish(records,tr('ข้อมูลตรงกันแล้ว','Already synchronized'));if(downloadOnly){await browseBackups(token,op,true);}return;}
-   validateDriveRecords(data.records);
-   const remoteProjects=JSON.parse(data.records.tis_wl_projects_v10||'null');
+   const remoteCount=counts(data.records).projects;
    let incoming=data.records;
    if(!downloadOnly&&!empty&&(!marker||marker.hash!==localHash)){
     let base:Records|null=null;
@@ -389,8 +407,8 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
     if(merged.conflicts.length){autoHold.current=true;setMsg(tr('พบข้อมูลแก้ไขต่างกันในแฟ้ม: ','Conflicting edits in: ')+merged.conflicts.slice(0,5).join(', ')+tr(' — ไม่เขียนทับ กรุณาสำรอง JSON ทั้งสองเครื่อง',' — no overwrite. Back up both devices.'));return;}
     incoming=merged.records;
    }
-   if(!remoteProjects.length&&localProjects.length){setMsg(tr('แฟ้มบน Drive ว่าง แต่เครื่องนี้มีงาน ระบบไม่โหลดทับ','Cloud workspace is empty but this device has work. Restore stopped.'));return;}
-   if(!safeRestoreRef.current()){setMsg(tr('มีข้อมูลใหม่บน Drive '+remoteProjects.length+' แฟ้ม จะรับเมื่อกลับหน้าแฟ้มโครงการ','New cloud data: '+remoteProjects.length+' projects. Download deferred until the project list is idle.'));return;}
+   if(!remoteCount&&localCount){setMsg(tr('แฟ้มบน Drive ว่าง แต่เครื่องนี้มีงาน ระบบไม่โหลดทับ','Cloud workspace is empty but this device has work. Restore stopped.'));return;}
+   if(!safeRestoreRef.current()){setMsg(tr('มีข้อมูลใหม่บน Drive '+remoteCount+' แฟ้ม จะรับเมื่อกลับหน้าแฟ้มโครงการ','New cloud data: '+remoteCount+' projects. Download deferred until the project list is idle.'));return;}
    if(!automatic&&!window.confirm(tr('ข้อมูลในเครื่อง: ','Local: ')+describe(counts(records))+'\nDrive: '+describe(counts(data.records))+' · '+(remote.createdTime?showTime(remote.createdTime):tr('ไม่ทราบเวลาไฟล์','Unknown file time'))+'\n'+tr(downloadOnly?'ใช้ JSON ล่าสุดบน Drive แทนข้อมูลในเครื่องหรือไม่? ระบบเก็บข้อมูลก่อนโหลดไว้ในเครื่อง':'รับและรวมข้อมูลจาก Drive หรือไม่? ระบบเก็บข้อมูลก่อนโหลดไว้ในเครื่อง',downloadOnly?'Replace local data with latest Drive JSON? The previous local snapshot is retained.':'Receive and merge Drive data? The previous local snapshot is retained.')))return;
    if((await files(token,userId,op.signal,downloadOnly))?.id!==remote.id)throw Error('CONFLICT');check(op);
    if(!active.current)return;
@@ -401,7 +419,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
     check(op);if(!safeRestoreRef.current())throw Error(tr('กรุณากลับหน้าแฟ้มโครงการก่อนโหลดข้อมูล','Return to the project list before restoring.'));
     setMsg(tr('กำลังบันทึก JSON ลงเครื่อง…','Saving JSON locally…'));
     await restoreSyncRecords(incoming,records,JSON.stringify({id:remote.id,hash:remoteHash}));
-    const stored=await readSyncRecords();if(await hash(stored)!==await hash(incoming))throw Error(tr('ตรวจสอบข้อมูลหลังบันทึกไม่ตรงกัน','Local restore verification failed'));
+    const stored=await readSyncRecords();if(!equalRecords(stored,incoming))throw Error(tr('ตรวจสอบข้อมูลหลังบันทึกไม่ตรงกัน','Local restore verification failed'));
     if(active.current){onRestored();await finish(incoming,tr(downloadOnly?'โหลด JSON ล่าสุดสำเร็จ':'รับและรวมข้อมูลจาก Drive สำเร็จ',downloadOnly?'Latest JSON loaded':'Drive data received and merged'));}
    }finally{if(active.current)setApplyingRestore(false);}
   }
