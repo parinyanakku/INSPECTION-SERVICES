@@ -1,4 +1,5 @@
 // Local-only, account-scoped inspection workspace. No network requests.
+import {prepareProjects,clearPreparedProjects} from './verifiedProjects';
 type RecordValue = { key:string; value:string };
 let db: IDBDatabase | null = null;
 let cache = new Map<string,string>();
@@ -75,6 +76,7 @@ export async function writeWorkspaceBatch(records:Record<string,string>){
 export async function flushWorkspace(){await pending;return failures.size===0;}
 export async function closeWorkspace(){
  await pending;
+ clearPreparedProjects();
  if(failures.size)throw Error('บันทึกข้อมูลไม่สำเร็จ กรุณาสำรองงานก่อนออกจากระบบ');
  db?.close();db=null;cache.clear();syncSnapshot=null;releaseLock?.();releaseLock=null;status();
 }
@@ -97,10 +99,7 @@ export async function restoreSyncRecords(records:Record<string,string>,expected:
  if(nowKeys.length!==Object.keys(expected).length||nowKeys.some(k=>now[k]!==expected[k]))throw Error('Local work changed during sync');
  const keys=Object.keys(records);
  if(keys.some(k=>!syncKey(k)||typeof records[k]!=='string'))throw Error('Invalid sync records');
- {
-  const projects=JSON.parse(records[SYNC_PROJECTS]||'null');
-  if(!Array.isArray(projects)||projects.some(p=>!p||typeof p.id!=='string'||!Array.isArray(p.floors)||!Array.isArray(p.defects)))throw Error('Invalid projects');
- }
+ prepareProjects(records[SYNC_PROJECTS]||'null');
  for(const k of keys){if(k===SYNC_PROJECTS)continue;const value=JSON.parse(records[k]);if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid report data');}
  const oldKeys=[...cache.keys()].filter(syncKey);
  const extras={'tis_drive_pre_restore_v1':JSON.stringify(now),'tis_drive_sync_marker_v1':marker};

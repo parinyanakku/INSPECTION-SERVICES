@@ -1,4 +1,5 @@
 import { workspaceStorage, flushWorkspace, writeWorkspaceBatch } from './utils/workspaceStorage';
+import {consumePreparedProjects} from './utils/verifiedProjects';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
@@ -125,13 +126,11 @@ function loadInitialProjects(): ProjectFile[] {
   try {
     const raw = workspaceStorage.getItem(STORAGE_KEY_PROJECTS);
     if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return parsed.map(migrateProject);
-      }
+      return consumePreparedProjects(raw).map(migrateProject);
     }
-  } catch {
-    // ignore storage errors
+  } catch(error) {
+    console.error('Could not read saved project record',error);
+    throw Error('Saved project data could not be opened. No local data was reset.');
   }
   // New accounts start empty; legacy projects are imported only from a chosen backup.
   return [];
