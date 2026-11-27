@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.154",
+  "latest": "v1.0.155",
   "releases": [
+    {
+      "version": "v1.0.155",
+      "build": 155,
+      "storageSchema": 2,
+      "date": "2026-11-27T07:44:57.091Z",
+      "notes": "Add account-verified visible Drive backup recovery and conservative project-level merge",
+      "commit": "e915a9b911c54249cf58953d4aa750aea8160ab2"
+    },
     {
       "version": "v1.0.154",
       "build": 154,
