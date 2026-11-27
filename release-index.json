@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.207",
+  "latest": "v1.0.208",
   "releases": [
+    {
+      "version": "v1.0.208",
+      "build": 208,
+      "storageSchema": 2,
+      "date": "2026-11-27T13:03:39.456Z",
+      "notes": "Open prepared Drive index without large mobile download; validate account and revision; update guide",
+      "commit": "7cc9a13b00dbe95ea74623625fd0a5e7325304d3"
+    },
     {
       "version": "v1.0.207",
       "build": 207,
