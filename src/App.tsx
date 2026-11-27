@@ -167,6 +167,11 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
   // Toasts & PDF export state
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [pdfOverlayVisible,setPdfOverlayVisible]=useState(false);
+  const [pdfProgress,setPdfProgress]=useState({done:0,total:0});
+  const pdfJobRef=useRef<AbortController|null>(null);
+  const cancelPdf=()=>{pdfJobRef.current?.abort();setPdfOverlayVisible(false);};
+  useEffect(()=>()=>{pdfJobRef.current?.abort();},[]);
 
   const [geminiConfig, setGeminiConfig] = useState<GeminiApiConfig>(loadGeminiConfig);
 
@@ -835,14 +840,18 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
   };
 
   const handleExportPDF = async (reportBook?: ReportBookData) => {
-    if (!activeProject || isExportingPdf) return;
+    if (!activeProject || pdfJobRef.current) return;
+    const job=new AbortController();pdfJobRef.current=job;
+    setPdfProgress({done:0,total:0});setPdfOverlayVisible(true);
     setIsExportingPdf(true);
     try {
       // Allow React to paint the loading overlay before mounting/rendering the A4 PDF template
       await new Promise<void>((resolve) => {
         requestAnimationFrame(() => setTimeout(resolve, 60));
       });
-      const fileName = await exportProjectPDF(activeProject, brand, lang, reportBook);
+      job.signal.throwIfAborted();
+      const fileName = await exportProjectPDF(activeProject, brand, lang, reportBook,job.signal,(done,total)=>setPdfProgress({done,total}));
+      job.signal.throwIfAborted();
       notify(
         lang === 'en'
           ? `Downloaded ${fileName}${isWordPdfConverterConfigured()?' (Word conversion)':' (built-in PDF; Word converter not configured)'}`
@@ -850,6 +859,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
         'success'
       );
     } catch (err: unknown) {
+      if(job.signal.aborted){notify(lang==='en'?'PDF export cancelled':'ยกเลิกการสร้าง PDF แล้ว','warning');return;}
       const msg = err instanceof Error ? err.message : 'PDF error';
       notify(
         lang === 'en'
@@ -858,7 +868,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
         'danger'
       );
     } finally {
-      setIsExportingPdf(false);
+      if(pdfJobRef.current===job){pdfJobRef.current=null;setPdfOverlayVisible(false);setIsExportingPdf(false);}
     }
   };
 
@@ -1468,7 +1478,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
       </main>
 
       {/* Full-Screen PDF Generation Overlay (covers #pdfRenderContainer at z-index 9998) */}
-      {isExportingPdf && (
+      {isExportingPdf && pdfOverlayVisible && (
         <div
           className="pdf-loading-overlay fixed inset-0 z-[9999] bg-slate-900/80 flex items-center justify-center p-4"
           role="status"
@@ -1480,8 +1490,9 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
             </div>
             <h4 className="text-base font-bold text-slate-900">{t.pdfGeneratingBtn}</h4>
             <p className="text-xs sm:text-sm text-slate-500 mt-1.5 leading-relaxed">
-              {t.pdfLoadingSub}
+              {pdfProgress.total>0?(lang==='en'?`Page ${pdfProgress.done} / ${pdfProgress.total}`:`เสร็จแล้ว ${pdfProgress.done} จาก ${pdfProgress.total} หน้า`):(lang==='en'?'Preparing report…':'กำลังเตรียมข้อมูลรายงาน…')}
             </p>
+            <button type="button" onClick={cancelPdf} className="mt-4 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700">{lang==='en'?'Cancel PDF export':'ยกเลิกการสร้าง PDF'}</button>
           </div>
         </div>
       )}
