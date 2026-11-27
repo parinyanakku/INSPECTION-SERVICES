@@ -6,6 +6,7 @@ import {
   EyeOff,
   KeyRound,
   Loader2,
+  Sparkles,
   Pen,
   Trash2,
   X,
@@ -32,6 +33,9 @@ import {
 } from '../i18n/translations';
 import {
   DEFAULT_GEMINI_MODEL,
+  analyzeDefectWithGeminiClient,
+  loadGeminiConfig,
+  type AnalyzedDefectResult,
   fetchAvailableGeminiModels,
   loadCachedGeminiModels,
   testGeminiConnection,
@@ -560,6 +564,45 @@ export const DefectEditModal: React.FC<DefectEditModalProps> = ({
   const [beforeImg, setBeforeImg] = useState<string | null>(defect?.beforeImg || null);
   const [afterImg, setAfterImg] = useState<string | null>(defect?.afterImg || null);
   const [annotatingSide, setAnnotatingSide] = useState<'before' | 'after' | null>(null);
+  const [aiBusy,setAiBusy]=useState(false);
+  const [aiError,setAiError]=useState('');
+  const [aiSuggestion,setAiSuggestion]=useState<{photo:string;data:AnalyzedDefectResult}|null>(null);
+  const [aiPrevious,setAiPrevious]=useState<{title:string;severity:SeverityLevel;cause:string;solution:string}|null>(null);
+  const aiRequest=useRef(0);
+  const aiInFlight=useRef(false);
+  const currentBefore=useRef(beforeImg);
+  currentBefore.current=beforeImg;
+  const tr=(th:string,en:string)=>lang==='en'?en:th;
+  const dismissAnalysis=()=>{aiRequest.current++;aiInFlight.current=false;setAiBusy(false);setAiSuggestion(null);setAiError('');};
+  useEffect(()=>{dismissAnalysis();},[beforeImg]);
+  useEffect(()=>()=>{aiRequest.current++;aiInFlight.current=false;},[]);
+  const aiPanel=useRef<HTMLDivElement>(null);
+  const analyzeBefore=async()=>{
+    if(aiInFlight.current||!beforeImg)return;
+    aiPanel.current?.scrollIntoView({block:'nearest',behavior:'smooth'});
+    const config=loadGeminiConfig();
+    if(!config.apiKey.trim()){setAiError(tr('กรุณาตั้งค่า API Key ที่หน้าหลักก่อนใช้ AI','Set your API key on the main screen before using AI.'));return;}
+    const photo=beforeImg,request=++aiRequest.current;
+    aiInFlight.current=true;setAiBusy(true);setAiError('');setAiSuggestion(null);
+    try{
+      const data=await analyzeDefectWithGeminiClient({
+        apiKey:config.apiKey,preferredModel:config.model,imageDataUrl:photo,lang,
+        userNote:tr('วิเคราะห์ภาพก่อนแก้ไขใหม่โดยอิสระ เน้นจุดที่ผู้ตรวจมาร์กไว้ ระบุข้อสังเกตที่เห็นจริงและสาเหตุที่เป็นไปได้เท่านั้น','Re-analyze the before photo independently. Focus on marked defects, visible evidence and possible causes only.'),
+      });
+      if(aiRequest.current!==request||currentBefore.current!==photo)return;
+      setAiSuggestion({photo,data});
+    }catch{
+      if(aiRequest.current===request)setAiError(tr('วิเคราะห์ภาพไม่สำเร็จ กรุณาตรวจสอบ API Key และการเชื่อมต่อ แล้วลองใหม่ ข้อมูลเดิมยังอยู่ครบ','Analysis failed. Check API settings and connection, then retry. Existing details have not changed.'));
+    }finally{if(aiRequest.current===request){aiInFlight.current=false;setAiBusy(false);}}
+  };
+  const applyAnalysis=()=>{
+    if(!aiSuggestion||aiSuggestion.photo!==beforeImg)return;
+    const d=aiSuggestion.data;
+    setAiPrevious({title,severity,cause,solution});
+    setTitle(d.title||title);setSeverity(d.severity||severity);setCause(d.cause||'');setSolution(d.solution||'');setAiSuggestion(null);
+    onNotify(tr('นำผล AI มาใส่ในช่องแล้ว กรุณาตรวจสอบและกดบันทึกรายการ','AI suggestions applied. Review and save the defect.'),'info');
+  };
+  const restoreAnalysis=()=>{if(!aiPrevious)return;setTitle(aiPrevious.title);setSeverity(aiPrevious.severity);setCause(aiPrevious.cause);setSolution(aiPrevious.solution);setAiPrevious(null);};
 
   const selectedFloorObj = project.floors.find((f) => f.id === floorId) || project.floors[0];
 
@@ -626,6 +669,28 @@ export const DefectEditModal: React.FC<DefectEditModalProps> = ({
           </div>
 
           <div className="p-6 space-y-4 overflow-y-auto">
+            <div ref={aiPanel} className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-3 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div><h4 className="text-sm font-bold text-indigo-900">{tr('AI วิเคราะห์ภาพก่อนแก้ไข','AI · Analyze before photo')}</h4><p className="text-xs text-slate-600">{tr('ใช้ภาพ Before ปัจจุบันเพื่อเสนอรายละเอียดใหม่ โดยยังไม่เปลี่ยนข้อมูลเดิม','Use the current Before photo to propose new details without overwriting existing fields.')}</p></div>
+                <button type="button" onClick={analyzeBefore} disabled={!beforeImg||aiBusy} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                  {aiBusy?<Loader2 className="h-4 w-4 animate-spin"/>:<Sparkles className="h-4 w-4"/>}{aiBusy?tr('กำลังวิเคราะห์…','Analyzing…'):tr('วิเคราะห์ภาพด้วย AI','Analyze photo with AI')}
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-500">{tr('เมื่อกดวิเคราะห์ จะส่งภาพ Before ไปยัง Gemini ตาม API Key ที่ตั้งไว้','Analysis sends the Before photo to Gemini using your configured API key.')}</p>
+              {!beforeImg&&<p className="text-xs text-slate-500">{tr('เพิ่มรูปก่อนแก้ไขด้านล่างก่อนใช้ AI','Add a Before photo below to enable AI.')}</p>}
+              {aiBusy&&<button type="button" onClick={dismissAnalysis} className="text-xs font-semibold text-indigo-700 underline">{tr('ยกเลิกการรอผล','Stop waiting')}</button>}
+              {aiError&&<p role="alert" className="text-xs text-rose-700">{aiError}</p>}
+              {aiSuggestion&&aiSuggestion.photo===beforeImg&&<div className="rounded-lg border border-indigo-200 bg-white p-3 space-y-2 text-sm" aria-live="polite">
+                <div className="font-bold text-indigo-900">{tr('ผลวิเคราะห์ที่เสนอ','Suggested analysis')}</div>
+                <p><strong>{tr('หัวข้อ: ','Title: ')}</strong>{aiSuggestion.data.title}</p>
+                <p><strong>{tr('ความรุนแรง: ','Severity: ')}</strong>{translateSeverity(aiSuggestion.data.severity,lang)}</p>
+                <p><strong>{tr('สาเหตุ: ','Cause: ')}</strong>{aiSuggestion.data.cause}</p>
+                <p><strong>{tr('วิธีแก้ไข: ','Solution: ')}</strong>{aiSuggestion.data.solution}</p>
+                <p className="text-xs text-slate-500">{tr('AI อาจคลาดเคลื่อน ควรตรวจสอบกับสภาพหน้างานก่อนบันทึก','AI can be inaccurate; verify against actual site conditions before saving.')}</p>
+                <div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={()=>setAiSuggestion(null)} className="rounded-lg border px-3 py-2 text-xs">{tr('ไม่ใช้ผลนี้','Discard')}</button><button type="button" onClick={applyAnalysis} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white">{tr('นำผล AI มาแก้ข้อมูล','Apply AI suggestions')}</button></div>
+              </div>}
+              {aiPrevious&&<button type="button" onClick={restoreAnalysis} className="text-xs font-semibold text-indigo-700 underline">{tr('คืนข้อมูลก่อนใช้ AI','Restore details before AI')}</button>}
+            </div>
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
                 {t.defectItemTitleLabel}
@@ -759,6 +824,7 @@ export const DefectEditModal: React.FC<DefectEditModalProps> = ({
                         <Pen className="w-3 h-3" />
                         {t.annotatePhotoBtn}
                       </button>
+                      {beforeImg&&<button type="button" onClick={analyzeBefore} disabled={aiBusy} className="inline-flex items-center gap-1 rounded-lg bg-indigo-100 px-2 py-1 text-[11px] font-semibold text-indigo-700 disabled:opacity-50"><Sparkles className="w-3 h-3"/>{aiBusy?tr('กำลังอ่านภาพ…','Analyzing…'):tr('AI อ่านภาพ','AI analyze')}</button>}
                       {beforeImg && (
                         <button
                           type="button"
