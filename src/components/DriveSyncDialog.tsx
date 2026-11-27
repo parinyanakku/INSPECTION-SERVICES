@@ -209,10 +209,9 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
  const [ready,setReady]=useState(!!gis()),[,setToken]=useState(()=>validToken(userId)),[busy,setBusy]=useState(false),[msg,setMsg]=useState('');
  const phaseKey='tis-drive-phase:'+userId;
  const pendingKey='tis-drive-resume:'+userId;
- const resumeAttempted=useRef(false);
  const clearIntent=()=>{try{sessionStorage.removeItem(pendingKey);}catch{}};
  const [link,setLink]=useState<Identity|null>(readLink);
- useEffect(()=>{try{const previous=sessionStorage.getItem(phaseKey);if(previous&&previous!=='done'){setMsg(tr('การโหลดครั้งก่อนหยุดที่ขั้น: ','Previous load stopped at: ')+previous+tr(' · ไฟล์ต้นฉบับไม่ถูกลบ',' · Original backup was not deleted'));}}catch{}},[phaseKey]);
+ useEffect(()=>{try{sessionStorage.removeItem(pendingKey);const previous=sessionStorage.getItem(phaseKey);if(previous&&previous!=='done'){autoHold.current=true;setMsg(tr('หยุดโหลดต่ออัตโนมัติเพื่อป้องกันหน้าเว็บวนซ้ำ · ขั้นล่าสุด: ','Automatic resume stopped to prevent a reload loop · Last stage: ')+previous+tr(' · ไฟล์ต้นฉบับยังอยู่',' · Original backup retained'));}}catch{}},[phaseKey,pendingKey]);
  function phase(value:string){try{sessionStorage.setItem(phaseKey,value);}catch{}}
  const [cloud,setCloud]=useState<CloudSummary|null>(()=>readLink()?.lastCloud||null);
  const [checkedAt,setCheckedAt]=useState('');
@@ -221,7 +220,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
  useEffect(()=>{if(!visible)return;let done=false;const refresh=()=>{void readSyncRecords().then(records=>{if(!done)setLocalSummary(counts(records));}).catch(()=>{if(!done)setLocalSummary(null);});};refresh();window.addEventListener('tis-workspace-sync-change',refresh);return()=>{done=true;window.removeEventListener('tis-workspace-sync-change',refresh);};},[visible]);
  const active=useRef(true);
  const [auto,setAuto]=useState(readAuto);
- const autoHold=useRef(false);
+ const autoHold=useRef((()=>{try{const last=sessionStorage.getItem(phaseKey);return !!last&&last!=='done';}catch{return false;}})());
  const safeRestoreRef=useRef(canAutoRestore);safeRestoreRef.current=canAutoRestore;
  const [autoRunning,setAutoRunning]=useState(false);
  const operation=useRef<AbortController|null>(null);
@@ -520,7 +519,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
    let stage:Awaited<ReturnType<typeof openDriveStage>>=null;
    if(downloadOnly&&identity&&summary&&remote.appProperties?.tisJson==='1'&&remote.appProperties.tisUser===userId&&/^[a-f0-9]{64}$/i.test(remote.appProperties.hash||'')&&Number.isSafeInteger(size)&&size>driveRangeBytes){
     const meta:PendingDriveStage={id:remote.id,hash:remote.appProperties.hash,size,date:summary.date,projects:summary.projects,defects:summary.defects,baseHash:localHash,started:Date.now(),empty};
-    try{stage=await openDriveStage(userId,identity.id,meta);if(stage)sessionStorage.setItem(pendingKey,remote.id);}catch{}
+    try{stage=await openDriveStage(userId,identity.id,meta);}catch{}
    }
    const readData=()=>remote.appProperties?.tisJson==='1'?readOriginalStream(token,userId,remote,op.signal,downloadProgress,()=>{if(downloadOnly)phase('ตรวจสอบ / Verify');setMsg(tr('กำลังตรวจสอบไฟล์ JSON…','Verifying JSON…'));},stage?.ranges):readSnapshot(token,userId,remote.id,op.signal,downloadProgress);
    const data=await (async()=>{try{return downloadOnly?await retryReadStage(readData,readOptions(tr('การรับ JSON สะดุด ระบบกำลังลองอ่านใหม่ให้อัตโนมัติ…','JSON read interrupted; automatically retrying…'))):await readData();}finally{stage?.close();}})();
@@ -566,47 +565,6 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
    }finally{if(active.current)setApplyingRestore(false);}
   }
  }
- // If Safari reloads after every original range was received, finish the already
- // requested revision without a second tap or retaining a Google access token.
- useEffect(()=>{
-  if(resumeAttempted.current||paused||busy||operation.current)return;
-  let wanted='';try{wanted=sessionStorage.getItem(pendingKey)||'';}catch{}
-  if(!wanted||!safeRestoreRef.current())return;
-  const identity=readLink();if(!identity)return;
-  resumeAttempted.current=true;
-  void (async()=>{
-   let stage:Awaited<ReturnType<typeof openDriveStage>>=null;
-   let op:AbortController|undefined;
-   try{
-    stage=await openDriveStage(userId,identity.id);
-    if(!active.current||operation.current||!stage||stage.meta.id!==wanted||!stage.meta.empty||!await stage.complete())return;
-    if(!active.current||operation.current||!safeRestoreRef.current())return;
-    const current=await readSyncRecords(),localHash=await hash(current);
-    if(!active.current||operation.current||!safeRestoreRef.current()||counts(current).projects!==0||Object.keys(current).some(k=>k.startsWith(REPORT))||localHash!==stage.meta.baseHash)return;
-    op=new AbortController();operation.current=op;setBusy(true);setCancelling(false);onOpen();
-    phase('ตรวจสอบข้อมูลที่รับไว้ / Verify saved ranges');
-    setMsg(tr('กำลังทำรายการโหลดที่ค้างไว้ต่อจากข้อมูลเดิม…','Resuming the interrupted download from saved original ranges…'));
-    const meta=stage.meta;
-    const response=await downloadDriveRevision(meta.size,async()=>{throw Error('Missing saved download range');},op.signal,stage.ranges);
-    const parsed=await streamOriginal(response,op.signal);check(op);
-    if(parsed.userId!==userId||parsed.contentHash!==meta.hash||await hash(parsed.records)!==meta.hash)throw Error('Original JSON integrity check failed');
-    const c=counts(parsed.records);
-    if(c.projects!==meta.projects||c.defects!==meta.defects||!safeRestoreRef.current()||!equalRecords(await readSyncRecords(),current)||readLink()?.id!==identity.id)throw Error('CONFLICT');
-    check(op);flushSync(()=>setApplyingRestore(true));
-    phase('บันทึกข้อมูลที่รับไว้ / Local commit');
-    try{
-     await restoreSyncRecords(parsed.records,current,JSON.stringify({id:meta.id,hash:meta.hash}));
-     const stored=await readSyncRecords();if(!equalRecords(stored,parsed.records))throw Error('Local restore verification failed');
-     digestCache.set(stored,Promise.resolve(meta.hash));countCache.set(stored,c);
-     setLocalSummary(c);const cloud={id:meta.id,date:meta.date,projects:c.projects,defects:c.defects};
-     setCloud(cloud);onRestored();await saveLink({...identity,lastCloud:cloud,lastSync:new Date().toISOString()});
-     phase('done');clearIntent();
-     setMsg(tr('โหลดต่อสำเร็จ · ','Interrupted load completed · ')+describe(c)+tr(' · จากฉบับที่เลือกก่อนหน้า ตรวจฉบับล่าสุดเมื่อยืนยัน Google',' · previously selected revision; authorize Google to check for newer work'));
-     try{await stage.discard();}catch{}
-    }finally{if(active.current)setApplyingRestore(false);}
-   }catch(e){if(op)handleError(e,op);}finally{stage?.close();if(op)end(op);}
-  })();
- });
  async function toggleAuto(){
   if(!link||busy)return;
   const next=!auto;
