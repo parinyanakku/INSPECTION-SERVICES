@@ -38,6 +38,7 @@ import {
   createDefaultSirinaphaProject,
   DEFAULT_BRAND,
   migrateProject,
+  orderProjectDefects,
   STORAGE_KEY_BRAND,
   STORAGE_KEY_LAST_SAVED,
   STORAGE_KEY_PROJECTS,
@@ -280,7 +281,12 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
   const handleUpdateActiveProject = useCallback(
     (updater: (proj: ProjectFile) => ProjectFile, silent = false) => {
       setProjects((prev) => {
-        const next = prev.map((p) => (p.id === activeProjectId ? updater(p) : p));
+        const next = prev.map((p) => {
+          if(p.id!==activeProjectId)return p;
+          const updated=updater(p);
+          // Silent drag updates only move coordinates; regroup on commit.
+          return silent?updated:orderProjectDefects(updated);
+        });
         if (!silent) {
           persistAll(brand, next, false);
         }
@@ -581,7 +587,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
           const previousReport=workspaceStorage.getItem('tis_report_book_v1_'+target.id);
           const old=previousReport?JSON.parse(previousReport):{};
           const nextReport={...old,...report,locationMapImg:old.locationMapImg||report.locationMapImg,frontHouseImg:old.frontHouseImg||report.frontHouseImg,extraZonePlanImgs:[...new Set([...(Array.isArray(old.extraZonePlanImgs)?old.extraZonePlanImgs:[]),...report.extraZonePlanImgs])]};
-          const nextProjects=projects.map(p=>p.id===target.id?nextProject:p);
+          const nextProjects=projects.map(p=>p.id===target.id?orderProjectDefects(nextProject):p);
           setConfirmState({
             title:'เพิ่มข้อมูลและภาพจากรายงานในแฟ้มเดิม',
             message:'พบภาพ '+items.length+' รายการในแฟ้ม "'+target.name+'" จะปรับชื่อรายการ วันที่ และรายละเอียดรายงาน เพิ่มภาพที่ยังไม่มี และแปลนต้นฉบับเฉพาะแปลนที่ยังไม่แก้ไข (ตำแหน่งหมุดเป็นค่าประมาณตามโซน) โดยไม่ลบแฟ้มอื่น ภาพเดิม หรือสถานะการแก้ไข กรุณาสำรอง JSON ก่อนดำเนินการ',
