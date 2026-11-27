@@ -11,7 +11,7 @@ const MARK='tis_drive_sync_marker_v1';
 // Public OAuth client identifier; never include a client secret in this web app.
 const CLIENT_ID='386487455938-nda2mj55c5f3cdr8pvqmq4pu4o775fv2.apps.googleusercontent.com';
 type Records=Record<string,string>;
-type FileMeta={id:string;appProperties?:Record<string,string>;createdTime?:string;name?:string};
+type FileMeta={id:string;appProperties?:Record<string,string>;createdTime?:string;name?:string;size?:string};
 type CloudSummary={id:string;date:string;projects:number;defects:number;legacy?:boolean};
 type Snapshot={format:'TIS_DRIVE_V1';userId:string;records:Records};
 type Marker={id:string;hash:string};
@@ -33,7 +33,7 @@ async function hash(records:Records){
 }
 async function api(token:string,url:string,init:RequestInit={}){
  const result=await fetch(url,{...init,headers:{...init.headers,Authorization:'Bearer '+token},cache:'no-store'});
- if(!result.ok)throw Error('Google Drive HTTP '+result.status);
+ if(!result.ok){let reason='';try{const detail=await result.json();reason=detail.error?.errors?.[0]?.reason||detail.error?.message||'';}catch{}throw Error('Google Drive HTTP '+result.status+(reason?' · '+reason.slice(0,180):''));}
  return result;
 }
 const PROJECTS='tis_wl_projects_v10',BRAND='tis_wl_brand_v10',REPORT='tis_report_book_v1_';
@@ -89,18 +89,60 @@ async function jsonFolder(token:string,userId:string,signal?:AbortSignal){
  const folder=await (await api(token,ROOT+'?fields=id',{method:'POST',signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'TIS - Latest JSON backups',mimeType:'application/vnd.google-apps.folder',appProperties:{tisOwner:userId,tisFolder:'latest-json'}})})).json();
  if(!folder.id)throw Error('Drive folder not confirmed');return folder.id as string;
 }
-async function upload(token:string,userId:string,records:Records,parent:string,signal?:AbortSignal){
+async function upload(token:string,userId:string,records:Records,parent:string,signal?:AbortSignal,progress?:(sent:number,total:number)=>void){
  validateDriveRecords(records);
  const folder=await jsonFolder(token,userId,signal);
  const projects=JSON.parse(records[PROJECTS]),reportBooks:Record<string,unknown>={};
  for(const [key,value] of Object.entries(records))if(key.startsWith(REPORT))Object.defineProperty(reportBooks,key.slice(REPORT.length),{value:JSON.parse(value),enumerable:true});
  const exportedAt=new Date().toISOString(),contentHash=await hash(records),c=counts(records);
  const snapshot={format:'TIS_HOME_INSPECTION_BACKUP_V10',exportedAt,userId,contentHash,brand:records[BRAND]?JSON.parse(records[BRAND]):undefined,projects,reportBooks};
- const boundary='tis_'+crypto.randomUUID().replace(/-/g,'');
  const metadata={name:'TIS_FullBackup_'+exportedAt.replace(/[:.]/g,'-')+'.json',parents:[folder],mimeType:'application/json',appProperties:{tisUser:userId,tisJson:'1',parent:parent||'root',projects:String(c.projects),defects:String(c.defects),hash:contentHash}};
- const body=new Blob(['--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n',JSON.stringify(metadata),'\r\n--'+boundary+'\r\nContent-Type: application/json\r\n\r\n',JSON.stringify(snapshot),'\r\n--'+boundary+'--\r\n']);
- const r=await api(token,'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,createdTime,appProperties',{method:'POST',headers:{'Content-Type':'multipart/related; boundary='+boundary},body});
- const data=await r.json() as FileMeta;if(typeof data.id!=='string'||!cloudInfo(data,records))throw Error('Upload not confirmed');
+ const payload=new Blob([JSON.stringify(snapshot)],{type:'application/json'});
+ const fields='id,createdTime,appProperties,size';
+ const start=await api(token,'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields='+fields,{method:'POST',signal,headers:{'Content-Type':'application/json; charset=UTF-8','X-Upload-Content-Type':'application/json','X-Upload-Content-Length':String(payload.size)},body:JSON.stringify(metadata)});
+ const location=start.headers.get('Location');
+ if(!location)throw Error('Drive did not return an upload session');
+ const session=new URL(location);
+ if(session.protocol!=='https:'||!['www.googleapis.com','content.googleapis.com'].includes(session.hostname)||session.username||session.password)throw Error('Invalid Drive upload session');
+ const chunk=4*1024*1024;let offset=0,attempts=0;let data:FileMeta|undefined;
+ async function put(range:string,body?:Blob){
+  return fetch(session.href,{method:'PUT',signal,headers:{Authorization:'Bearer '+token,'Content-Range':range,'Content-Type':'application/json'},body,cache:'no-store'});
+ }
+ function acknowledged(res:Response){
+  const range=res.headers.get('Range');if(!range)return 0;
+  const m=/^bytes=0-(\d+)$/.exec(range);if(!m)throw Error('Invalid Drive upload range');
+  const n=Number(m[1])+1;if(!Number.isSafeInteger(n)||n>payload.size)throw Error('Invalid Drive upload offset');return n;
+ }
+ progress?.(0,payload.size);
+ while(!data){
+  if(signal?.aborted)throw Error('CANCELLED');
+  const end=Math.min(payload.size,offset+chunk);
+  let res:Response|undefined;
+  try{res=await put('bytes '+offset+'-'+(end-1)+'/'+payload.size,payload.slice(offset,end));}catch(e){if(signal?.aborted)throw e;}
+  if(!res||res.status===429||res.status>=500){
+   if(++attempts>4)throw Error('Drive upload interrupted; retry from the computer with the latest work');
+   await new Promise<void>(resolve=>setTimeout(resolve,Math.min(4000,500*2**attempts)));
+   if(signal?.aborted)throw Error('CANCELLED');
+   try{res=await put('bytes */'+payload.size);}catch(e){if(signal?.aborted)throw e;continue;}
+   if(res.status===429||res.status>=500)continue;
+  }
+  if(res.status===308){
+   const next=acknowledged(res);
+   if(next<=offset){if(++attempts>4)throw Error('Drive upload made no progress');}else attempts=0;
+   offset=next;progress?.(offset,payload.size);
+   if(offset===payload.size){
+    const status=await put('bytes */'+payload.size);if(!status.ok)throw Error('Drive upload completion not confirmed');data=await status.json() as FileMeta;
+   }
+   continue;
+  }
+  if(!res.ok){let reason='';try{const detail=await res.json();reason=detail.error?.errors?.[0]?.reason||detail.error?.message||'';}catch{}throw Error('Google Drive HTTP '+res.status+(reason?' · '+reason.slice(0,180):''));}
+  data=await res.json() as FileMeta;
+ }
+ if(typeof data.id!=='string')throw Error('Upload not confirmed');
+ // Confirm actual stored file metadata, not just the upload request.
+ const saved=await (await api(token,ROOT+'/'+encodeURIComponent(data.id)+'?fields='+fields,{signal})).json() as FileMeta;
+ if(saved.id!==data.id||saved.appProperties?.tisUser!==userId||saved.appProperties?.hash!==contentHash||Number(saved.size)!==payload.size||!cloudInfo(saved,records))throw Error('Drive file size or hash metadata not confirmed');
+ progress?.(payload.size,payload.size);data=saved;
  return data;
 }
 export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClose,onRestored,onOpen,onBusyChange}:{userId:string;lang:AppLanguage;visible:boolean;paused:boolean;canAutoRestore:()=>boolean;onClose:()=>void;onRestored:()=>void;onOpen:()=>void;onBusyChange:(busy:boolean)=>void}){
@@ -272,16 +314,17 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   const summary=cloudInfo(file,records);if(!summary)return;
   setCloud(summary);const identity=readLink();if(identity)await saveLink({...identity,lastCloud:summary});
  }
+ function uploadProgress(sent:number,total:number){const mb=(n:number)=>(n/1048576).toFixed(1);setMsg(tr('ส่ง JSON ','Uploading JSON ')+mb(sent)+' / '+mb(total)+' MB · '+Math.floor(sent/total*100)+'%');}
  async function publishLatest(token:string,op:AbortController){
   const records=await readSyncRecords();check(op);const c=counts(records);
   if(!c.projects)throw Error(tr('ไม่ส่งข้อมูลว่างขึ้น Drive','Cannot publish an empty workspace'));
   const remote=await files(token,userId,op.signal,true);check(op);
-  const prior=remote?(cloudInfo(remote)||cloudInfo(remote,(await readSnapshot(token,userId,remote.id,op.signal)).records)):null;check(op);
+  const prior=remote?cloudInfo(remote):null;check(op);
   if(!window.confirm(tr('ส่ง JSON จากเครื่องนี้เป็นฉบับล่าสุดบน Drive: ','Publish this device as the latest Drive JSON: ')+describe(c)+(prior?'\nDrive: '+describe(prior)+' · '+showTime(prior.date):'')+'\n'+tr('ฉบับก่อนหน้าจะยังอยู่ใน Drive ไม่ลบไฟล์เดิม ยืนยันเฉพาะเมื่อเครื่องนี้มีงานล่าสุดจริง','Previous versions are retained. Confirm only if this device has the intended latest work.')))return;
   check(op);if((await files(token,userId,op.signal,true))?.id!==remote?.id)throw Error('CONFLICT');
   const current=await readSyncRecords();if(await hash(current)!==await hash(records))throw Error(tr('งานเปลี่ยนระหว่างยืนยัน กรุณากดส่งอีกครั้ง','Work changed during confirmation; publish again.'));
   check(op);setMsg(tr('กำลังส่ง JSON ฉบับล่าสุด…','Uploading latest JSON…'));
-  const file=await upload(token,userId,records,remote?.id||'',op.signal);check(op);
+  const file=await upload(token,userId,records,remote?.id||'',op.signal,uploadProgress);check(op);
   workspaceStorage.setItem(MARK,JSON.stringify({id:file.id,hash:await hash(records)}));if(!await flushWorkspace())throw Error('Local marker save failed');
   await rememberCloud(file,records);check(op);
   const identity=readLink();if(identity)await saveLink({...identity,lastSync:new Date().toISOString()});
@@ -311,7 +354,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
     if(marker)throw Error('CONFLICT');
     if(automatic){setMsg(tr('ยังไม่ได้ส่งข้อมูลครั้งแรก กรุณากดซิงค์ด้วยตนเองหนึ่งครั้ง','First upload requires one manual sync.'));return;}
     if(!window.confirm(tr('ส่งแฟ้มงาน รูปภาพ แปลน และรายงานของบัญชีนี้ไปยัง Google Drive ที่เพิ่งเลือกหรือไม่?','Send this account’s projects, photos, plans and reports to the selected Google Drive?')))return;
-    check(op);const file=await upload(token,userId,records,'',op.signal),id=file.id;
+    check(op);const file=await upload(token,userId,records,'',op.signal,uploadProgress),id=file.id;
     if(!active.current)return;
     check(op);workspaceStorage.setItem(MARK,JSON.stringify({id,hash:localHash}));if(!await flushWorkspace())throw Error('Local marker save failed');
     await rememberCloud(file,records);
@@ -321,7 +364,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
    if(marker?.id===remote.id&&!downloadOnly){
     if(!automatic&&!window.confirm(tr('ส่งงานที่แก้ไขล่าสุดไปยัง Google Drive หรือไม่?','Upload your latest saved changes?')))return;
     if((await files(token,userId,op.signal))?.id!==remote.id)throw Error('CONFLICT');check(op);
-    check(op);const file=await upload(token,userId,records,remote.id,op.signal),id=file.id;
+    check(op);const file=await upload(token,userId,records,remote.id,op.signal,uploadProgress),id=file.id;
     if(!active.current)return;
     check(op);workspaceStorage.setItem(MARK,JSON.stringify({id,hash:localHash}));if(!await flushWorkspace())throw Error('Local marker save failed');
     await rememberCloud(file,records);
@@ -353,7 +396,9 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
    flushSync(()=>setApplyingRestore(true));
    try{
     check(op);if(!safeRestoreRef.current())throw Error(tr('กรุณากลับหน้าแฟ้มโครงการก่อนโหลดข้อมูล','Return to the project list before restoring.'));
+    setMsg(tr('กำลังบันทึก JSON ลงเครื่อง…','Saving JSON locally…'));
     await restoreSyncRecords(incoming,records,JSON.stringify({id:remote.id,hash:remoteHash}));
+    const stored=await readSyncRecords();if(await hash(stored)!==await hash(incoming))throw Error(tr('ตรวจสอบข้อมูลหลังบันทึกไม่ตรงกัน','Local restore verification failed'));
     if(active.current){onRestored();await finish(incoming,tr(downloadOnly?'โหลด JSON ล่าสุดสำเร็จ':'รับและรวมข้อมูลจาก Drive สำเร็จ',downloadOnly?'Latest JSON loaded':'Drive data received and merged'));}
    }finally{if(active.current)setApplyingRestore(false);}
   }
@@ -412,6 +457,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-1 text-sm">
   <strong>{tr('ข้อมูลล่าสุดใน Drive','Latest data on Drive')}</strong>
   {cloud?<><div className="font-bold text-emerald-700">{describe(cloud)}</div><div>{tr('เวลาบันทึกไฟล์: ','File saved: ')}{showTime(cloud.date)}</div><div className="text-xs text-slate-500">{cloud.legacy?tr('ไฟล์ซิงค์เดิม','Legacy sync file'):'TIS_FullBackup JSON'}</div></>:<p className="text-xs text-slate-500">{tr('ยังไม่มีข้อมูลยืนยันจาก Drive กรุณากดโหลด JSON แล้วตรวจข้อความผลด้านบน','Not verified yet. Sync or load JSON.')}</p>}
+  {cloud&&!cloud.legacy&&<a href={'https://drive.google.com/open?id='+encodeURIComponent(cloud.id)} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-blue-700 underline">{tr('เปิดไฟล์ JSON ที่ยืนยันบน Drive','Open confirmed JSON on Drive')}</a>}
   {checkedAt&&<div className="text-xs text-slate-500">{tr('ตรวจ Drive ล่าสุด: ','Last checked: ')}{showTime(checkedAt)}</div>}
  </div>
  <button data-tour="drive-json-send" disabled={!ready||busy||!link} onClick={()=>connect('publish')} className="w-full rounded bg-emerald-700 text-white p-3 font-bold disabled:opacity-50">{tr('ส่ง JSON ล่าสุดขึ้น Google Drive','Publish latest JSON to Google Drive')}</button>
