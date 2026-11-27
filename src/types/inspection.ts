@@ -140,6 +140,7 @@ export interface ReportCustomExportSettings {
   includeDefectTable: boolean;
   includeSummaryTable2: boolean;
   defectsPerPage: 2 | 3 | 4 | 5 | 'auto';
+  defectTableMode?: 'before_only' | 'before_after';
   defectStatusFilter: 'all' | 'pending_only' | 'fixed_only';
   defectSeverityFilter: 'all' | 'urgent_only';
   defectSelectionMode: 'filter' | 'manual';
