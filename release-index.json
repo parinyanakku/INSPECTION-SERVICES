@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.131",
+  "latest": "v1.0.132",
   "releases": [
+    {
+      "version": "v1.0.132",
+      "build": 132,
+      "storageSchema": 2,
+      "date": "2026-11-27T06:57:29.903Z",
+      "notes": "Add isolated customer report viewer for encrypted time-limited links",
+      "commit": "03310970db0a7b0e8e22b739b8cb6dc914920390"
+    },
     {
       "version": "v1.0.131",
       "build": 131,
