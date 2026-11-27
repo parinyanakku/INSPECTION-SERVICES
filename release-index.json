@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.78",
+  "latest": "v1.0.79",
   "releases": [
+    {
+      "version": "v1.0.79",
+      "build": 79,
+      "storageSchema": 2,
+      "date": "2026-11-27T02:24:45.694Z",
+      "notes": "Edit existing image text by clicking its label while preserving drag resize and undo history",
+      "commit": "cd8ed739f65a60b3130cf688a82d1e1de92df6d6"
+    },
     {
       "version": "v1.0.78",
       "build": 78,
