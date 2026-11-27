@@ -348,6 +348,22 @@ export const ExportTab: React.FC<ExportTabProps> = ({
           </p>
         </div>
 
+        <fieldset className="mb-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+          <legend className="px-1 text-sm font-bold text-slate-800">{lang==='en'?'Report table layout':'รูปแบบตารางรายงาน'}</legend>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {(['before_only','before_after'] as const).map(mode=>{
+              const selected=(customSettings.defectTableMode||'before_after')===mode;
+              return <label key={mode} className={'flex gap-2 items-start rounded-lg border p-3 cursor-pointer '+(selected?'border-blue-400 bg-blue-50':'border-slate-200 bg-white')}>
+                <input type="radio" name="report-table-layout" checked={selected} onChange={()=>updateCustomExport(prev=>({...prev,defectTableMode:mode}))} className="mt-1 accent-blue-600"/>
+                <div className="min-w-0"><div className="text-sm font-semibold text-slate-800">{mode==='before_only'?(lang==='en'?'First inspection':'ตรวจครั้งแรก'):(lang==='en'?'Follow-up inspection':'ตรวจติดตาม')}</div>
+                  <div className="text-xs text-slate-600">{mode==='before_only'?(lang==='en'?'Before photo only · wider details':'ไม่มีคอลัมน์ภาพหลังแก้ไข · ขยายภาพและรายละเอียด'):(lang==='en'?'Before and after photos':'มีภาพก่อนและหลังแก้ไข')}</div>
+                  <div className="flex h-9 mt-2 border border-slate-300 rounded overflow-hidden" aria-hidden="true">{(mode==='before_only'?[5,18,33,44]:[5,17,24,24,30]).map((w,i)=><div key={i} style={{width:w+'%'}} className="min-w-0 border-r last:border-r-0 border-slate-300 bg-white flex flex-col"><div className="h-2 bg-red-600"/><div className="flex-1 bg-slate-50 m-1 rounded-sm"/></div>)}</div>
+                </div>
+              </label>;
+            })}
+          </div>
+          <p className="mt-2 text-xs text-slate-500">{lang==='en'?'Applies to PDF, Word and Excel. Saved photos are not deleted.':'ใช้ร่วมกันทั้ง PDF, Word และ Excel ไม่ลบภาพหลังแก้ไขจากโครงการ'}</p>
+        </fieldset>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-5 flex flex-col justify-between">
             <div>
@@ -1305,8 +1321,8 @@ export const ExportTab: React.FC<ExportTabProps> = ({
                       <option value="all">{t.allStatusOpt}</option>
                       <option value="pending_only">
                         {lang === 'en'
-                          ? 'Pending / In Progress only'
-                          : 'เฉพาะรอแก้ไข & กำลังแก้ไข'}
+                          ? 'Pending / Repaired but incomplete only'
+                          : 'เฉพาะรอแก้ไข / แก้แล้วแต่ยังไม่เรียบร้อย'}
                       </option>
                       <option value="fixed_only">
                         {lang === 'en' ? 'Fixed only' : 'เฉพาะที่แก้ไขแล้ว'}
