@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.94",
+  "latest": "v1.0.95",
   "releases": [
+    {
+      "version": "v1.0.95",
+      "build": 95,
+      "storageSchema": 2,
+      "date": "2026-11-27T04:42:21.154Z",
+      "notes": "Add five persistent page color themes to header without changing report branding",
+      "commit": "a30dd8e1818238d53064868b8bb712c1a4d48486"
+    },
     {
       "version": "v1.0.94",
       "build": 94,
