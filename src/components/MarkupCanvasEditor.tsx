@@ -211,6 +211,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   // Inline text input popup at image-normalized coordinates [0..1]
   const [pendingTextPos, setPendingTextPos] = useState<{ x: number; y: number } | null>(null);
   const [pendingTextValue, setPendingTextValue] = useState('');
+  const editingTextRef=useRef<number|null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -301,7 +302,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     rotationRef.current = last.rotation;
     shapesRef.current = last.shapes;
     setShapes(last.shapes);
-    setPendingTextPos(null);
+    editingTextRef.current=null;setPendingTextPos(null);
     setPendingTextValue('');
     drawActiveCanvases();
   };
@@ -312,10 +313,10 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     if(undoRef.current.length>100)undoRef.current.shift();
     selectText(null);
     rotationRef.current=next.rotation;shapesRef.current=next.shapes;
-    setShapes(next.shapes);setPendingTextPos(null);setPendingTextValue('');
+    setShapes(next.shapes);editingTextRef.current=null;setPendingTextPos(null);setPendingTextValue('');
     drawActiveCanvases();
   };
-  const chooseTool=(next:MarkupTool)=>{setTool(next);setPendingTextPos(null);if(next!=='text')selectText(null);};
+  const chooseTool=(next:MarkupTool)=>{setTool(next);editingTextRef.current=null;setPendingTextPos(null);if(next!=='text')selectText(null);};
   const resizeSelected=(factor:number)=>{
     const i=selectedTextRef.current;if(i===null||textDrag.current)return;
     const sh=shapesRef.current[i];if(sh?.tool!=='text')return;
@@ -349,7 +350,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       shapesRef.current = [];
       setShapes([]);
     }
-    setPendingTextPos(null);
+    editingTextRef.current=null;setPendingTextPos(null);
     setPendingTextValue('');
     drawActiveCanvases();
   };
@@ -384,7 +385,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   // Load image ONLY when imageSrc actually changes; guard all state resets
   useEffect(() => {
     shapesRef.current = [];
-    textDrag.current=null;selectedTextRef.current=null;setSelectedText(null);
+    textDrag.current=null;editingTextRef.current=null;selectedTextRef.current=null;setSelectedText(null);
     rotationRef.current = 0;
     undoRef.current = [];
     redoRef.current = [];
@@ -457,7 +458,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       e.preventDefault();
       e.stopPropagation();
       if (pendingTextPosRef.current) {
-        setPendingTextPos(null);
+        editingTextRef.current=null;setPendingTextPos(null);
         setPendingTextValue('');
       } else {
         textDrag.current=null;
@@ -550,22 +551,30 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     ctx.save();const box=textBox(ctx,shape,dim.w,dim.h);ctx.restore();
     return {x:p.x*dim.w,y:p.y*dim.h,w:dim.w,h:dim.h,box};
   };
+  const editExistingText=(index:number,canvas:HTMLCanvasElement|null)=>{
+    const shape=shapesRef.current[index];if(!canvas||shape?.tool!=='text')return;
+    const g=textGeometry(canvas,shape,0,0);if(!g)return;
+    const p=inverseQuarter((g.box.x+g.box.w/2)/g.w,g.box.cy/g.h,-(rotationRef.current-(shape.orientation??0)));
+    setTool('text');selectText(index);editingTextRef.current=index;
+    setPendingTextValue(shape.text||'');setPendingTextPos(p);
+  };
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = e.currentTarget;
     if(e.button!==0||!e.isPrimary||!canvas||!loadedImageRef.current?.naturalWidth)return;
     const { nx, ny } = getPos(e, canvas);
 
-    if (tool === 'text') {
-      for(let i=shapesRef.current.length-1;i>=0;i--){
+    // Existing labels are selectable even when another drawing tool is active.
+    for(let i=shapesRef.current.length-1;i>=0;i--){
         const shape=shapesRef.current[i];if(shape.tool!=='text')continue;
         const g=textGeometry(canvas,shape,nx,ny);if(!g)continue;
         const b=g.box,handle=selectedTextRef.current===i&&Math.abs(g.x-b.x-b.w)<=13&&Math.abs(g.y-b.y-b.h)<=13;
         if(!handle&&(g.x<b.x||g.x>b.x+b.w||g.y<b.y||g.y>b.y+b.h))continue;
-        setPendingTextPos(null);selectText(i);canvas.setPointerCapture(e.pointerId);
+        editingTextRef.current=null;setPendingTextPos(null);setTool('text');selectText(i);canvas.setPointerCapture(e.pointerId);
         textDrag.current={id:e.pointerId,index:i,startX:g.x,startY:g.y,original:shape,preview:shape,mode:handle?'resize':'move',originX:b.x/g.w,originY:b.cy/g.h,boxW:b.w,boxH:b.h};
         return;
       }
-      selectText(null);
+    if (tool === 'text') {
+      editingTextRef.current=null;selectText(null);
       if(e.pointerType==='touch'){touchText.current={id:e.pointerId,x:e.clientX,y:e.clientY,nx,ny};return;}
       setPendingTextPos({ x: nx, y: ny });
       setPendingTextValue('');
@@ -573,7 +582,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     }
 
     selectText(null);
-    setPendingTextPos(null);
+    editingTextRef.current=null;setPendingTextPos(null);
     canvas.setPointerCapture(e.pointerId);
     isDrawingRef.current = true;
     currentShapeRef.current = {
@@ -595,7 +604,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       const {nx,ny}=getPos(e,e.currentTarget),g=textGeometry(e.currentTarget,drag.original,nx,ny);
       if(!g)return;
       const dx=g.x-drag.startX,dy=g.y-drag.startY;
-      if(Math.hypot(dx,dy)<1&&drag.preview===drag.original)return;
+      if(Math.hypot(dx,dy)<5&&drag.preview===drag.original)return;
       if(drag.mode==='move'){
         const x=Math.max(0,Math.min(1,drag.originX+dx/g.w)),y=Math.max(0,Math.min(1,drag.originY+dy/g.h));
         drag.preview={...drag.original,x1:x,y1:y,x2:x,y2:y};
@@ -621,7 +630,17 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   };
 
   const handlePointerUp = (e:React.PointerEvent<HTMLCanvasElement>) => {
-    const drag=textDrag.current;if(drag&&drag.id===e.pointerId){textDrag.current=null;if(drag.preview!==drag.original){remember();const next=[...shapesRef.current];next[drag.index]=drag.preview;shapesRef.current=next;setShapes(next);}drawActiveCanvases();return;}
+    const drag=textDrag.current;
+    if(drag&&drag.id===e.pointerId){
+      textDrag.current=null;
+      if(drag.preview!==drag.original){
+        remember();const next=[...shapesRef.current];next[drag.index]=drag.preview;shapesRef.current=next;setShapes(next);
+      }else if(drag.mode==='move'){
+        const {nx,ny}=getPos(e,e.currentTarget),g=textGeometry(e.currentTarget,drag.original,nx,ny);
+        if(g&&Math.hypot(g.x-drag.startX,g.y-drag.startY)<5)editExistingText(drag.index,e.currentTarget);
+      }
+      drawActiveCanvases();return;
+    }
     const tap=touchText.current;touchText.current=null;
     if(tap&&tap.id===e.pointerId&&Math.hypot(e.clientX-tap.x,e.clientY-tap.y)<=4){setPendingTextPos({x:tap.nx,y:tap.ny});setPendingTextValue('');return;}
     if (!isDrawingRef.current || !currentShapeRef.current) return;
@@ -646,9 +665,17 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   const commitTextAnnotation = () => {
     const clean = pendingTextValue.trim();
     if (!pendingTextPos || !clean) {
-      setPendingTextPos(null);
+      editingTextRef.current=null;setPendingTextPos(null);
       setPendingTextValue('');
       return;
+    }
+    const index=editingTextRef.current;
+    if(index!==null){
+      const original=shapesRef.current[index];
+      if(original?.tool==='text'&&original.text!==clean){
+        remember();const next=[...shapesRef.current];next[index]={...original,text:clean};shapesRef.current=next;setShapes(next);selectText(index);
+      }
+      editingTextRef.current=null;setPendingTextPos(null);setPendingTextValue('');return;
     }
     const newShape: OrientedShape = {
       orientation: rotationRef.current,
@@ -666,13 +693,13 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     shapesRef.current = next;
     setShapes(next);
     selectText(next.length-1);
-    setPendingTextPos(null);
+    editingTextRef.current=null;setPendingTextPos(null);
     setPendingTextValue('');
   };
 
   const openFullscreen = () => {
     if (!imageSrcRef.current) return;
-    setPendingTextPos(null);
+    editingTextRef.current=null;setPendingTextPos(null);
     setIsFullscreen(true);
   };
 
@@ -680,7 +707,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     textDrag.current=null;
     isDrawingRef.current = false;
     currentShapeRef.current = null;
-    setPendingTextPos(null);
+    editingTextRef.current=null;setPendingTextPos(null);
     setIsFullscreen(false);
   };
 
@@ -700,8 +727,8 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     const leftPct = ((dx + pos.x * dw) / canvas.width) * 100;
     const topPct = ((dy + pos.y * dh) / canvas.height) * 100;
     return {
-      left: Math.min(72, Math.max(4, leftPct)),
-      top: Math.min(82, Math.max(6, topPct)),
+      left: Math.max(1,Math.min(leftPct,100-Math.min(isFullscreenRef.current?340:260,canvas.width*.95)/canvas.width*100-1)),
+      top: Math.max(1,Math.min(topPct,100-55/Math.max(1,canvas.height)*100)),
     };
   };
 
@@ -725,6 +752,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   const contextActions:MenuAction[]=[
     {label:tr('ย้อนกลับ','Undo'),shortcut:'Ctrl+Z',run:undoEdit,disabled:!undoRef.current.length},
     {label:tr('ทำซ้ำ','Redo'),shortcut:'Ctrl+Y',run:redoEdit,disabled:!redoRef.current.length},
+    {label:tr('แก้ข้อความที่เลือก','Edit selected text'),run:()=>{const i=selectedTextRef.current;if(i!==null)editExistingText(i,isFullscreen?fullscreenCanvasRef.current:canvasRef.current);},disabled:selectedText===null},
     ...tools.map((item,i)=>({label:item.label,shortcut:['P','C','A','R','T'][i],run:()=>{chooseTool(item.id);}})),
     {label:tr('หมุนซ้าย 90°','Rotate left 90°'),run:()=>rotatePhoto(-1)},
     {label:tr('หมุนขวา 90°','Rotate right 90°'),run:()=>rotatePhoto(1)},
@@ -732,12 +760,13 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     {label:tr('ล้างเส้นมาร์ก','Clear marks'),run:clearMarks,danger:true,disabled:!shapesRef.current.length},
   ];
   const textControls=(dark=false)=>tool==='text'&&selectedText!==null&&shapes[selectedText]?.tool==='text'&&<div className={'flex items-center gap-1 rounded-lg border px-2 py-1 text-xs '+(dark?'border-slate-600 text-white':'border-slate-200 text-slate-700')}>
+    <button type="button" onClick={()=>editExistingText(selectedText,isFullscreen?fullscreenCanvasRef.current:canvasRef.current)} className="rounded border px-2 py-1 font-semibold">{tr('แก้ข้อความ','Edit text')}</button>
     <span>{tr('ขนาดข้อความ','Text size')}</span>
     <button type="button" onClick={()=>resizeSelected(1/1.15)} className="rounded border px-2 py-1" aria-label={tr('ย่อข้อความ','Decrease text size')}>−</button>
     <span className="tabular-nums">{Math.round((shapes[selectedText].textScale??1)*100)}%</span>
     <button type="button" onClick={()=>resizeSelected(1.15)} className="rounded border px-2 py-1" aria-label={tr('ขยายข้อความ','Increase text size')}>+</button>
   </div>;
-  const textHint=tr('คลิกพื้นที่ว่างเพื่อเพิ่มข้อความ • คลิกข้อความเดิมแล้วลากย้าย • ลากจุดมุมหรือกด −/+ เพื่อปรับขนาด','Click empty space to add text · Drag existing text to move · Drag corner or use −/+ to resize');
+  const textHint=tr('คลิกพื้นที่ว่างเพื่อเพิ่มข้อความ • คลิกข้อความเดิมเพื่อแก้คำ • ลากเพื่อย้าย • ลากมุมหรือกด −/+ เพื่อปรับขนาด','Click empty space to add text · Click existing text to edit · Drag to move · Drag corner or use −/+ to resize');
   const inlinePopupCoords =
     pendingTextPos && imageSrc && !isFullscreen
       ? getFloatingPopupPercent(canvasRef.current, pendingTextPos)
@@ -828,7 +857,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
                 onClick={() => {
                   onImageChange(null);
                   setShapes((prev) => (prev.length === 0 ? prev : []));
-                  setPendingTextPos(null);
+                  editingTextRef.current=null;setPendingTextPos(null);
                 }}
                 className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 cursor-pointer"
                 title={t.deletePhotoTooltip}
@@ -869,7 +898,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
           onPointerUp={handlePointerUp}
           onPointerCancel={cancelStroke}
           onLostPointerCapture={cancelStroke}
-          onDoubleClick={openFullscreen}
+          onDoubleClick={()=>{if(!pendingTextPosRef.current&&selectedTextRef.current===null)openFullscreen();}}
           className={`w-full h-full block touch-none ${
             tool === 'text' ? 'cursor-text' : 'cursor-crosshair'
           } ${imageSrc ? '' : 'hidden'}`}
@@ -895,7 +924,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
               top: `${inlinePopupCoords.top}%`,
             }}
             onClick={(e) => e.stopPropagation()}
-            className="absolute z-30 bg-white rounded-xl shadow-xl border border-slate-300 p-2 flex items-center gap-1.5 min-w-[210px]"
+            className="absolute z-30 bg-white rounded-xl shadow-xl border border-slate-300 p-2 flex items-center gap-1.5 w-[min(260px,95%)]"
           >
             <input
               type="text"
@@ -908,18 +937,18 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
                   commitTextAnnotation();
                 } else if (e.key === 'Escape') {
                   e.stopPropagation();
-                  setPendingTextPos(null);
+                  editingTextRef.current=null;setPendingTextPos(null);
                 }
               }}
               placeholder={t.textPlaceholder}
-              className="flex-1 px-2 py-1 text-xs rounded-lg border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
+              className="min-w-0 flex-1 px-2 py-1 text-xs rounded-lg border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
             />
             <button
               type="button"
               onClick={commitTextAnnotation}
               className="px-2.5 py-1 rounded-lg bg-slate-900 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
             >
-              {t.textSaveBtn}
+              {editingTextRef.current!==null?(lang==='en'?'Save edit':'บันทึกแก้ไข'):t.textSaveBtn}
             </button>
           </div>
         )}
@@ -1074,7 +1103,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
                       top: `${fullscreenPopupCoords.top}%`,
                     }}
                     onClick={(e) => e.stopPropagation()}
-                    className="absolute z-30 bg-white rounded-xl shadow-2xl border border-slate-300 p-2.5 flex items-center gap-2 min-w-[230px]"
+                    className="absolute z-30 bg-white rounded-xl shadow-2xl border border-slate-300 p-2.5 flex items-center gap-2 w-[min(340px,95%)]"
                   >
                     <input
                       type="text"
@@ -1087,18 +1116,18 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
                           commitTextAnnotation();
                         } else if (e.key === 'Escape') {
                           e.stopPropagation();
-                          setPendingTextPos(null);
+                          editingTextRef.current=null;setPendingTextPos(null);
                         }
                       }}
                       placeholder={t.textPlaceholder}
-                      className="flex-1 px-2.5 py-1.5 text-xs sm:text-sm rounded-lg border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500 text-slate-900"
+                      className="min-w-0 flex-1 px-2.5 py-1.5 text-xs sm:text-sm rounded-lg border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500 text-slate-900"
                     />
                     <button
                       type="button"
                       onClick={commitTextAnnotation}
                       className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs sm:text-sm font-semibold cursor-pointer whitespace-nowrap"
                     >
-                      {t.textSaveBtn}
+                      {editingTextRef.current!==null?(lang==='en'?'Save edit':'บันทึกแก้ไข'):t.textSaveBtn}
                     </button>
                   </div>
                 )}
