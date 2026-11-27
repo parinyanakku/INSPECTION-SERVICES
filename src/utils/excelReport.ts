@@ -92,7 +92,7 @@ export async function appendPrintableExcelReport(workbook:ExcelJS.Workbook,pages
    const st=win!.getComputedStyle(el),fill=color(st.backgroundColor);
    const sides=['top','bottom','left','right'] as const;
    const edges=sides.filter(side=>parseFloat(st.getPropertyValue('border-'+side+'-width'))>0&&st.getPropertyValue('border-'+side+'-style')!=='none');
-   if(fill&&fill!=='FFFFFFFF'){
+   if(fill&&(fill!=='FFFFFFFF'||!!el.closest('table[data-report-status]'))){
      for(let r=b.r1;r<=b.r2;r++)for(let c=b.c1;c<=b.c2;c++)ws.getCell(r,c).fill={type:'pattern',pattern:'solid',fgColor:{argb:fill}};
    }
    for(const side of edges){
