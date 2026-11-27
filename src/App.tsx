@@ -56,6 +56,7 @@ import {
 import {
   exportProjectExcel,
   exportProjectPDF,
+  isWordPdfConverterConfigured,
   exportProjectWord,
   formatCurrentTime,
   getDefaultSaveAsFilename,
@@ -844,8 +845,8 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
       const fileName = await exportProjectPDF(activeProject, brand, lang, reportBook);
       notify(
         lang === 'en'
-          ? `Downloaded ${fileName}`
-          : `ดาวน์โหลดไฟล์ ${fileName} เรียบร้อยแล้ว`,
+          ? `Downloaded ${fileName}${isWordPdfConverterConfigured()?' (Word conversion)':' (built-in PDF; Word converter not configured)'}`
+          : `ดาวน์โหลดไฟล์ ${fileName} เรียบร้อยแล้ว${isWordPdfConverterConfigured()?' (แปลงจาก Word)':' (PDF ระบบเดิม ยังไม่ได้เชื่อมตัวแปลง Word)'}`,
         'success'
       );
     } catch (err: unknown) {
