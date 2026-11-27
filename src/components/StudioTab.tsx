@@ -84,6 +84,9 @@ export const StudioTab: React.FC<StudioTabProps> = ({
   const isEditingFloor = !!activeFloor && editingFloorId === activeFloor.id && !activeFloor.imageUrl;
   const [showZoneOverlays, setShowZoneOverlays] = useState(true);
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
+  const [editZoneFocus,setEditZoneFocus]=useState<{floorId:string;zoneId:string}|null>(null);
+  const editingZone=isZoneSetupMode?(activeFloor?.zones.find(z=>z.id===selectedZoneId)||null):null;
+  useEffect(()=>{setSelectedZoneId(null);setEditZoneFocus(null);},[project.id,activeFloorId]);
   const [isFloorDropActive, setIsFloorDropActive] = useState(false);
 
   const viewKey='tis_plan_view_v1_'+project.id;
@@ -148,7 +151,10 @@ export const StudioTab: React.FC<StudioTabProps> = ({
   // Fit the explicitly selected zone using the actual scroll viewport and
   // stage dimensions. Zone coordinates are percentages of the same stage
   // used for placing pins; never infer the target from the image aspect ratio.
-  const lastFocusedChoice=useRef<typeof currentZoneChoice>(null);
+  const currentEditFocus=isZoneSetupMode&&editingZone&&editZoneFocus?.floorId===activeFloor?.id&&editZoneFocus?.zoneId===editingZone.id?editZoneFocus:null;
+  const focusChoice=currentEditFocus||(readyToPlace?currentZoneChoice:null);
+  const focusZone=currentEditFocus?editingZone:lockedZone;
+  const lastFocusedChoice=useRef<typeof focusChoice>(null);
   const lastPlanView=useRef({zoom:-1,floor:'',editing:false});
   useLayoutEffect(()=>{
     const vp=planViewport.current,stage=floorStageRef.current;
@@ -157,17 +163,17 @@ export const StudioTab: React.FC<StudioTabProps> = ({
     const previous=lastPlanView.current;
     const viewChanged=previous.zoom!==planZoom||previous.floor!==floor||previous.editing!==isEditingFloor;
     lastPlanView.current={zoom:planZoom,floor,editing:isEditingFloor};
-    const newChoice=currentZoneChoice!==lastFocusedChoice.current;
-    lastFocusedChoice.current=currentZoneChoice;
-    if(readyToPlace&&currentZoneChoice){
-      const raw=lockedZone||{x:0,y:0,w:100,h:100};
+    const newChoice=focusChoice!==lastFocusedChoice.current;
+    lastFocusedChoice.current=focusChoice;
+    if(focusChoice){
+      const raw=focusZone||{x:0,y:0,w:100,h:100};
       const x=Math.max(0,Math.min(100,raw.x)),y=Math.max(0,Math.min(100,raw.y));
       const w=Math.max(.1,Math.min(100-x,raw.w)),h=Math.max(.1,Math.min(100-y,raw.h));
       if(![x,y,w,h].every(Number.isFinite))return;
       if(newChoice){
         // Leave breathing room around the zone and respect the existing
         // manual zoom range; full-floor selection returns to 100%.
-        const fit=lockedZone?planZoom*Math.min(vp.clientWidth*.86/(stage.offsetWidth*w/100),vp.clientHeight*.86/(stage.offsetHeight*h/100)):100;
+        const fit=focusZone?planZoom*Math.min(vp.clientWidth*.86/(stage.offsetWidth*w/100),vp.clientHeight*.86/(stage.offsetHeight*h/100)):100;
         const target=Math.max(50,Math.min(300,Math.floor(fit/5)*5));
         if(target!==planZoom){setPlanZoom(target);return;}
       }
@@ -184,7 +190,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
       vp.scrollLeft=Math.max(0,(vp.scrollWidth-vp.clientWidth)/2);
       vp.scrollTop=Math.max(0,(vp.scrollHeight-vp.clientHeight)/2);
     }
-  },[currentZoneChoice,lockedZone,readyToPlace,planZoom,activeFloor?.id,isEditingFloor]);
+  },[focusChoice,focusZone,planZoom,activeFloor?.id,isEditingFloor]);
 
   // Markup canvas state
   const [markupImageSrc, setMarkupImageSrc] = useState<string | null>(null);
@@ -451,6 +457,8 @@ export const StudioTab: React.FC<StudioTabProps> = ({
       ),
     }));
     setSelectedZoneId(newZone.id);
+    setEditZoneFocus({floorId:activeFloor.id,zoneId:newZone.id});
+    setPanMode(false);
     setIsZoneSetupMode(true);
     setShowZoneOverlays(true);
   };
@@ -796,8 +804,8 @@ export const StudioTab: React.FC<StudioTabProps> = ({
               const next = !isZoneSetupMode;
               setIsZoneSetupMode(next);
               setPlacingDraftId(null);
-              if (next) setShowZoneOverlays(true);
-              setSelectedZoneId(null);
+              if (next) {setShowZoneOverlays(true);setPanMode(false);}
+              setSelectedZoneId(null);setEditZoneFocus(null);
             }}
             className={`text-xs px-3 py-1.5 rounded-xl font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
               isZoneSetupMode
@@ -847,8 +855,19 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         )}
 
         {isZoneSetupMode && (
-          <div className="mb-3 p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-xs text-indigo-900">
-            {t.zoneSetupBanner}
+          <div className="mb-3 space-y-2">
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-xs text-indigo-900">{tr('เลือกโซนที่ต้องการแก้ไข','Select zone to edit')} · {activeFloor?.name}</strong>
+                <button type="button" aria-pressed={!editingZone} onClick={()=>{setSelectedZoneId(null);setEditZoneFocus(null);setShowZoneOverlays(true);}} className={'rounded-lg border px-2.5 py-1.5 text-xs font-semibold '+(!editingZone?'bg-indigo-600 border-indigo-600 text-white':'bg-white border-indigo-200 text-indigo-800')}>{tr('ทุกโซน','All zones')}</button>
+              </div>
+              <div role="group" aria-label={tr('เลือกโซนที่ต้องการแก้ไข','Select zone to edit')} className="flex flex-wrap gap-1.5">
+                {activeFloor?.zones.map(z=><button type="button" key={z.id} aria-pressed={editingZone?.id===z.id} onClick={()=>{if(zoneDragRef.current)return;setSelectedZoneId(z.id);setEditZoneFocus({floorId:activeFloor.id,zoneId:z.id});setShowZoneOverlays(true);setPanMode(false);}} className={'inline-flex items-center gap-1.5 max-w-full rounded-lg border px-2.5 py-1.5 text-xs font-semibold text-left '+(editingZone?.id===z.id?'bg-indigo-600 border-indigo-600 text-white ring-2 ring-indigo-200':'bg-white border-slate-200 text-slate-700 hover:bg-slate-100')}><span className="w-2.5 h-2.5 rounded-full shrink-0 border border-white/60" style={{background:z.border}}/><span className="min-w-0 break-words">{z.name}</span>{editingZone?.id===z.id&&<span aria-hidden="true">✓</span>}</button>)}
+                {!activeFloor?.zones.length&&<span className="text-xs text-slate-500">{tr('ยังไม่มีโซน กดเพิ่มโซนใหม่','No zones yet. Add a zone first.')}</span>}
+              </div>
+              {editingZone&&<div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white border border-indigo-100 px-2.5 py-2 text-xs text-indigo-900"><span>{tr('กำลังแก้ไข: ','Editing: ')}<strong>{editingZone.name}</strong></span><button type="button" onClick={()=>onOpenZoneModal(editingZone.id)} className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1.5 text-white font-semibold"><Pencil className="w-3 h-3"/>{tr('แก้ชื่อ / สี / ลบโซน','Edit name / color / delete')}</button></div>}
+              <p className="text-[11px] text-indigo-800">{tr('เลือกแท็บเพื่อซูมไปยังโซนและซ่อนโซนอื่นชั่วคราว ลากกรอบเพื่อย้ายหรือลากมุมเพื่อปรับขนาด','Select a tab to zoom to that zone and temporarily hide other zones. Drag to move or resize.')}</p>
+            </div>
+            <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-200 text-xs text-indigo-900">{t.zoneSetupBanner}</div>
           </div>
         )}
 
@@ -916,8 +935,8 @@ export const StudioTab: React.FC<StudioTabProps> = ({
           )}
 
           {/* Zone Overlays */}
-          {(showZoneOverlays||Boolean(readyToPlace&&lockedZone)) &&
-            activeFloor?.zones.filter(z=>!readyToPlace||!lockedZone||z.id===lockedZone.id).map((z) => (
+          {(showZoneOverlays||Boolean(readyToPlace&&lockedZone)||Boolean(editingZone)) &&
+            activeFloor?.zones.filter(z=>(!readyToPlace||!lockedZone||z.id===lockedZone.id)&&(!editingZone||z.id===editingZone.id)).map((z) => (
               <div
                 key={z.id}
                 data-zone-id={z.id}
