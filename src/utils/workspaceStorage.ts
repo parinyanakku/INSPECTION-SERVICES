@@ -1,5 +1,8 @@
 // Local-only, account-scoped inspection workspace. No network requests.
 import {prepareProjects,clearPreparedProjects} from './verifiedProjects';
+// Keep the previous workspace on disk, outside the editable account cache.
+const LEGACY_BACKUP='tis_drive_pre_restore_v1';
+const BACKUP_PREFIX='tis_drive_pre_restore_v2:';
 type RecordValue = { key:string; value:string };
 let db: IDBDatabase | null = null;
 let cache = new Map<string,string>();
@@ -32,8 +35,15 @@ export async function openWorkspace(userId:string){
    });
    db=connection;
    const records=await new Promise<RecordValue[]>((resolve,reject)=>{
-     const tx=connection.transaction('records','readonly'),req=tx.objectStore('records').getAll();
-     tx.oncomplete=()=>resolve(req.result as RecordValue[]);
+     const tx=connection.transaction('records','readonly');
+     const store=tx.objectStore('records');
+     // Do not request the large rollback records, including backups from older builds.
+     const groups=[
+       store.getAll(IDBKeyRange.upperBound(LEGACY_BACKUP,true)),
+       store.getAll(IDBKeyRange.bound(LEGACY_BACKUP,BACKUP_PREFIX,true,true)),
+       store.getAll(IDBKeyRange.lowerBound(BACKUP_PREFIX+'\uffff',true)),
+     ];
+     tx.oncomplete=()=>resolve(groups.flatMap(group=>group.result as RecordValue[]));
      tx.onabort=tx.onerror=()=>reject(tx.error||Error('Cannot read local workspace'));
    });
    cache=new Map(records.map(r=>[r.key,r.value]));syncSnapshot=null;failures=new Set();pending=Promise.resolve();queued=0;status();
@@ -102,15 +112,23 @@ export async function restoreSyncRecords(records:Record<string,string>,expected:
  prepareProjects(records[SYNC_PROJECTS]||'null');
  for(const k of keys){if(k===SYNC_PROJECTS)continue;const value=JSON.parse(records[k]);if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid report data');}
  const oldKeys=[...cache.keys()].filter(syncKey);
- const extras={'tis_drive_pre_restore_v1':JSON.stringify(now),'tis_drive_sync_marker_v1':marker};
+ const markerKey='tis_drive_sync_marker_v1';
  await new Promise<void>((resolve,reject)=>{
   const tx=connection.transaction('records','readwrite'),store=tx.objectStore('records');
   tx.oncomplete=()=>resolve();tx.onabort=tx.onerror=()=>reject(tx.error||Error('Restore failed'));
-  for(const key of oldKeys)store.delete(key);
-  for(const [key,value] of Object.entries({...records,...extras}))store.put({key,value});
+  try{
+   // Replace the rollback copy, live records and marker in one transaction.
+   store.delete(LEGACY_BACKUP);
+   store.delete(IDBKeyRange.bound(BACKUP_PREFIX,BACKUP_PREFIX+'\uffff'));
+   for(const [key,value] of Object.entries(now))store.put({key:BACKUP_PREFIX+key,value});
+   for(const key of oldKeys)if(!(key in records))store.delete(key);
+   for(const [key,value] of Object.entries(records))if(cache.get(key)!==value)store.put({key,value});
+   store.put({key:markerKey,value:marker});
+  }catch(error){tx.abort();reject(error);}
  });
  for(const key of oldKeys)cache.delete(key);
- for(const [key,value] of Object.entries({...records,...extras}))cache.set(key,value);
+ for(const [key,value] of Object.entries(records))cache.set(key,value);
+ cache.set(markerKey,marker);
  syncSnapshot=null;
  status();
  window.dispatchEvent(new Event('tis-workspace-sync-change'));

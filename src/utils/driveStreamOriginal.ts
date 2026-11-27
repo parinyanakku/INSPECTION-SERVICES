@@ -23,6 +23,8 @@ export function originalBackupBlob(records:Records,userId:string,exportedAt:stri
 export async function streamOriginal(response:Response,signal?:AbortSignal,progress?:(received:number,total:number)=>void){
  if(!response.body)throw Error('Streaming download not supported; update Safari');
  const reader=response.body.getReader(),decoder=new TextDecoder('utf-8',{fatal:true});
+ // Find either delimiter in one forward scan, including in large photo strings.
+ const stringDelimiter=/["\\]/g;
  const total=Number(response.headers.get('Content-Length'))||0;
  let received=0,buffer='',at=0,done=false,lastUpdate=0;
  async function more(){
@@ -50,10 +52,10 @@ export async function streamOriginal(response:Response,signal?:AbortSignal,progr
    const start=at;
    while(at<buffer.length){
     if(inString&&!escaped){
-     const quote=buffer.indexOf('"',at),slash=buffer.indexOf('\\',at);
-     const next=quote<0?slash:slash<0?quote:Math.min(quote,slash);
-     if(next<0){at=buffer.length;break;}
-     at=next;
+     stringDelimiter.lastIndex=at;
+     const match=stringDelimiter.exec(buffer);
+     if(!match){at=buffer.length;break;}
+     at=match.index;
     }
     const c=buffer[at];
     if(!inString&&started&&!compound&&!quoted&&(c===','||c==='}'||c===']'||/\s/.test(c))){if(at>start)parts.push(buffer.slice(start,at));return parts.join('');}
