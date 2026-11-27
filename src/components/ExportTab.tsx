@@ -356,7 +356,7 @@ export const ExportTab: React.FC<ExportTabProps> = ({
           </p>
         </div>
 
-        <fieldset className="mb-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+        <fieldset data-tour="report" className="mb-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
           <legend className="px-1 text-sm font-bold text-slate-800">{lang==='en'?'Report table layout':'รูปแบบตารางรายงาน'}</legend>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {(['before_only','before_after'] as const).map(mode=>{
