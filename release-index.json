@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.214",
+  "latest": "v1.0.215",
   "releases": [
+    {
+      "version": "v1.0.215",
+      "build": 215,
+      "storageSchema": 2,
+      "date": "2026-11-27T16:10:51.827Z",
+      "notes": "Resume staged Drive ranges after interrupted downloads; preserve original bytes and account scope",
+      "commit": "0d6d9d4cdc222d2bc596d35fc415035c04da593d"
+    },
     {
       "version": "v1.0.214",
       "build": 214,
