@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.176",
+  "latest": "v1.0.178",
   "releases": [
+    {
+      "version": "v1.0.178",
+      "build": 178,
+      "storageSchema": 2,
+      "date": "2026-11-27T08:30:55.875Z",
+      "notes": "Update buyer guide for verified JSON upload and release highlights",
+      "commit": "70b00e1df3a758c9c99b44952debc7406ef77915"
+    },
     {
       "version": "v1.0.176",
       "build": 176,
