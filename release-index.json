@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.205",
+  "latest": "v1.0.206",
   "releases": [
+    {
+      "version": "v1.0.206",
+      "build": 206,
+      "storageSchema": 2,
+      "date": "2026-11-27T10:58:24.928Z",
+      "notes": "Stream original mobile JSON with explicit download verification and local save progress; update guide",
+      "commit": "88b5ec567ee7fdeb9ea244015de8fd942f87705a"
+    },
     {
       "version": "v1.0.205",
       "build": 205,
