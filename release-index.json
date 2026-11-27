@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.152",
+  "latest": "v1.0.153",
   "releases": [
+    {
+      "version": "v1.0.153",
+      "build": 153,
+      "storageSchema": 2,
+      "date": "2026-11-27T07:34:19.834Z",
+      "notes": "Remove buyer video lesson entry and playback; retain interactive guided tour",
+      "commit": "dfb8716220c45a456649082fefe7c357dd94baa8"
+    },
     {
       "version": "v1.0.152",
       "build": 152,
