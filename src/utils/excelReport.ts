@@ -34,18 +34,20 @@ export async function appendPrintableExcelReport(workbook:ExcelJS.Workbook,pages
  document.body.appendChild(iframe);
  try{
  const doc=iframe.contentDocument,win=iframe.contentWindow;if(!doc||!win)throw Error('Report layout unavailable');
- doc.open();doc.write(reportDocument(pages.map(p=>p.html).join('')));doc.close();
+ doc.open();doc.write(reportDocument(''));doc.close();
  await waitForReportFonts(doc);
- const imgs=Array.from(doc.images);
- await Promise.all(imgs.map(async img=>{try{await img.decode();}catch{if(!img.complete||!img.naturalWidth)throw Error('Report image failed to load');}}));
- const roots=Array.from(doc.querySelectorAll<HTMLElement>('.report-page'));
- if(roots.length!==pages.length)throw Error('Report page count mismatch');
  const groups=new Map<string,{sheet:ExcelJS.Worksheet;count:number;cols:number;rows:number}>();
  const imageIds=new Map<string,number>();
  const pageCounts=new Map<string,number>();
  for(const page of pages){const key=groupKey(page);pageCounts.set(key,(pageCounts.get(key)||0)+1);}
  for(let pi=0;pi<pages.length;pi++){
- const page=pages[pi],root=roots[pi],landscape=page.orientation==='landscape';
+ const page=pages[pi],landscape=page.orientation==='landscape';
+ doc.body.innerHTML=page.html;
+ const root=doc.querySelector<HTMLElement>('.report-page');
+ if(!root)throw Error('Missing Excel report page '+(pi+1));
+ for(const img of Array.from(root.querySelectorAll('img'))){
+   try{await img.decode();}catch{if(!img.complete||!img.naturalWidth)throw Error('Report image failed to load on page '+(pi+1));}
+ }
  const W=landscape?1123:794,H=landscape?794:1123;
  const cols=Math.ceil(W/GRID),rows=Math.ceil(H/GRID);
  const key=groupKey(page);
@@ -207,6 +209,8 @@ export async function appendPrintableExcelReport(workbook:ExcelJS.Workbook,pages
  // Explicit break at the end of each report page in the same section.
  if(pi+1<pages.length&&groupKey(pages[pi+1])===key)ws.getRow(offset+rows).addPageBreak(0,cols-1);
  ws.pageSetup.printArea='A1:'+colName(cols)+(offset+rows);
+ doc.body.replaceChildren();
+ if(pi%2===0)await new Promise<void>(resolve=>setTimeout(resolve,0));
  }
  }finally{iframe.remove();}
 }
