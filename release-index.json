@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.123",
+  "latest": "v1.0.126",
   "releases": [
+    {
+      "version": "v1.0.126",
+      "build": 126,
+      "storageSchema": 2,
+      "date": "2026-11-27T06:44:58.799Z",
+      "notes": "Allow blank inspector details and prompt buyers to enter their own identity",
+      "commit": "061b034b06662731400d51a3538cf8c0a38e2167"
+    },
     {
       "version": "v1.0.123",
       "build": 123,
