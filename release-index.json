@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.208",
+  "latest": "v1.0.209",
   "releases": [
+    {
+      "version": "v1.0.209",
+      "build": 209,
+      "storageSchema": 2,
+      "date": "2026-11-27T14:05:29.153Z",
+      "notes": "Unify Drive sync and remove manual index controls; preserve legacy pending edits and update guide",
+      "commit": "39c4a7b2b909fe4a7c8da9f9ab8e4b6d1377f9ab"
+    },
     {
       "version": "v1.0.208",
       "build": 208,
