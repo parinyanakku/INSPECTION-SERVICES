@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.135",
+  "latest": "v1.0.136",
   "releases": [
+    {
+      "version": "v1.0.136",
+      "build": 136,
+      "storageSchema": 2,
+      "date": "2026-11-27T07:06:46.853Z",
+      "notes": "Resolve compact encrypted customer links while retaining legacy URL support",
+      "commit": "dcf2cfe2460e809250458a68a9e97ef0999c38e7"
+    },
     {
       "version": "v1.0.135",
       "build": 135,
