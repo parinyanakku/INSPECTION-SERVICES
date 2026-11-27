@@ -1162,14 +1162,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe,onOpenDrive}
                   <Save className="w-4 h-4" />
                   {t.saveBtn}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setShowSaveAsModal(true)}
-                  className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
-                >
-                  <FilePlus2 className="w-4 h-4" />
-                  {t.saveAsBtn}
-                </button>
+
                 <button
                   type="button"
                   data-tour="backup"
@@ -1179,7 +1172,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe,onOpenDrive}
                   <HardDriveDownload className="w-4 h-4" />
                   {t.backupAllBtn}
                 </button>
-                {onOpenDrive&&<button type="button" data-tour="drive-json-shortcut" onClick={onOpenDrive} className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs sm:text-sm font-semibold flex items-center gap-1.5 whitespace-nowrap cursor-pointer"><HardDriveDownload className="w-4 h-4"/>{lang==='en'?'Backup JSON to Drive':'สำรอง JSON ไป Drive'}</button>}
+                {onOpenDrive&&<button type="button" data-tour="drive-json-shortcut" onClick={onOpenDrive} className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs sm:text-sm font-semibold flex items-center gap-1.5 whitespace-nowrap cursor-pointer"><HardDriveDownload className="w-4 h-4"/>{lang==='en'?'Google Drive (JSON)':'Google Drive (JSON)'}</button>}
                 <button
                   type="button"
                   onClick={() => jsonImportRef.current?.click()}
@@ -1188,6 +1181,14 @@ export default function App({isAdmin=false,language,autoRestoreSafe,onOpenDrive}
                   <FolderOpen className="w-4 h-4" />
                   {t.importJsonBtn}
                 </button>
+                <details className="text-xs text-slate-600"><summary className="cursor-pointer rounded-lg border border-slate-300 px-3 py-2 font-semibold">{lang==='en'?'More':'เพิ่มเติม'}</summary><div className="mt-2">                <button
+                  type="button"
+                  onClick={() => setShowSaveAsModal(true)}
+                  className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                >
+                  <FilePlus2 className="w-4 h-4" />
+                  {t.saveAsBtn}
+                </button></div></details>
               </div>
             </section>
 
