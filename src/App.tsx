@@ -348,6 +348,11 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
   }) => {
     let nextProjects: ProjectFile[];
     if (data.id) {
+      const oldProject=projects.find(p=>p.id===data.id);
+      if(oldProject&&oldProject.clientName!==data.clientName){
+        const key='tis_report_book_v1_'+data.id;
+        try{const raw=workspaceStorage.getItem(key);if(raw){const book=JSON.parse(raw);if(book&&typeof book==='object')workspaceStorage.setItem(key,JSON.stringify({...book,clientName:data.clientName}));}}catch(error){console.warn('Owner report sync failed',error);}
+      }
       nextProjects = projects.map((p) =>
         p.id === data.id
           ? {
@@ -917,7 +922,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
         : 'ดาวน์โหลดรายงาน Word (.docx) เรียบร้อยแล้ว',
       'success'
     );
-    } catch(err) {console.error(err);notify(lang==='en'?'Word report export failed. Please try again.':'สร้างเล่มรายงาน Word ไม่สำเร็จ กรุณาลองใหม่','danger');}
+    } catch(err) {console.error(err);notify((lang==='en'?'Word export failed: ':'สร้างรายงาน Word ไม่สำเร็จ: ')+(err instanceof Error?err.message:String(err)),'danger');}
   };
 
   const handleExportExcel = async (reportBook?: ReportBookData) => {
@@ -936,7 +941,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
     );
     } catch(err) {
       console.error(err);
-      notify(lang==='en'?'Excel report export failed. Please try again.':'สร้างเล่มรายงาน Excel ไม่สำเร็จ กรุณาลองใหม่','danger');
+      notify((lang==='en'?'Excel export failed: ':'สร้างรายงาน Excel ไม่สำเร็จ: ')+(err instanceof Error?err.message:String(err)),'danger');
     }
   };
 
@@ -1400,8 +1405,8 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
           <div className="space-y-5">
             <section className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4 border-b border-slate-100">
-                <div>
-                  <h2 className="text-base sm:text-xl font-bold text-slate-900">
+                <div className="min-w-0 flex-1">
+                  <h2 className="font-bold text-slate-900 break-words leading-snug" style={{fontSize:`clamp(15px, 2vw, ${Math.max(15,Math.min(20,Math.round(1100/Math.max(1,activeProject.name.length))))}px)`}}>
                     {activeProject.name}
                   </h2>
                   <p className="text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-x-2">
