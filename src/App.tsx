@@ -144,6 +144,12 @@ function loadWorkspaceView(projects:ProjectFile[]):WorkspaceView {
   }catch{return empty;}
 }
 
+const PAGE_THEMES=[{id:'light',th:'สว่าง (เดิม)',en:'Light (original)'},{id:'dark',th:'มืด',en:'Dark'},{id:'blue',th:'ฟ้าอ่อน',en:'Soft blue'},{id:'warm',th:'ครีม',en:'Warm cream'},{id:'mint',th:'เขียวอ่อน',en:'Soft mint'}] as const;
+type PageTheme=typeof PAGE_THEMES[number]['id'];
+const PAGE_THEME_KEY='inspection.page-theme.v1';
+const PAGE_THEME_CSS="\n@media screen {\n  html[data-inspection-theme=\"blue\"] {--ui-bg:#e8f0fa;--ui-card:#f8fbff;--ui-soft:#edf4fc;--ui-muted:#e0ebf8;--ui-border:#c3d5eb;--ui-ink:#172d47;--ui-secondary:#425e7c;--ui-subtle:#59718c;}\n  html[data-inspection-theme=\"warm\"] {--ui-bg:#f2eee6;--ui-card:#fffdf8;--ui-soft:#f7f3ea;--ui-muted:#ede6d9;--ui-border:#dcd1bf;--ui-ink:#342c23;--ui-secondary:#665744;--ui-subtle:#776753;}\n  html[data-inspection-theme=\"mint\"] {--ui-bg:#e8f1ed;--ui-card:#f8fdfb;--ui-soft:#edf5f1;--ui-muted:#dcebe4;--ui-border:#c3d8cc;--ui-ink:#18392e;--ui-secondary:#426558;--ui-subtle:#58766b;}\n  html[data-inspection-theme=\"dark\"] {--ui-bg:#111827;--ui-card:#1e293b;--ui-soft:#253247;--ui-muted:#334155;--ui-border:#475569;--ui-ink:#f1f5f9;--ui-secondary:#cbd5e1;--ui-subtle:#aebed1;color-scheme:dark;}\n  html[data-inspection-theme]:not([data-inspection-theme=\"light\"]) body {background:var(--ui-bg);color:var(--ui-ink);}\n  html[data-inspection-theme]:not([data-inspection-theme=\"light\"]) :is(.bg-white,.bg-slate-50,.bg-slate-100,.bg-slate-200) {background-color:var(--ui-card);}\n  html[data-inspection-theme]:not([data-inspection-theme=\"light\"]) :is(.bg-slate-50,[class~=\"bg-slate-50/50\"],[class~=\"bg-slate-50/60\"],[class~=\"bg-white/80\"]) {background-color:var(--ui-soft);}\n  html[data-inspection-theme]:not([data-inspection-theme=\"light\"]) :is(.bg-slate-100,.bg-slate-200,[class~=\"hover:bg-slate-100\"]:hover,[class~=\"hover:bg-slate-200\"]:hover,[class~=\"hover:bg-slate-50\"]:hover) {background-color:var(--ui-muted);}\n  html[data-inspection-theme]:not([data-inspection-theme=\"light\"]) :is(.border-slate-100,.border-slate-200,.border-slate-300,.border-slate-400,.divide-slate-200) {border-color:var(--ui-border);}\n  html[data-inspection-theme]:not([data-inspection-theme=\"light\"]) :is(.text-slate-950,.text-slate-900,.text-slate-800,.text-slate-700) {color:var(--ui-ink);}\n  html[data-inspection-theme]:not([data-inspection-theme=\"light\"]) :is(.text-slate-600,.text-slate-500) {color:var(--ui-secondary);}\n  html[data-inspection-theme]:not([data-inspection-theme=\"light\"]) :is(.text-slate-400,.text-slate-300) {color:var(--ui-subtle);}\n  html[data-inspection-theme]:not([data-inspection-theme=\"light\"]) :is(input:not([type=\"range\"]):not([type=\"color\"]):not([type=\"checkbox\"]):not([type=\"radio\"]):not([type=\"file\"]),textarea,select) {background-color:var(--ui-card);color:var(--ui-ink);border-color:var(--ui-border);}\n  html[data-inspection-theme]:not([data-inspection-theme=\"light\"]) :is(input,textarea)::placeholder {color:var(--ui-subtle);}\n  html[data-inspection-theme]:not([data-inspection-theme=\"light\"]) ::-webkit-scrollbar-track {background:var(--ui-soft);}\n  html[data-inspection-theme]:not([data-inspection-theme=\"light\"]) ::-webkit-scrollbar-thumb {background:var(--ui-border);}\n  html[data-inspection-theme=\"dark\"] :is(.bg-blue-50,.bg-blue-100,[class~=\"bg-blue-50/50\"],[class~=\"hover:bg-blue-100\"]:hover) {background-color:#233d65;}\n  html[data-inspection-theme=\"dark\"] :is(.bg-indigo-50,.bg-indigo-100,[class~=\"bg-indigo-50/50\"]) {background-color:#343462;}\n  html[data-inspection-theme=\"dark\"] :is(.bg-rose-50,.bg-rose-100,[class~=\"bg-rose-50/30\"],.bg-red-50,.bg-red-100) {background-color:#502b3a;}\n  html[data-inspection-theme=\"dark\"] :is(.bg-emerald-50,.bg-emerald-100,[class~=\"bg-emerald-50/30\"],.bg-green-50,.bg-green-100) {background-color:#20473c;}\n  html[data-inspection-theme=\"dark\"] :is(.bg-amber-50,.bg-amber-100,.bg-orange-50,.bg-yellow-50,.bg-yellow-100) {background-color:#504022;}\n  html[data-inspection-theme=\"dark\"] :is(.bg-purple-50,.bg-purple-100,.bg-violet-50,.bg-violet-100) {background-color:#40345e;}\n  html[data-inspection-theme=\"dark\"] :is(.text-blue-900,.text-blue-800,.text-blue-700,.text-blue-600,.text-blue-500) {color:#9ec5ff;}\n  html[data-inspection-theme=\"dark\"] :is(.text-indigo-900,.text-indigo-800,.text-indigo-700,.text-indigo-600) {color:#c4c9ff;}\n  html[data-inspection-theme=\"dark\"] :is(.text-rose-900,.text-rose-800,.text-rose-700,.text-rose-600,.text-rose-500,.text-red-700,.text-red-600,.text-red-500) {color:#ffabb8;}\n  html[data-inspection-theme=\"dark\"] :is(.text-emerald-900,.text-emerald-800,.text-emerald-700,.text-emerald-600,.text-green-700,.text-green-600) {color:#85e4b9;}\n  html[data-inspection-theme=\"dark\"] :is(.text-amber-900,.text-amber-800,.text-amber-700,.text-amber-600,.text-orange-700,.text-orange-600,.text-yellow-700) {color:#f9cd80;}\n  html[data-inspection-theme=\"dark\"] :is(.text-purple-700,.text-purple-600,.text-violet-700,.text-violet-600) {color:#d6b5ff;}\n  html[data-inspection-theme=\"dark\"] :is(.border-blue-200,.border-indigo-200,.border-rose-200,.border-emerald-200,.border-amber-200) {border-color:var(--ui-border);}\n  html[data-inspection-theme=\"dark\"] .brand-text {color:color-mix(in srgb,var(--brand-color) 48%,white);}\n  /* Keep canvas and plan pixels/zone backgrounds unchanged. */\n  html[data-inspection-theme=\"dark\"] .zone-box {color:#fff;}\n}\n";
+function readPageTheme():PageTheme{try{const saved=localStorage.getItem(PAGE_THEME_KEY);return PAGE_THEMES.find(t=>t.id===saved)?.id||'light';}catch{return 'light';}}
+
 export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:boolean;language?:AppLanguage;autoRestoreSafe?:React.MutableRefObject<boolean>}) {
   const [localLang] = useState<AppLanguage>(loadInitialLang);
   const lang=language??localLang;
@@ -164,6 +170,8 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
   const [activeTab, setActiveTab] = useState<WorkspaceTab>(initialView.tab);
   const [activeFloorId, setActiveFloorId] = useState<string | null>(initialView.floorId);
   const [hubSearch, setHubSearch] = useState('');
+  const [pageTheme,setPageTheme]=useState<PageTheme>(readPageTheme);
+  React.useLayoutEffect(()=>{document.documentElement.dataset.inspectionTheme=pageTheme;try{localStorage.setItem(PAGE_THEME_KEY,pageTheme);}catch{}return()=>{delete document.documentElement.dataset.inspectionTheme;};},[pageTheme]);
 
   // Toasts & PDF export state
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -946,6 +954,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
 
   return (
     <div className="min-h-screen flex flex-col">
+      <style>{PAGE_THEME_CSS}</style>
       {/* Toast Stack */}
       <div className="fixed bottom-4 right-4 z-[60] flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0 no-print">
         {toasts.map((toast) => {
@@ -999,7 +1008,14 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+            <div className="flex flex-wrap items-center justify-start md:justify-end gap-2 min-w-0">
+              <label className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700">
+                <Palette className="w-4 h-4 shrink-0"/>
+                <span className="whitespace-nowrap">{lang==='en'?'Theme':'โทนสี'}</span>
+                <select aria-label={lang==='en'?'Page color theme':'โทนสีหน้าโปรแกรม'} value={pageTheme} onChange={e=>setPageTheme(e.target.value as PageTheme)} className="max-w-[125px] rounded-md border border-slate-200 bg-white px-1.5 py-1 text-xs cursor-pointer">
+                  {PAGE_THEMES.map(theme=><option key={theme.id} value={theme.id}>{lang==='en'?theme.en:theme.th}</option>)}
+                </select>
+              </label>
               <VersionUpdate lang={lang} onBackup={handleVersionBackup} onPrepare={handlePrepareVersionUpdate} />
               <button
                 type="button"
