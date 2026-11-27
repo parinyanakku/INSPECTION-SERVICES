@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.90",
+  "latest": "v1.0.91",
   "releases": [
+    {
+      "version": "v1.0.91",
+      "build": 91,
+      "storageSchema": 2,
+      "date": "2026-11-27T03:34:03.307Z",
+      "notes": "Add editable inset photos with move resize rotation layers opacity and export in markup canvas",
+      "commit": "9bbf79b4990f231119392834db0cc86c861fae77"
+    },
     {
       "version": "v1.0.90",
       "build": 90,
