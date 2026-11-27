@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.127",
+  "latest": "v1.0.131",
   "releases": [
+    {
+      "version": "v1.0.131",
+      "build": 131,
+      "storageSchema": 2,
+      "date": "2026-11-27T06:49:59.060Z",
+      "notes": "Add visible cancel download button and cancelling state to report export controls",
+      "commit": "bea5d104f068a50b44b1ea9acb83cfec70398129"
+    },
     {
       "version": "v1.0.127",
       "build": 127,
