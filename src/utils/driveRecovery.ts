@@ -78,18 +78,19 @@ export async function readVisibleWorkspace(token:string,userId:string,signal:Abo
  return {records:validateDriveRecords(data.records),date:f.createdTime as string,id:f.id as string};
 }
 
-export type DriveRecoverySource={id:string;name:string;date:string;kind:'workspace'|'project';copy:string};
+export type DriveRecoverySource={id:string;name:string;date:string;kind:'workspace'|'project'|'json';copy:string};
 export async function listRecoverySources(token:string,userId:string,signal:AbortSignal):Promise<DriveRecoverySource[]>{
  if(!/^[0-9a-f-]{36}$/i.test(userId))throw Error('Invalid account');
  const prefixes={workspace:(await sha('workspace')).slice(0,20),project:(await sha('project')).slice(0,20)};
  const headers={Authorization:'Bearer '+token};const found:DriveRecoverySource[]=[];let page='';
  do{
- const q=new URLSearchParams({spaces:'drive',q:"trashed = false and mimeType = 'application/json' and appProperties has { key='tisOwner' and value='"+userId+"' } and (name contains 'Workspace - ' or name contains 'ข้อมูลโครงการ - ')",fields:'nextPageToken,files(id,name,createdTime,appProperties)',orderBy:'createdTime desc',pageSize:'100'});
+ const q=new URLSearchParams({spaces:'drive',q:"trashed = false and mimeType = 'application/json' and ((appProperties has { key='tisOwner' and value='"+userId+"' } and (name contains 'Workspace - ' or name contains 'ข้อมูลโครงการ - ')) or (appProperties has { key='tisUser' and value='"+userId+"' } and appProperties has { key='tisJson' and value='1' }))",fields:'nextPageToken,files(id,name,createdTime,appProperties)',orderBy:'createdTime desc',pageSize:'100'});
  if(page)q.set('pageToken',page);
  const res=await fetch(API+'?'+q,{headers,signal,cache:'no-store'});
  if(!res.ok)throw Error('Google Drive HTTP '+res.status);
  const data=await res.json();
  for(const f of data.files||[]){
+ if(f.appProperties?.tisUser===userId&&f.appProperties?.tisJson==='1'&&typeof f.id==='string'&&/^[a-f0-9]{64}$/.test(f.appProperties?.hash||'')){found.push({id:f.id,name:f.name,date:f.createdTime,kind:'json',copy:f.appProperties.hash});continue;}
  const copy=f.appProperties?.tisCopy||'';
  const kind=copy.startsWith(prefixes.workspace)?'workspace':copy.startsWith(prefixes.project)?'project':null;
  if(kind&&f.appProperties?.tisOwner===userId&&typeof f.id==='string'&&/^[a-f0-9]{60}$/.test(copy))found.push({id:f.id,name:f.name,date:f.createdTime,kind,copy});
@@ -103,10 +104,22 @@ export async function readRecoverySource(token:string,userId:string,source:Drive
  const meta=await fetch(API+'/'+encodeURIComponent(source.id)+'?fields=id,appProperties,trashed',{headers,signal,cache:'no-store'});
  if(!meta.ok)throw Error('Google Drive HTTP '+meta.status);
  const m=await meta.json();
- if(m.trashed||m.appProperties?.tisOwner!==userId||m.appProperties?.tisCopy!==source.copy)throw Error('Backup account mismatch');
+ if(m.trashed||(source.kind==='json'?(m.appProperties?.tisUser!==userId||m.appProperties?.tisJson!=='1'||m.appProperties?.hash!==source.copy):(m.appProperties?.tisOwner!==userId||m.appProperties?.tisCopy!==source.copy)))throw Error('Backup account mismatch');
  const res=await fetch(API+'/'+encodeURIComponent(source.id)+'?alt=media',{headers,signal,cache:'no-store'});
  if(!res.ok)throw Error('Google Drive HTTP '+res.status);
- const raw=await res.text(),prefix=(await sha(source.kind==='workspace'?'workspace':'project')).slice(0,20);
+ const raw=await res.text();
+ if(source.kind==='json'){
+  const data=JSON.parse(raw);
+  if(data.format!=='TIS_HOME_INSPECTION_BACKUP_V10'||data.userId!==userId||!Array.isArray(data.projects)||!data.reportBooks||typeof data.reportBooks!=='object')throw Error('Invalid JSON backup');
+  const records:Records={[PROJECTS]:JSON.stringify(data.projects)};
+  if(data.brand&&typeof data.brand==='object')records[BRAND]=JSON.stringify(data.brand);
+  for(const [id,value] of Object.entries(data.reportBooks))records[REPORT+id]=JSON.stringify(value);
+  validateDriveRecords(records);
+  const computed=await sha(JSON.stringify(Object.entries(records).map(([key,value])=>[key,JSON.stringify(JSON.parse(value))]).sort(([a],[b])=>a.localeCompare(b))));
+  if(computed!==source.copy||computed!==data.contentHash)throw Error('Backup integrity check failed');
+  return records;
+ }
+ const prefix=(await sha(source.kind==='workspace'?'workspace':'project')).slice(0,20);
  if(source.copy!==prefix+(await sha(raw)).slice(0,40))throw Error('Backup integrity check failed');
  const data=JSON.parse(raw);
  if(source.kind==='workspace'){
