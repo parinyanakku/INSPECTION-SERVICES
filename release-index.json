@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.56",
+  "latest": "v1.0.57",
   "releases": [
+    {
+      "version": "v1.0.57",
+      "build": 57,
+      "storageSchema": 2,
+      "date": "2026-11-27T01:39:45.052Z",
+      "notes": "Restore compact three-defect report pagination and center plan/before/after images without altering book layout",
+      "commit": "59d8f9da78e6ef1e83c7b0f80742c282a618b34d"
+    },
     {
       "version": "v1.0.56",
       "build": 56,
