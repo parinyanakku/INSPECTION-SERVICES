@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.172",
+  "latest": "v1.0.173",
   "releases": [
+    {
+      "version": "v1.0.173",
+      "build": 173,
+      "storageSchema": 2,
+      "date": "2026-11-27T08:19:49.013Z",
+      "notes": "Show Drive operation results at top and open verified backup picker when latest JSON is missing or unchanged",
+      "commit": "d5270b0d6b59aa1c1069cbefe2433da3c599349d"
+    },
     {
       "version": "v1.0.172",
       "build": 172,
