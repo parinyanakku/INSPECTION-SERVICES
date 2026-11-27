@@ -35,7 +35,8 @@ interface MarkupCanvasEditorProps {
   aspectClass?: string;
 }
 
-type OrientedShape = MarkupShape & { orientation?: number };
+type OrientedShape = MarkupShape & { orientation?: number; textScale?: number };
+type TextDrag={id:number;index:number;startX:number;startY:number;original:OrientedShape;preview:OrientedShape;mode:'move'|'resize';originX:number;originY:number;boxW:number;boxH:number};
 const quarter = (n: number) => ((n % 4) + 4) % 4;
 function orientedSize(w: number, h: number, turns: number) {
   return quarter(turns) % 2 ? { w: h, h: w } : { w, h };
@@ -88,9 +89,23 @@ export function getImageDrawRect(
   return { dx, dy, dw, dh };
 }
 
+function textBox(ctx:CanvasRenderingContext2D,s:OrientedShape,w:number,h:number,offsetX=0,offsetY=0){
+ const scale=Math.max(.3,w/520), margin=Math.min(Math.max(4,Math.round(4*scale)),Math.min(w,h)/8);
+ const paddingX=Math.min(Math.round(8*scale),w/8),paddingY=Math.min(Math.round(5*scale),h/8);
+ let fontSize=Math.max(1,Math.round((13+(s.lineWidth||4.5)*1.4)*scale*(s.textScale??1)));
+ ctx.font=`700 ${fontSize}px Sarabun, sans-serif`;
+ const available=Math.max(1,w-2*margin-2*paddingX), measured=ctx.measureText(s.text||'').width;
+ fontSize=Math.max(1,Math.floor(Math.min(fontSize,fontSize*available/Math.max(1,measured),h-2*margin-2*paddingY)));
+ ctx.font=`700 ${fontSize}px Sarabun, sans-serif`;
+ const boxW=Math.min(w-2*margin,ctx.measureText(s.text||'').width+2*paddingX),boxH=fontSize+2*paddingY;
+ const x=Math.max(offsetX+margin,Math.min(Math.max(offsetX+margin,offsetX+w-boxW-margin),offsetX+s.x1*w));
+ const cy=Math.max(offsetY+boxH/2+margin,Math.min(Math.max(offsetY+boxH/2+margin,offsetY+h-boxH/2-margin),offsetY+s.y1*h));
+ return {x,y:cy-boxH/2,cy,w:boxW,h:boxH,paddingX,fontSize,scale};
+}
+function inverseQuarter(x:number,y:number,turns:number){switch(quarter(turns)){case 1:return{x:y,y:1-x};case 2:return{x:1-x,y:1-y};case 3:return{x:1-y,y:x};default:return{x,y};}}
 export function drawMarkupShape(
   ctx: CanvasRenderingContext2D,
-  s: MarkupShape,
+  s: OrientedShape,
   w: number,
   h: number,
   offsetX = 0,
@@ -153,22 +168,9 @@ export function drawMarkupShape(
     ctx.closePath();
     ctx.fill();
   } else if (s.tool === 'text' && s.text) {
-    const fontSize = Math.round((13 + baseLw * 1.4) * scale);
-    ctx.font = `700 ${fontSize}px Sarabun, sans-serif`;
-    ctx.textBaseline = 'middle';
-    const paddingX = Math.round(8 * scale);
-    const paddingY = Math.round(5 * scale);
-    const textWidth = ctx.measureText(s.text).width;
-    const boxW = textWidth + paddingX * 2;
-    const boxH = fontSize + paddingY * 2;
-    const margin = Math.max(4, Math.round(4 * scale));
-    const minX = offsetX + margin;
-    const maxX = Math.max(minX, offsetX + w - boxW - margin);
-    const minY = offsetY + boxH / 2 + margin;
-    const maxY = Math.max(minY, offsetY + h - boxH / 2 - margin);
-    const clampedX = Math.max(minX, Math.min(maxX, x1));
-    const clampedY = Math.max(minY, Math.min(maxY, y1));
-
+    const box=textBox(ctx,s,w,h,offsetX,offsetY);
+    const {x:clampedX,cy:clampedY,w:boxW,h:boxH,paddingX}=box;
+    ctx.textBaseline='middle';
     ctx.fillStyle = 'rgba(15, 23, 42, 0.86)';
     ctx.strokeStyle = s.color || '#ef4444';
     ctx.lineWidth = Math.max(1.5, 2 * scale);
@@ -178,7 +180,7 @@ export function drawMarkupShape(
     ctx.stroke();
 
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(s.text, clampedX + paddingX, clampedY + Math.max(1, Math.round(scale)));
+    ctx.fillText(s.text, clampedX + paddingX, clampedY + Math.max(1, Math.round(scale)),Math.max(1,boxW-2*paddingX));
     ctx.fillStyle = s.color || '#ef4444';
     ctx.fillRect(clampedX, clampedY - boxH / 2, Math.max(3, Math.round(4 * scale)), boxH);
   }
@@ -222,6 +224,9 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   const pendingTextPosRef = useRef(pendingTextPos);
   const isDrawingRef = useRef(false);
   const currentShapeRef = useRef<OrientedShape | null>(null);
+  const [selectedText,setSelectedText]=useState<number|null>(null);
+  const selectedTextRef=useRef<number|null>(null);
+  const textDrag=useRef<TextDrag|null>(null);
   const touchText=useRef<{id:number;x:number;y:number;nx:number;ny:number}|null>(null);
 
   imageSrcRef.current = imageSrc;
@@ -249,7 +254,16 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     ctx.save();
     ctx.translate(dx, dy);
     withQuarterTurn(ctx, dw, dh, rotation, (iw, ih) => ctx.drawImage(img, 0, 0, iw, ih));
-    for (const shape of shapesRef.current) drawOrientedShape(ctx, shape, dw, dh, rotation);
+    shapesRef.current.forEach((shape,index)=>drawOrientedShape(ctx,textDrag.current?.index===index?textDrag.current.preview:shape,dw,dh,rotation));
+    const index=selectedTextRef.current;
+    if(index!==null){
+      const shape=textDrag.current?.index===index?textDrag.current.preview:shapesRef.current[index];
+      if(shape?.tool==='text')withQuarterTurn(ctx,dw,dh,rotation-(shape.orientation??0),(sw,sh)=>{
+        const b=textBox(ctx,shape,sw,sh);ctx.strokeStyle='#38bdf8';ctx.lineWidth=2;ctx.setLineDash([5,3]);ctx.strokeRect(b.x-2,b.y-2,b.w+4,b.h+4);ctx.setLineDash([]);
+        ctx.fillStyle='#ffffff';ctx.strokeStyle='#0284c7';ctx.lineWidth=2;
+        ctx.fillRect(b.x+b.w-6,b.y+b.h-6,12,12);ctx.strokeRect(b.x+b.w-6,b.y+b.h-6,12,12);
+      });
+    }
     if (currentShapeRef.current) drawOrientedShape(ctx, currentShapeRef.current, dw, dh, rotation);
     ctx.restore();
   }, []);
@@ -261,6 +275,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     }
   }, [paintCanvas]);
 
+  const selectText=(index:number|null)=>{selectedTextRef.current=index;setSelectedText(index);drawActiveCanvases();};
   const remember = () => {
     redoRef.current=[];
     undoRef.current.push({ rotation: rotationRef.current, shapes: shapesRef.current });
@@ -278,9 +293,11 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   };
   const undoEdit = () => {
     if (isDrawingRef.current) return;
+    if(textDrag.current)return;
     const last = undoRef.current.pop();
     if (!last) return;
     redoRef.current.push({rotation:rotationRef.current,shapes:shapesRef.current});
+    selectText(null);
     rotationRef.current = last.rotation;
     shapesRef.current = last.shapes;
     setShapes(last.shapes);
@@ -289,13 +306,22 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     drawActiveCanvases();
   };
   const redoEdit=()=>{
-    if(isDrawingRef.current)return;
+    if(isDrawingRef.current||textDrag.current)return;
     const next=redoRef.current.pop();if(!next)return;
     undoRef.current.push({rotation:rotationRef.current,shapes:shapesRef.current});
     if(undoRef.current.length>100)undoRef.current.shift();
+    selectText(null);
     rotationRef.current=next.rotation;shapesRef.current=next.shapes;
     setShapes(next.shapes);setPendingTextPos(null);setPendingTextValue('');
     drawActiveCanvases();
+  };
+  const chooseTool=(next:MarkupTool)=>{setTool(next);setPendingTextPos(null);if(next!=='text')selectText(null);};
+  const resizeSelected=(factor:number)=>{
+    const i=selectedTextRef.current;if(i===null||textDrag.current)return;
+    const sh=shapesRef.current[i];if(sh?.tool!=='text')return;
+    const size=Math.max(.35,Math.min(3,(sh.textScale??1)*factor));
+    if(size===sh.textScale)return;
+    remember();const next=[...shapesRef.current];next[i]={...sh,textScale:size};shapesRef.current=next;setShapes(next);drawActiveCanvases();
   };
   const focusEditor=(e:React.PointerEvent<HTMLDivElement>)=>{
     if((e.target as Element).closest('input,textarea,select,button,a,[contenteditable="true"]'))return;
@@ -309,14 +335,15 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       if(key==='z'||key==='y'){e.preventDefault();e.stopPropagation();if(key==='y'||e.shiftKey)redoEdit();else undoEdit();}
       return;
     }
-    if(e.shiftKey||e.repeat||pendingTextPosRef.current||isDrawingRef.current)return;
+    if(e.shiftKey||e.repeat||pendingTextPosRef.current||isDrawingRef.current||textDrag.current)return;
     const shortcuts:Record<string,MarkupTool>={p:'pen',c:'circle',a:'arrow',r:'rect',t:'text'};
     const next=shortcuts[key];
-    if(next){e.preventDefault();e.stopPropagation();setTool(next);}
+    if(next){e.preventDefault();e.stopPropagation();chooseTool(next);}
   };
   useEffect(()=>{if(isFullscreen)fullscreenRootRef.current?.focus({preventScroll:true});},[isFullscreen]);
   const clearMarks = () => {
-    if (isDrawingRef.current) return;
+    if (isDrawingRef.current||textDrag.current) return;
+    selectText(null);
     if (shapesRef.current.length) {
       remember();
       shapesRef.current = [];
@@ -357,6 +384,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   // Load image ONLY when imageSrc actually changes; guard all state resets
   useEffect(() => {
     shapesRef.current = [];
+    textDrag.current=null;selectedTextRef.current=null;setSelectedText(null);
     rotationRef.current = 0;
     undoRef.current = [];
     redoRef.current = [];
@@ -432,6 +460,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
         setPendingTextPos(null);
         setPendingTextValue('');
       } else {
+        textDrag.current=null;
         isDrawingRef.current = false;
         currentShapeRef.current = null;
         setIsFullscreen(false);
@@ -513,18 +542,37 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     };
   };
 
+  const textGeometry=(canvas:HTMLCanvasElement,shape:OrientedShape,nx:number,ny:number)=>{
+    const img=loadedImageRef.current,ctx=canvas.getContext('2d');if(!img||!ctx)return null;
+    const size=orientedSize(img.naturalWidth,img.naturalHeight,rotationRef.current);
+    const {dw,dh}=getImageDrawRect(size.w,size.h,canvas.width,canvas.height);
+    const turns=rotationRef.current-(shape.orientation??0),p=inverseQuarter(nx,ny,turns),dim=orientedSize(dw,dh,turns);
+    ctx.save();const box=textBox(ctx,shape,dim.w,dim.h);ctx.restore();
+    return {x:p.x*dim.w,y:p.y*dim.h,w:dim.w,h:dim.h,box};
+  };
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = e.currentTarget;
     if(e.button!==0||!e.isPrimary||!canvas||!loadedImageRef.current?.naturalWidth)return;
     const { nx, ny } = getPos(e, canvas);
 
     if (tool === 'text') {
+      for(let i=shapesRef.current.length-1;i>=0;i--){
+        const shape=shapesRef.current[i];if(shape.tool!=='text')continue;
+        const g=textGeometry(canvas,shape,nx,ny);if(!g)continue;
+        const b=g.box,handle=selectedTextRef.current===i&&Math.abs(g.x-b.x-b.w)<=13&&Math.abs(g.y-b.y-b.h)<=13;
+        if(!handle&&(g.x<b.x||g.x>b.x+b.w||g.y<b.y||g.y>b.y+b.h))continue;
+        setPendingTextPos(null);selectText(i);canvas.setPointerCapture(e.pointerId);
+        textDrag.current={id:e.pointerId,index:i,startX:g.x,startY:g.y,original:shape,preview:shape,mode:handle?'resize':'move',originX:b.x/g.w,originY:b.cy/g.h,boxW:b.w,boxH:b.h};
+        return;
+      }
+      selectText(null);
       if(e.pointerType==='touch'){touchText.current={id:e.pointerId,x:e.clientX,y:e.clientY,nx,ny};return;}
       setPendingTextPos({ x: nx, y: ny });
       setPendingTextValue('');
       return;
     }
 
+    selectText(null);
     setPendingTextPos(null);
     canvas.setPointerCapture(e.pointerId);
     isDrawingRef.current = true;
@@ -542,6 +590,21 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const drag=textDrag.current;
+    if(drag&&drag.id===e.pointerId){
+      const {nx,ny}=getPos(e,e.currentTarget),g=textGeometry(e.currentTarget,drag.original,nx,ny);
+      if(!g)return;
+      const dx=g.x-drag.startX,dy=g.y-drag.startY;
+      if(Math.hypot(dx,dy)<1&&drag.preview===drag.original)return;
+      if(drag.mode==='move'){
+        const x=Math.max(0,Math.min(1,drag.originX+dx/g.w)),y=Math.max(0,Math.min(1,drag.originY+dy/g.h));
+        drag.preview={...drag.original,x1:x,y1:y,x2:x,y2:y};
+      }else{
+        const factor=1+(dx*drag.boxW+dy*drag.boxH)/Math.max(1,drag.boxW**2+drag.boxH**2);
+        drag.preview={...drag.original,textScale:Math.max(.35,Math.min(3,(drag.original.textScale??1)*factor))};
+      }
+      paintCanvas(e.currentTarget);return;
+    }
     const tap=touchText.current;if(tap&&tap.id===e.pointerId&&Math.hypot(e.clientX-tap.x,e.clientY-tap.y)>4)touchText.current=null;
     if (!isDrawingRef.current || !currentShapeRef.current) return;
     const { nx, ny } = getPos(e, e.currentTarget);
@@ -558,6 +621,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   };
 
   const handlePointerUp = (e:React.PointerEvent<HTMLCanvasElement>) => {
+    const drag=textDrag.current;if(drag&&drag.id===e.pointerId){textDrag.current=null;if(drag.preview!==drag.original){remember();const next=[...shapesRef.current];next[drag.index]=drag.preview;shapesRef.current=next;setShapes(next);}drawActiveCanvases();return;}
     const tap=touchText.current;touchText.current=null;
     if(tap&&tap.id===e.pointerId&&Math.hypot(e.clientX-tap.x,e.clientY-tap.y)<=4){setPendingTextPos({x:tap.nx,y:tap.ny});setPendingTextValue('');return;}
     if (!isDrawingRef.current || !currentShapeRef.current) return;
@@ -578,7 +642,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     }
   };
 
-  const cancelStroke=()=>{touchText.current=null;isDrawingRef.current=false;currentShapeRef.current=null;drawActiveCanvases();};
+  const cancelStroke=()=>{textDrag.current=null;touchText.current=null;isDrawingRef.current=false;currentShapeRef.current=null;drawActiveCanvases();};
   const commitTextAnnotation = () => {
     const clean = pendingTextValue.trim();
     if (!pendingTextPos || !clean) {
@@ -601,6 +665,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     const next = [...shapesRef.current, newShape];
     shapesRef.current = next;
     setShapes(next);
+    selectText(next.length-1);
     setPendingTextPos(null);
     setPendingTextValue('');
   };
@@ -612,6 +677,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   };
 
   const closeFullscreen = () => {
+    textDrag.current=null;
     isDrawingRef.current = false;
     currentShapeRef.current = null;
     setPendingTextPos(null);
@@ -659,12 +725,19 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   const contextActions:MenuAction[]=[
     {label:tr('ย้อนกลับ','Undo'),shortcut:'Ctrl+Z',run:undoEdit,disabled:!undoRef.current.length},
     {label:tr('ทำซ้ำ','Redo'),shortcut:'Ctrl+Y',run:redoEdit,disabled:!redoRef.current.length},
-    ...tools.map((item,i)=>({label:item.label,shortcut:['P','C','A','R','T'][i],run:()=>{setTool(item.id);setPendingTextPos(null);}})),
+    ...tools.map((item,i)=>({label:item.label,shortcut:['P','C','A','R','T'][i],run:()=>{chooseTool(item.id);}})),
     {label:tr('หมุนซ้าย 90°','Rotate left 90°'),run:()=>rotatePhoto(-1)},
     {label:tr('หมุนขวา 90°','Rotate right 90°'),run:()=>rotatePhoto(1)},
     {label:isFullscreen?tr('ออกจากเต็มหน้าจอ','Exit fullscreen'):tr('เต็มหน้าจอ','Fullscreen'),run:isFullscreen?closeFullscreen:openFullscreen},
     {label:tr('ล้างเส้นมาร์ก','Clear marks'),run:clearMarks,danger:true,disabled:!shapesRef.current.length},
   ];
+  const textControls=(dark=false)=>tool==='text'&&selectedText!==null&&shapes[selectedText]?.tool==='text'&&<div className={'flex items-center gap-1 rounded-lg border px-2 py-1 text-xs '+(dark?'border-slate-600 text-white':'border-slate-200 text-slate-700')}>
+    <span>{tr('ขนาดข้อความ','Text size')}</span>
+    <button type="button" onClick={()=>resizeSelected(1/1.15)} className="rounded border px-2 py-1" aria-label={tr('ย่อข้อความ','Decrease text size')}>−</button>
+    <span className="tabular-nums">{Math.round((shapes[selectedText].textScale??1)*100)}%</span>
+    <button type="button" onClick={()=>resizeSelected(1.15)} className="rounded border px-2 py-1" aria-label={tr('ขยายข้อความ','Increase text size')}>+</button>
+  </div>;
+  const textHint=tr('คลิกพื้นที่ว่างเพื่อเพิ่มข้อความ • คลิกข้อความเดิมแล้วลากย้าย • ลากจุดมุมหรือกด −/+ เพื่อปรับขนาด','Click empty space to add text · Drag existing text to move · Drag corner or use −/+ to resize');
   const inlinePopupCoords =
     pendingTextPos && imageSrc && !isFullscreen
       ? getFloatingPopupPercent(canvasRef.current, pendingTextPos)
@@ -685,8 +758,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
               key={item.id}
               type="button"
               onClick={() => {
-                setTool(item.id);
-                setPendingTextPos(null);
+                chooseTool(item.id);
               }}
               className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer whitespace-nowrap transition-colors ${
                 tool === item.id
@@ -730,6 +802,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
             <span className="text-xs tabular-nums min-w-8">{lineWidth}</span>
           </div>
 
+          {textControls()}
           {rotationButtons()}
           <button
             type="button"
@@ -777,7 +850,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
 
       {tool === 'text' && imageSrc && !isFullscreen && (
         <div className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-1.5">
-          {t.textHint}
+          {textHint}
         </div>
       )}
 
@@ -795,6 +868,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={cancelStroke}
+          onLostPointerCapture={cancelStroke}
           onDoubleClick={openFullscreen}
           className={`w-full h-full block touch-none ${
             tool === 'text' ? 'cursor-text' : 'cursor-crosshair'
@@ -878,15 +952,14 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
             aria-modal="true"
           >
             {/* Synchronized Fullscreen Top Toolbar */}
-            <div className="bg-slate-900 border-b border-slate-800 px-3 sm:px-5 py-2.5 flex flex-wrap items-center justify-between gap-2 shrink-0">
+            <div className="bg-slate-900 border-b border-slate-800 px-3 sm:px-5 py-2.5 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 shrink-0 max-h-[35dvh] overflow-y-auto">
               <div className="flex flex-wrap items-center gap-1.5">
                 {tools.map((item) => (
                   <button
                     key={item.id}
                     type="button"
                     onClick={() => {
-                      setTool(item.id);
-                      setPendingTextPos(null);
+                      chooseTool(item.id);
                     }}
                     className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition-colors ${
                       tool === item.id
@@ -937,6 +1010,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
                 </div>
 
                 {/* Rotation, Undo & Clear */}
+                {textControls(true)}
                 {rotationButtons(true)}
                 <button
                   type="button"
@@ -969,7 +1043,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
 
             {tool === 'text' && (
               <div className="bg-blue-950/90 border-b border-blue-800/70 text-blue-200 text-xs font-semibold px-4 py-1.5 text-center shrink-0">
-                {t.textHint}
+                {textHint}
               </div>
             )}
 
@@ -986,6 +1060,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
                   onPointerMove={handlePointerMove}
                   onPointerUp={handlePointerUp}
                   onPointerCancel={cancelStroke}
+          onLostPointerCapture={cancelStroke}
                   className={`w-full h-full block touch-none ${
                     tool === 'text' ? 'cursor-text' : 'cursor-crosshair'
                   }`}
