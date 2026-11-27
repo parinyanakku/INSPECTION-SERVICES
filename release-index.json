@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.188",
+  "latest": "v1.0.189",
   "releases": [
+    {
+      "version": "v1.0.189",
+      "build": 189,
+      "storageSchema": 2,
+      "date": "2026-11-27T09:20:32.566Z",
+      "notes": "Generate separate mobile backup with smaller defect photos without changing original records",
+      "commit": "c99e1bcb3c677162366feda6feb816e44d77ea59"
+    },
     {
       "version": "v1.0.188",
       "build": 188,
