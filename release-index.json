@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.136",
+  "latest": "v1.0.138",
   "releases": [
+    {
+      "version": "v1.0.138",
+      "build": 138,
+      "storageSchema": 2,
+      "date": "2026-11-27T07:08:50.345Z",
+      "notes": "Generate compact share codes and shorten existing customer links without reuploading reports",
+      "commit": "561ba577a665cd79ba9c0bbbb13d0137d30ed09a"
+    },
     {
       "version": "v1.0.136",
       "build": 136,
