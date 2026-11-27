@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.203",
+  "latest": "v1.0.204",
   "releases": [
+    {
+      "version": "v1.0.204",
+      "build": 204,
+      "storageSchema": 2,
+      "date": "2026-11-27T10:43:06.384Z",
+      "notes": "Load original Drive JSON directly on mobile; preserve legacy edit baselines and update guide",
+      "commit": "192d5dca873e8c9622e38d29a1961116e60b352a"
+    },
     {
       "version": "v1.0.203",
       "build": 203,
