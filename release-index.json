@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.149",
+  "latest": "v1.0.150",
   "releases": [
+    {
+      "version": "v1.0.150",
+      "build": 150,
+      "storageSchema": 2,
+      "date": "2026-11-27T07:29:34.241Z",
+      "notes": "Keep buyer company subtitle unset until customized; preserve existing admin and custom branding",
+      "commit": "1fea350f3faf517f672aa06c631c6c198e141874"
+    },
     {
       "version": "v1.0.149",
       "build": 149,
