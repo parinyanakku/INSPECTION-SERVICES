@@ -182,12 +182,15 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const exportLock=useRef(false);
+  const exportController=useRef<AbortController|null>(null);
+  const [exportCancelling,setExportCancelling]=useState(false);
   const [exportBatch,setExportBatch]=useState<{all:boolean;format:'PDF'|'Word'|'Excel';index:number;total:number}|null>(null);
   const [pdfOverlayVisible,setPdfOverlayVisible]=useState(false);
   const [pdfProgress,setPdfProgress]=useState({done:0,total:0});
   const pdfJobRef=useRef<AbortController|null>(null);
-  const cancelPdf=()=>{pdfJobRef.current?.abort();setPdfOverlayVisible(false);};
-  useEffect(()=>()=>{pdfJobRef.current?.abort();},[]);
+  const cancelReportExports=()=>{if(!exportController.current)return;setExportCancelling(true);exportController.current.abort();};
+  const cancelPdf=()=>{cancelReportExports();setPdfOverlayVisible(false);};
+  useEffect(()=>()=>{exportController.current?.abort();pdfJobRef.current?.abort();},[]);
 
   const [geminiConfig, setGeminiConfig] = useState<GeminiApiConfig>(loadGeminiConfig);
 
@@ -890,16 +893,19 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
     const snapshot=reportBook?{...reportBook,customExport:{...reportBook.customExport}}:undefined;
     const all=formats.length>1;
     exportLock.current=true;
+    const controller=new AbortController();exportController.current=controller;setExportCancelling(false);
     const completed:string[]=[],failed:string[]=[];
     let cancelled=false;
     try{
       for(let i=0;i<formats.length;i++){
+        if(controller.signal.aborted){cancelled=true;break;}
         const format=formats[i];
         setExportBatch({all,format,index:i+1,total:formats.length});
         await new Promise<void>(resolve=>setTimeout(resolve,60));
         try{
+          controller.signal.throwIfAborted();
           if(format==='PDF'){
-            const job=new AbortController();pdfJobRef.current=job;
+            const job=controller;pdfJobRef.current=job;
             setPdfProgress({done:0,total:0});setPdfOverlayVisible(true);setIsExportingPdf(true);
             try{
               await new Promise<void>(resolve=>requestAnimationFrame(()=>setTimeout(resolve,60)));
@@ -910,24 +916,25 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
             }catch(err){if(job.signal.aborted){cancelled=true;break;}throw err;}
             finally{if(pdfJobRef.current===job){pdfJobRef.current=null;setPdfOverlayVisible(false);setIsExportingPdf(false);}}
           }else if(format==='Word'){
-            await exportProjectWord(project,brand,lang,snapshot);
+            await exportProjectWord(project,brand,lang,snapshot,controller.signal);
             if(!all)notify(lang==='en'?'Word download requested':'ส่งไฟล์ Word ให้เบราว์เซอร์ดาวน์โหลดแล้ว','success');
           }else{
-            const kind=await exportProjectExcel(project,brand,lang,snapshot);
+            const kind=await exportProjectExcel(project,brand,lang,snapshot,controller.signal);
             if(kind!=='xlsx')throw Error(lang==='en'?'Excel fallback CSV only':'ได้ไฟล์ CSV สำรองแทน Excel');
             if(!all)notify(lang==='en'?'Excel download requested':'ส่งไฟล์ Excel ให้เบราว์เซอร์ดาวน์โหลดแล้ว','success');
           }
           completed.push(format);
         }catch(err){
+          if(controller.signal.aborted){cancelled=true;break;}
           failed.push(format);
           console.error(err);
           notify(format+(lang==='en'?' export failed: ':' ส่งออกไม่สำเร็จ: ')+(err instanceof Error?err.message:String(err)),'danger');
         }
         if(i<formats.length-1)await new Promise<void>(resolve=>setTimeout(resolve,180));
       }
-      if(cancelled)notify(lang==='en'?'Report export cancelled':'ยกเลิกการส่งออกรายงานแล้ว','warning');
+      if(cancelled||controller.signal.aborted)notify((lang==='en'?'Report export cancelled. Downloads already requested: ':'ยกเลิกการส่งออกแล้ว ไฟล์ที่ส่งให้ดาวน์โหลดก่อนหน้านี้: ')+(completed.join(', ')||'-'),'warning');
       else if(all)notify((lang==='en'?'Download requests: ':'ส่งคำขอดาวน์โหลดแล้ว: ')+completed.length+'/3'+(failed.length?' · '+(lang==='en'?'Failed: ':'ไม่สำเร็จ: ')+failed.join(', '):' · '+(lang==='en'?'Allow multiple downloads if prompted.':'หากเบราว์เซอร์ถาม ให้เลือกอนุญาตดาวน์โหลดหลายไฟล์')),failed.length?'warning':'success');
-    }finally{exportLock.current=false;setExportBatch(null);}
+    }finally{exportController.current=null;exportLock.current=false;setExportCancelling(false);setExportBatch(null);}
   };
   const handleExportPDF=(reportBook?:ReportBookData)=>runReportExports(['PDF'],reportBook);
   const handleExportWord=(reportBook?:ReportBookData)=>runReportExports(['Word'],reportBook);
@@ -1527,6 +1534,8 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
                 brand={brand}
                 isExportingPdf={isExportingPdf}
                 exportBatch={exportBatch}
+                exportCancelling={exportCancelling}
+                onCancelExport={cancelReportExports}
                 onExportAll={handleExportAll}
                 onExportPDF={handleExportPDF}
                 onExportWord={handleExportWord}
