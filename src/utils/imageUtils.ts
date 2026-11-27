@@ -1511,6 +1511,72 @@ async function convertReportWordToPDF(pages:BuiltReportPage[],filename:string,si
   }finally{clearTimeout(timer);signal?.removeEventListener('abort',cancel);}
 }
 
+// Prepare report-only copies, never mutate the saved project or its original
+// evidence. Process one image at a time and bound decoded/raster dimensions.
+async function optimizeExportPages(pages:BuiltReportPage[],large:boolean,signal?:AbortSignal):Promise<BuiltReportPage[]>{
+  const cache=new Map<string,string>();
+  const canvas=document.createElement('canvas');
+  const ctx=canvas.getContext('2d');if(!ctx)throw Error('Report image canvas unavailable');
+  try{
+    for(let i=0;i<pages.length;i++){
+      signal?.throwIfAborted();
+      const page=pages[i];
+      const pattern=/<img\b[^>]*?\bsrc="([^"]+)"[^>]*>/gi;
+      const chunks:string[]=[];let cursor=0;
+      for(const match of page.html.matchAll(pattern)){
+        signal?.throwIfAborted();
+        const src=match[1];
+        let output=cache.get(src);
+        if(output===undefined){
+          // Keep small PNG diagrams lossless. Decode other formats to a common
+          // JPEG/PNG format accepted by Word, Excel and PDF.
+          const png=/^data:image\/png;base64,/i.test(src);
+          const jpg=/^data:image\/jpeg;base64,/i.test(src);
+          const photo=match[0].includes('data-pdf-photo');
+          let exif=false;
+          if(jpg){try{exif=atob(src.slice(src.indexOf(',')+1,src.indexOf(',')+1+88000)).includes('Exif\x00\x00');}catch{exif=true;}}
+          const limit=large?180000:900000;
+          if((png||jpg&&!exif)&&src.length<=limit){output=src;}
+          else if(!large&&(png||jpg&&!exif)){output=src;}
+          else {
+            try{
+              const img=await new Promise<HTMLImageElement>((resolve,reject)=>{
+                const image=new Image();
+                const timer=setTimeout(()=>{image.onload=null;image.onerror=null;reject(Error('Image decode timed out'));},15000);
+                image.onload=()=>{clearTimeout(timer);resolve(image);};
+                image.onerror=()=>{clearTimeout(timer);reject(Error('Invalid image data'));};
+                if(!src.startsWith('data:'))image.crossOrigin='anonymous';
+                image.src=src;
+              });
+              if(!img.naturalWidth||!img.naturalHeight)throw Error('Empty image');
+              const max=large?(photo?1600:1000):2560;
+              const scale=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight));
+              canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
+              ctx.fillStyle='#ffffff';ctx.fillRect(0,0,canvas.width,canvas.height);
+              ctx.drawImage(img,0,0,canvas.width,canvas.height);
+              output=canvas.toDataURL('image/jpeg',large?(photo ? .88 : .93):.95);
+              if(!output.startsWith('data:image/jpeg;base64,'))throw Error('Image conversion failed');
+            }catch(err){throw Error('Report page '+(i+1)+': '+(err instanceof Error?err.message:'Image conversion failed'));}
+            finally{canvas.width=1;canvas.height=1;}
+          }
+          // Cache recurring assets only when small; avoid keeping a second
+          // complete copy of every original large photograph.
+          if(src.length<100000)cache.set(src,output);
+        }
+        const index=match.index??0;
+        chunks.push(page.html.slice(cursor,index),match[0].replace('src="'+src+'"','src="'+output+'"'));
+        cursor=index+match[0].length;
+      }
+      if(chunks.length){chunks.push(page.html.slice(cursor));pages[i]={...page,html:chunks.join('')};}
+      if(i%4===0)await new Promise<void>(resolve=>setTimeout(resolve,0));
+    }
+    return pages;
+  }finally{canvas.width=0;canvas.height=0;cache.clear();}
+}
+function useLargeReportMode(proj:ProjectFile,pages:BuiltReportPage[]):boolean{
+  return proj.defects.length>=60||pages.length>=30||pages.reduce((n,p)=>n+p.html.length,0)>45_000_000;
+}
+
 export async function exportProjectPDF(
   proj: ProjectFile,
   brand: BrandConfig,
@@ -1526,6 +1592,8 @@ export async function exportProjectPDF(
   const assets = await prepareSharedReportAssets(proj, brand);
   signal?.throwIfAborted();
   const pages = buildSharedReportPages(proj, brand, lang, assets, rb);
+  const large=useLargeReportMode(proj,pages);
+  await optimizeExportPages(pages,large,signal);
   if (!pages.length) throw Error('No report pages generated');
   onProgress?.(0,pages.length);
 
@@ -1601,7 +1669,7 @@ export async function exportProjectPDF(
         return [{img,x,y,w,h}];
       });
       const canvas = await html2canvas(node, {
-        scale: 3.125,
+        scale: large?2.5:3.125,
         useCORS: true,
         allowTaint: true,
         imageTimeout: 15000,
@@ -1639,9 +1707,11 @@ export async function exportProjectPDF(
       }
 
       try {
-        const imgData = canvas.toDataURL('image/jpeg', 0.98);
-        pdf.addImage(imgData, 'JPEG', 0, 0, pageWidthMm, pageHeightMm);
-        for(const {img,x,y,w,h} of photos){
+        const pageBlob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('PDF page image encoding failed')),'image/jpeg',large ? .90 : .98));
+        pdf.addImage(new Uint8Array(await pageBlob.arrayBuffer()), 'JPEG', 0, 0, pageWidthMm, pageHeightMm);
+        // Large reports already contain readable photos in the page raster.
+        // Avoid embedding the same photo twice, which doubles PDF memory.
+        for(const {img,x,y,w,h} of (large?[]:photos)){
           let nativeCanvas:HTMLCanvasElement|null=null;
           try{
             let source=img.getAttribute('src')||'';
@@ -1668,6 +1738,7 @@ export async function exportProjectPDF(
           finally{if(nativeCanvas){nativeCanvas.width=0;nativeCanvas.height=0;}}
         }
       }finally{canvas.width=0;canvas.height=0;}
+      iframeDoc.body.replaceChildren();
       onProgress?.(i+1,pages.length);
       // Yield between pages so mobile browsers can process cancellation.
       await new Promise<void>(resolve=>setTimeout(resolve,0));
@@ -1691,6 +1762,7 @@ export async function exportProjectWord(
   const assets = await prepareSharedReportAssets(proj, brand);
   const pages = buildSharedReportPages(proj, brand, lang, assets, rb);
   const safeSlug = (proj.houseNo || 'Report').replace(/[^a-zA-Z0-9ก-๙_-]/g, '_');
+  await optimizeExportPages(pages,useLargeReportMode(proj,pages));
   await downloadNativeWordReport(pages, `Inspection_Report_${safeSlug}.docx`);
 }
 
@@ -1732,6 +1804,7 @@ export async function exportProjectExcel(
     const rb=reportBookInput || loadReportBookData(proj,lang);
     const assets=await prepareSharedReportAssets(proj,brand);
     const pages=buildSharedReportPages(proj,brand,lang,assets,rb);
+    await optimizeExportPages(pages,useLargeReportMode(proj,pages));
     await appendPrintableExcelReport(workbook,pages,lang);
 
     const ws = workbook.addWorksheet('Defect List', {
