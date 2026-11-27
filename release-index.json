@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.165",
+  "latest": "v1.0.172",
   "releases": [
+    {
+      "version": "v1.0.172",
+      "build": 172,
+      "storageSchema": 2,
+      "date": "2026-11-27T08:14:13.535Z",
+      "notes": "Allow explicit latest JSON publishing from legacy conflict and show JSON history in restore picker",
+      "commit": "3246971f8a8c9b38c3b39fa9a45cb2a083e323a3"
+    },
     {
       "version": "v1.0.165",
       "build": 165,
