@@ -613,14 +613,16 @@ export const ExportTab: React.FC<ExportTabProps> = ({
                   <label className="block text-xs font-bold text-slate-700 mb-1.5">
                     {t.coverClientLabel}
                   </label>
-                  <input
-                    type="text"
-                    value={reportBook.clientName}
-                    onChange={(e) =>
-                      updateBook((prev) => ({ ...prev, clientName: e.target.value }))
-                    }
-                    className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  <div className="space-y-2">
+                    {reportBook.clientName.split(/\r?\n/).map((owner,index,owners)=><div key={index} className="flex items-center gap-1.5">
+                      <span className="text-xs text-slate-500 shrink-0">{index+1}.</span>
+                      <input type="text" value={owner} aria-label={(lang==='en'?'Owner ':'เจ้าของบ้านคนที่ ')+(index+1)}
+                        onChange={e=>updateBook(prev=>({...prev,clientName:owners.map((v,i)=>i===index?e.target.value:v).join('\n')}))}
+                        placeholder={lang==='en'?'Full name':'ชื่อ-นามสกุล'} className="min-w-0 w-full px-3 py-2 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500"/>
+                      {owners.length>1&&<button type="button" onClick={()=>updateBook(prev=>({...prev,clientName:owners.filter((_,i)=>i!==index).join('\n')}))} aria-label={lang==='en'?'Remove owner':'ลบเจ้าของบ้าน'} className="shrink-0 text-rose-600 px-2 py-2">×</button>}
+                    </div>)}
+                    <button type="button" onClick={()=>updateBook(prev=>({...prev,clientName:prev.clientName+'\n'}))} className="rounded-lg border border-blue-200 px-2.5 py-1.5 text-xs font-semibold text-blue-700">+ {lang==='en'?'Add owner':'เพิ่มเจ้าของบ้าน'}</button>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5">
