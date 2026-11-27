@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.144",
+  "latest": "v1.0.149",
   "releases": [
+    {
+      "version": "v1.0.149",
+      "build": 149,
+      "storageSchema": 2,
+      "date": "2026-11-27T07:26:52.300Z",
+      "notes": "Fix missing JSX closing brace in Drive sync dialog",
+      "commit": "b12768f92bb37043ebf7dbd2c6f5d51438ecd697"
+    },
     {
       "version": "v1.0.144",
       "build": 144,
