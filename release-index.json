@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.71",
+  "latest": "v1.0.72",
   "releases": [
+    {
+      "version": "v1.0.72",
+      "build": 72,
+      "storageSchema": 2,
+      "date": "2026-11-27T02:08:32.845Z",
+      "notes": "Add reusable context menu with touch hold and safe pointer cancellation",
+      "commit": "f01414c82205ed9e85c6949d626f91f6323350b8"
+    },
     {
       "version": "v1.0.71",
       "build": 71,
