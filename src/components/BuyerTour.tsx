@@ -19,14 +19,15 @@ const steps:Step[]=[
  {target:'client',tab:'client',th:'ส่งเว็บไซต์ให้ลูกค้า',en:'Share the customer website',bodyTh:'เปิดแท็บเว็บไซต์ลูกค้า เลือกดาวน์โหลด HTML หรือสร้างลิงก์ออนไลน์ กำหนดวันหมดอายุและคัดลอกส่ง LINE เฉพาะผู้ได้รับอนุญาต',bodyEn:'Open Customer website, download HTML or create an expiring link and share it only with authorized recipients.'},
  {target:'backup',th:'บันทึกและสำรองข้อมูล',en:'Save and back up your work',bodyTh:'กลับไปคลังแฟ้มโครงการแล้วสำรอง JSON เก็บไว้ในเครื่องเป็นระยะ เพื่อป้องกันข้อมูลสูญหายเมื่อเปลี่ยนเครื่องหรือเบราว์เซอร์',bodyEn:'Return to the project hub and regularly save JSON backups in a safe location, especially before changing device or browser.'},
 ];
-type Props={lang:AppLanguage;active:boolean;hasProject:boolean;tab:WorkspaceTab;paused:boolean;onClose:()=>void};
-export function BuyerTour({lang,active,hasProject,tab,paused,onClose}:Props){
+type Props={lang:AppLanguage;active:boolean;hasProject:boolean;hasProjects:boolean;tab:WorkspaceTab;paused:boolean;onClose:()=>void};
+export function BuyerTour({lang,active,hasProject,hasProjects,tab,paused,onClose}:Props){
  const [index,setIndex]=useState(0),[rect,setRect]=useState<{left:number;top:number;width:number;height:number}|null>(null),[hint,setHint]=useState(false);
  const panel=useRef<HTMLDivElement>(null);
  const tr=(th:string,en:string)=>lang==='en'?en:th;
  const step=steps[index];
  let target=step.target;
- if(step.tab&&!hasProject)target='project';
+ if(step.tab&&!hasProject)target=hasProjects?'open-project':'project';
+ else if(step.target==='project'&&!hasProject&&hasProjects)target='open-project';
  else if(step.tab&&step.tab!==tab)target='tab-'+step.tab;
  if(step.target==='project'&&hasProject)target='tab-studio';
  if(step.target==='backup'&&hasProject)target='hub';
