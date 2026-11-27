@@ -1,5 +1,5 @@
 import {isDngFile,decodeDngToJpeg} from './dngImage';
-import { configureReportFrame, reportDocument, waitForReportFonts, prepareReportCanvasFonts } from './reportLayout';
+import { configureReportFrame, reportDocument, prepareReportCanvasFonts } from './reportLayout';
 import { appendPrintableExcelReport } from './excelReport';
 import { downloadNativeWordReport } from './wordReport';
 import ExcelJS from 'exceljs';
@@ -1449,6 +1449,37 @@ async function waitForImagesInDoc(doc: Document): Promise<void> {
  * capturing each .report-page one-by-one at approximately 300 DPI, then embedding
  * the stored photographs at native resolution in their report positions.
  */
+// html2canvas measures DOM text in the cloned report but paints with the
+// host document's CanvasRenderer and FontMetrics. Use the same loaded family.
+const PDF_REPORT_FONT = 'TIS Report Sarabun';
+async function waitForPdfRendererFonts(doc:Document):Promise<void>{
+  const faces=await Promise.all([400,700].map(weight=>
+    doc.fonts.load(weight+' 16px "'+PDF_REPORT_FONT+'"','ภาษาไทย ตรวจรับบ้าน ABC 123')
+  ));
+  if(faces.some(list=>!list.length||list.some(face=>face.status!=='loaded'))){
+    throw Error('Report font failed to load for PDF rendering');
+  }
+  await doc.fonts.ready;
+}
+
+// Check the exact font metrics of the painter against the layout document.
+// A fallback font changes glyph advances and leaves gaps between Thai words.
+function verifyPdfFontMetrics(doc:Document):void{
+  const host=document.createElement('canvas').getContext('2d');
+  const report=doc.createElement('canvas').getContext('2d');
+  if(!host||!report)throw Error('PDF text renderer unavailable');
+  for(const weight of [400,700]){
+    const font=weight+' 24px "'+PDF_REPORT_FONT+'"';
+    host.font=font;report.font=font;
+    for(const sample of ['รายงานตรวจรับบ้านและอาคาร','ProElite Home Inspector 123']){
+      const a=host.measureText(sample).width,b=report.measureText(sample).width;
+      if(!a||!b||Math.abs(a-b)>Math.max(0.75,b*0.005)){
+        throw Error('PDF font metrics do not match the report layout');
+      }
+    }
+  }
+}
+
 export async function exportProjectPDF(
   proj: ProjectFile,
   brand: BrandConfig,
@@ -1473,9 +1504,11 @@ export async function exportProjectPDF(
     }
 
     iframeDoc.open();
-    iframeDoc.write(reportDocument(''));
+    iframeDoc.write(reportDocument('').replaceAll('TH Sarabun New',PDF_REPORT_FONT));
     iframeDoc.close();
-    await waitForReportFonts(iframeDoc);
+    await prepareReportCanvasFonts();
+    await Promise.all([waitForPdfRendererFonts(document),waitForPdfRendererFonts(iframeDoc)]);
+    verifyPdfFontMetrics(iframeDoc);
 
     const pdf = new jsPDF({
       unit: 'mm',
@@ -1488,9 +1521,16 @@ export async function exportProjectPDF(
       // Only one A4 page is mounted at once; avoid very tall mobile Safari
       // documents, excessive image decoding and large scroll coordinates.
       iframeDoc.body.innerHTML=pages[i].html;
-      await waitForImagesInDoc(iframeDoc);
       const node=iframeDoc.querySelector<HTMLElement>('.report-page');
       if(!node)throw Error('Missing report page '+(i+1));
+      node.style.fontFamily='"'+PDF_REPORT_FONT+'", Tahoma, sans-serif';
+      // Keep native shaping; avoid html2canvas's per-grapheme spacing path.
+      node.style.letterSpacing='0px';
+      node.style.wordSpacing='normal';
+      for(const el of node.querySelectorAll<HTMLElement>('[style*="letter-spacing"]')){
+        el.style.letterSpacing='0px';
+      }
+      await waitForImagesInDoc(iframeDoc);
       await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
       const landscape=node.dataset.orientation==='landscape';
       const pageWidthPx=landscape?1123:794, pageHeightPx=landscape?794:1123;
@@ -1528,26 +1568,11 @@ export async function exportProjectPDF(
         width: pageWidthPx,
         height: pageHeightPx,
         onclone: async (clonedDoc, clonedPage) => {
-          await waitForReportFonts(clonedDoc);
+          await waitForPdfRendererFonts(clonedDoc);
           clonedDoc.documentElement.style.setProperty('-webkit-text-size-adjust','none');
           clonedPage.style.setProperty('-webkit-text-size-adjust','none');
-          // Compensate for the Thai font baseline in the raster renderer only.
-          // Move text paint, not cells, borders or the original photo geometry.
-          const walker=clonedDoc.createTreeWalker(clonedPage,NodeFilter.SHOW_TEXT);
-          const nodes: Text[]=[];
-          while(walker.nextNode()){
-            const textNode=walker.currentNode as Text;
-            if(textNode.data.trim()&&textNode.parentElement&&!/^(STYLE|SCRIPT)$/.test(textNode.parentElement.tagName)&&textNode.data.trim()!=='✓')nodes.push(textNode);
-          }
-          for(const textNode of nodes){
-            const parent=textNode.parentNode;
-            if(!parent)continue;
-            const span=clonedDoc.createElement('span');
-            span.style.position='relative';
-            span.style.top='-0.24em';
-            parent.insertBefore(span,textNode);
-            span.appendChild(textNode);
-          }
+          // No manual baseline shift or per-text-node wrappers.
+          verifyPdfFontMetrics(clonedDoc);
         },
       });
 
