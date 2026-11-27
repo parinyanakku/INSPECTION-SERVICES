@@ -357,7 +357,6 @@ export const ExportTab: React.FC<ExportTabProps> = ({
                 <input type="radio" name="report-table-layout" checked={selected} onChange={()=>updateCustomExport(prev=>({...prev,defectTableMode:mode}))} className="mt-1 accent-blue-600"/>
                 <div className="min-w-0"><div className="text-sm font-semibold text-slate-800">{mode==='before_only'?(lang==='en'?'First inspection':'ตรวจครั้งแรก'):(lang==='en'?'Follow-up inspection':'ตรวจติดตาม')}</div>
                   <div className="text-xs text-slate-600">{mode==='before_only'?(lang==='en'?'Before photo only · wider details':'ไม่มีคอลัมน์ภาพหลังแก้ไข · ขยายภาพและรายละเอียด'):(lang==='en'?'Before and after photos':'มีภาพก่อนและหลังแก้ไข')}</div>
-                  <div className="flex h-9 mt-2 border border-slate-300 rounded overflow-hidden" aria-hidden="true">{(mode==='before_only'?[5,18,33,44]:[5,17,24,24,30]).map((w,i)=><div key={i} style={{width:w+'%'}} className="min-w-0 border-r last:border-r-0 border-slate-300 bg-white flex flex-col"><div className="h-2 bg-red-600"/><div className="flex-1 bg-slate-50 m-1 rounded-sm"/></div>)}</div>
                 </div>
               </label>;
             })}
