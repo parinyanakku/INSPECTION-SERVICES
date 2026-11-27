@@ -35,7 +35,7 @@ const blockTags=new Set(['DIV','P','H1','H2','H3','H4','TABLE','SECTION','ARTICL
 function decodeImage(src:string):Promise<HTMLImageElement>{
  return new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=()=>reject(Error('Cannot load report image'));im.src=src;});
 }
-export async function downloadNativeWordReport(pages:Page[],filename:string){
+export async function buildNativeWordReport(pages:Page[]):Promise<Blob>{
  if(!pages.length)throw Error('No report pages');
  const zip=new JSZip();const rels:string[]=[];const mediaTypes=new Set<string>();let imageId=0,footerId=0;
  const rel=(id:string,type:string,target:string)=>'<Relationship Id="'+id+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/'+type+'" Target="'+target+'"/>';
@@ -156,5 +156,9 @@ export async function downloadNativeWordReport(pages:Page[],filename:string){
  zip.file('word/_rels/document.xml.rels',relationships(rels));
  zip.file('[Content_Types].xml',declaration+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>'+Array.from(mediaTypes).map(ext=>'<Default Extension="'+ext+'" ContentType="image/'+(ext==='jpg'?'jpeg':ext)+'"/>').join('')+'<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'+Array.from({length:footerId},(_,i)=>'<Override PartName="/word/footer'+(i+1)+'.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>').join('')+'</Types>');
  const blob=await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',compression:'STORE'});
+ return blob;
+}
+export async function downloadNativeWordReport(pages:Page[],filename:string){
+ const blob=await buildNativeWordReport(pages);
  const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=filename;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),3000);
 }
