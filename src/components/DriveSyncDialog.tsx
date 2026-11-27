@@ -1,6 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {flushSync} from 'react-dom';
 import type {AppLanguage} from '../types/inspection';
+import {retryReadStage} from '../utils/driveReadStage.mjs';
 import {retryDriveRead} from '../utils/driveRetry.mjs';
 import {originalBackupBlob,streamOriginal} from '../utils/driveStreamOriginal';
 import {downloadDriveRevision} from '../utils/driveRangeDownload';
@@ -76,9 +77,10 @@ async function files(token:string,userId:string,signal?:AbortSignal,explicitChoi
  for(const space of ['drive','appDataFolder']){
   const all:FileMeta[]=[];let next='';
   do{
-   const q=new URLSearchParams({spaces:space,q:"trashed = false and appProperties has { key='tisUser' and value='"+userId+"' }"+(space==='drive'?" and appProperties has { key='tisJson' and value='1' }":''),fields:'nextPageToken,files(id,name,size,createdTime,appProperties)',pageSize:'100',orderBy:'createdTime desc'});
+   const q=new URLSearchParams({spaces:space,q:"trashed = false and appProperties has { key='tisUser' and value='"+userId+"' }"+(space==='drive'?" and appProperties has { key='tisJson' and value='1' }":''),fields:'nextPageToken,incompleteSearch,files(id,name,size,createdTime,appProperties)',pageSize:'100',orderBy:'createdTime desc'});
    if(next)q.set('pageToken',next);
    const json=await (await api(token,ROOT+'?'+q,{signal})).json();
+   if(json.incompleteSearch===true)throw Error('Google Drive HTTP 503 · incomplete file search');
    all.push(...(json.files||[]));next=json.nextPageToken||'';
    if(space==='drive'&&all.length)break;
   }while(next);
@@ -285,7 +287,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
       await saveLink(next);check(op);setToken(access);
       if(action==='connect'){
        const current=await readSyncRecords();check(op);
-       if(!remembered&&counts(current).projects===0&&!Object.keys(current).some(k=>k.startsWith(REPORT)))await sync(true,access,op);
+       if(counts(current).projects===0&&!Object.keys(current).some(k=>k.startsWith(REPORT)))await sync(true,access,op);
        else setMsg(tr('ยืนยัน Google สำเร็จ เลือกส่งหรือโหลด JSON ได้เลย','Google authorized. Choose send or load JSON.'));
       }
       else if(action==='export')await exportFiles(access,op);
@@ -446,7 +448,13 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
    const empty=localCount===0&&!Object.keys(records).some(k=>k.startsWith('tis_report_book_v1_'));
    let marker:Marker|null=null;try{marker=JSON.parse(workspaceStorage.getItem(MARK)||'null');}catch{}
    setMsg(tr('กำลังค้นหา JSON ล่าสุดบน Drive…','Finding latest JSON on Drive…'));
-   const remote=await files(token,userId,op.signal,downloadOnly);check(op);setCheckedAt(new Date().toISOString());
+   const readOptions=(message:string,allowMissing=false)=>({
+    signal:op.signal,allowMissing,
+    wait:(ms:number)=>new Promise<void>(resolve=>setTimeout(resolve,ms)),
+    onRetry:()=>{check(op);setMsg(message);}
+   });
+   const remote=downloadOnly?await retryReadStage(()=>files(token,userId,op.signal,true),readOptions(tr('กำลังค้นหา JSON ล่าสุดอีกครั้งโดยอัตโนมัติ…','Automatically checking for the latest JSON again…'),true)):await files(token,userId,op.signal,downloadOnly);
+   check(op);setCheckedAt(new Date().toISOString());
    if(remote){setCloud(cloudInfo(remote));}else setCloud(null);
    async function finish(confirmed:Records,message:string){
     if(!active.current||operation.current!==op)return;
@@ -478,7 +486,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
     check(op);
     if(!equalRecords(await readSyncRecords(),records))throw Error('CONFLICT');
     workspaceStorage.setItem(MARK,JSON.stringify({id:remote.id,hash:localHash}));if(!await flushWorkspace())throw Error('Local marker save failed');
-    await rememberCloud(remote,records);await finish(records,tr('ข้อมูลตรงกับ JSON ล่าสุดแล้ว ไม่ต้องดาวน์โหลดซ้ำ','Already matches latest JSON; no repeat download'));return;
+    setLocalSummary(localCounts);await rememberCloud(remote,records);await finish(records,tr('ข้อมูลตรงกับ JSON ล่าสุดแล้ว ไม่ต้องดาวน์โหลดซ้ำ','Already matches latest JSON; no repeat download'));return;
    }
    if(marker?.id===remote.id&&marker.hash===localHash&&!downloadOnly){await rememberCloud(remote,records);const ready=await originalReady(token,remote,records,op);await finish(records,ready?tr('ข้อมูลตรงกันแล้ว · อีกเครื่องพร้อมโหลด','Already synchronized · other device can load'):tr('ข้อมูลตรงกันแล้ว · ตรวจสอบ JSON ต้นฉบับอีกครั้ง','Already synchronized · verify original JSON'));return;}
    if(marker?.id===remote.id&&!downloadOnly){
@@ -498,7 +506,8 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
    }
    setMsg(tr('กำลังดาวน์โหลด JSON จาก Drive…','Downloading JSON from Drive…'));
    const downloadProgress=(received:number,total:number)=>{if(active.current&&!op.signal.aborted)setMsg(tr('ดาวน์โหลด JSON ','Downloading JSON ')+(received/1048576).toFixed(1)+' MB'+(total?' / '+(total/1048576).toFixed(1)+' MB':''));};
-   const data=remote.appProperties?.tisJson==='1'?await readOriginalStream(token,userId,remote,op.signal,downloadProgress,()=>setMsg(tr('กำลังตรวจสอบไฟล์ JSON…','Verifying JSON…'))):await readSnapshot(token,userId,remote.id,op.signal,downloadProgress);
+   const readData=()=>remote.appProperties?.tisJson==='1'?readOriginalStream(token,userId,remote,op.signal,downloadProgress,()=>setMsg(tr('กำลังตรวจสอบไฟล์ JSON…','Verifying JSON…'))):readSnapshot(token,userId,remote.id,op.signal,downloadProgress);
+   const data=downloadOnly?await retryReadStage(readData,readOptions(tr('การรับ JSON สะดุด ระบบกำลังลองอ่านใหม่ให้อัตโนมัติ…','JSON read interrupted; automatically retrying…'))):await readData();
    setMsg(tr('กำลังตรวจสอบไฟล์ JSON…','Verifying JSON…'));
    if(data.format!=='TIS_DRIVE_V1'||data.userId!==userId||!data.records||typeof data.records!=='object')throw Error('Invalid snapshot');
    const remoteHash=await hash(data.records);check(op);
@@ -536,7 +545,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
     const stored=await readSyncRecords();if(!equalRecords(stored,incoming))throw Error(tr('ตรวจสอบข้อมูลหลังบันทึกไม่ตรงกัน','Local restore verification failed'));
     if(equalRecords(stored,data.records)){digestCache.set(stored,Promise.resolve(remoteHash));countCache.set(stored,counts(data.records));}
     setLocalSummary(counts(stored));
-    if(active.current){onRestored();await finish(incoming,tr(downloadOnly?'โหลด JSON ล่าสุดสำเร็จ':'รับและรวมข้อมูลจาก Drive สำเร็จ',downloadOnly?'Latest JSON loaded':'Drive data received and merged'));}
+    if(active.current){flushSync(()=>onRestored());await finish(incoming,tr(downloadOnly?'โหลด JSON ล่าสุดสำเร็จ':'รับและรวมข้อมูลจาก Drive สำเร็จ',downloadOnly?'Latest JSON loaded':'Drive data received and merged'));}
    }finally{if(active.current)setApplyingRestore(false);}
   }
  }

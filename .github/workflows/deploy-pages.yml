@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --no-package-lock
-      - run: node --import tsx --test src/utils/driveImageIndex.test.mjs src/utils/driveRetry.test.mjs src/utils/driveRangeDownload.test.mjs
+      - run: node --import tsx --test src/utils/driveImageIndex.test.mjs src/utils/driveRetry.test.mjs src/utils/driveRangeDownload.test.mjs src/utils/driveReadStage.test.mjs
       - run: npm run build -- --base=./
         env:
           VITE_REPORT_PDF_CONVERTER_URL: ${{ vars.REPORT_PDF_CONVERTER_URL }}

@@ -1,0 +1,9 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {retryReadStage} from './driveReadStage.mjs';
+const opts=()=>({signal:new AbortController().signal,wait:async()=>{}});
+test('one click: initial lookup returns nothing then finds revision and reads once',async()=>{let queries=0,downloads=0;const file=await retryReadStage(async()=>++queries===1?undefined:{id:'latest'},{...opts(),allowMissing:true});const data=await retryReadStage(async()=>{downloads++;return file.id},opts());assert.equal(data,'latest');assert.equal(queries,2);assert.equal(downloads,1);});
+test('one click: transient failure during reading retries without duplicate restore',async()=>{let downloads=0,commits=0;const data=await retryReadStage(async()=>{if(++downloads===1)throw Error('Google Drive HTTP 500 · download');return 'original';},opts());commits++;assert.equal(data,'original');assert.equal(downloads,2);assert.equal(commits,1);});
+test('unchanged and successful reads are not repeated',async()=>{let n=0;assert.equal(await retryReadStage(async()=>{n++;return 'ok';},opts()),'ok');assert.equal(n,1);});
+test('integrity, permissions and conflicts are not retried',async()=>{for(const error of ['Original JSON integrity check failed','Google Drive HTTP 401','CONFLICT']){let n=0;await assert.rejects(()=>retryReadStage(async()=>{n++;throw Error(error);},opts()),{message:error});assert.equal(n,1);}});
+test('retries are bounded and cancellation stops before another read',async()=>{let n=0;await assert.rejects(()=>retryReadStage(async()=>{n++;throw new TypeError('network');},opts()));assert.equal(n,2);const c=new AbortController();n=0;await assert.rejects(()=>retryReadStage(async()=>{n++;return undefined;},{signal:c.signal,wait:async()=>c.abort(),allowMissing:true}),/CANCELLED/);assert.equal(n,1);});
