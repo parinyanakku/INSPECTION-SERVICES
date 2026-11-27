@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.108",
+  "latest": "v1.0.113",
   "releases": [
+    {
+      "version": "v1.0.113",
+      "build": 113,
+      "storageSchema": 2,
+      "date": "2026-11-27T06:18:48.169Z",
+      "notes": "Display revised intermediate defect status without migrating stored values",
+      "commit": "99511ef597ebf925a28bdfc0c57f6ceafabe4caa"
+    },
     {
       "version": "v1.0.108",
       "build": 108,
