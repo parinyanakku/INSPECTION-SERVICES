@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.82",
+  "latest": "v1.0.83",
   "releases": [
+    {
+      "version": "v1.0.83",
+      "build": 83,
+      "storageSchema": 2,
+      "date": "2026-11-27T02:41:43.141Z",
+      "notes": "Group defect numbers by floor and first-inspected zone while preserving stable item IDs",
+      "commit": "709ea9609783d0b6691802eaf2b25be9fa1b8a49"
+    },
     {
       "version": "v1.0.82",
       "build": 82,
