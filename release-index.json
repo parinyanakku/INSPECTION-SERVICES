@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.209",
+  "latest": "v1.0.210",
   "releases": [
+    {
+      "version": "v1.0.210",
+      "build": 210,
+      "storageSchema": 2,
+      "date": "2026-11-27T14:30:50.831Z",
+      "notes": "Retry transient Drive reads with bounded backoff and show failed stage; update guide",
+      "commit": "93a4a5df55cc2ab7645ac8db3ca896644392a94d"
+    },
     {
       "version": "v1.0.209",
       "build": 209,
