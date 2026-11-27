@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.153",
+  "latest": "v1.0.154",
   "releases": [
+    {
+      "version": "v1.0.154",
+      "build": 154,
+      "storageSchema": 2,
+      "date": "2026-11-27T07:36:36.709Z",
+      "notes": "Add expandable user-facing release history with grouped Thai and English highlights",
+      "commit": "c8ce7b37d04c844b478db368eebf88865e44d3c2"
+    },
     {
       "version": "v1.0.153",
       "build": 153,
