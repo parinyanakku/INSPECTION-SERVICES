@@ -1,6 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {flushSync} from 'react-dom';
 import type {AppLanguage} from '../types/inspection';
+import {streamOriginal} from '../utils/driveStreamOriginal';
 import {withDriveDownload} from '../utils/driveDownload';
 import {applyMobileRecords} from '../utils/driveMobileCopy';
 import {hashWorkspaceRecords} from '../utils/driveRecordHash';
@@ -110,6 +111,14 @@ async function readSnapshot(token:string,userId:string,id:string,signal?:AbortSi
  data=null;
  if(expectedHash!==await hash(records))throw Error('JSON backup integrity check failed');
  return {format:'TIS_DRIVE_V1',userId,records};
+}
+async function readOriginalStream(token:string,userId:string,id:string,signal:AbortSignal,progress:(received:number,total:number)=>void,verifying:()=>void):Promise<Snapshot>{
+ const response=await api(token,ROOT+'/'+encodeURIComponent(id)+'?alt=media',{signal});
+ const data=await streamOriginal(response,signal,progress);
+ if(data.userId!==userId)throw Error('Backup account mismatch');
+ verifying();
+ if(data.contentHash!==await hash(data.records))throw Error('Original JSON integrity check failed');
+ return {format:'TIS_DRIVE_V1',userId,records:data.records};
 }
 async function jsonFolder(token:string,userId:string,signal?:AbortSignal){
  const q=new URLSearchParams({spaces:'drive',q:"trashed = false and mimeType = 'application/vnd.google-apps.folder' and appProperties has { key='tisOwner' and value='"+userId+"' } and appProperties has { key='tisFolder' and value='latest-json' }",fields:'files(id)',pageSize:'100'});
@@ -395,7 +404,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   if(!safeRestoreRef.current()){setMsg(tr('มี JSON ใหม่ จะรับเมื่อกลับหน้าแฟ้มโครงการ','New JSON available; return to the project list.'));return;}
   if(!automatic&&!window.confirm(tr('โหลด JSON ต้นฉบับจาก Drive: ','Load original JSON: ')+(cloudInfo(remote)?describe(cloudInfo(remote)!):'')+' · '+showTime(remote.createdTime||copy.createdTime||'')+'\n'+tr('ระบบเก็บข้อมูลเดิมในเครื่องก่อนโหลด รูปต้นฉบับยังอยู่บน Drive','Local data is backed up before restore; originals remain on Drive.')))return;
   setMsg(tr('กำลังโหลด JSON ต้นฉบับ…','Loading original JSON…'));
-  const data=await readSnapshot(token,userId,copy.id,op.signal,(received,total)=>setMsg(tr('ดาวน์โหลด JSON ','Downloading JSON ')+(received/1048576).toFixed(1)+' MB'+(total?' / '+(total/1048576).toFixed(1)+' MB':'')));
+  const data=await readOriginalStream(token,userId,copy.id,op.signal,(received,total)=>setMsg(tr('ดาวน์โหลด JSON ','Downloading JSON ')+(received/1048576).toFixed(1)+' MB'+(total?' / '+(total/1048576).toFixed(1)+' MB':'')),()=>setMsg(tr('ดาวน์โหลดครบแล้ว · กำลังตรวจสอบความถูกต้องของไฟล์…','Download complete · Verifying integrity…')));
   const h=await hash(data.records);check(op);if(copy.appProperties?.hash!==h)throw Error('Original JSON integrity check failed');
    const verified=counts(data.records),summary=cloudInfo(remote);
    if(!summary||summary.projects!==verified.projects||summary.defects!==verified.defects)throw Error('Original JSON count verification failed');
@@ -404,7 +413,8 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   check(op);if(!safeRestoreRef.current()||!equalRecords(await readSyncRecords(),records))throw Error('CONFLICT');
   flushSync(()=>setApplyingRestore(true));
   try{
-   await restoreSyncRecords(data.records,records,JSON.stringify({id:copy.id,hash:h,mobile:true,sourceId:remote.id}));
+   setMsg(tr('ตรวจสอบผ่าน · กำลังบันทึกข้อมูลลงมือถือ…','Verified · Saving data to device…'));
+    await restoreSyncRecords(data.records,records,JSON.stringify({id:copy.id,hash:h,mobile:true,sourceId:remote.id}));
    if(!equalRecords(await readSyncRecords(),data.records))throw Error('Local restore verification failed');
    if(active.current){onRestored();setLocalSummary(counts(data.records));await rememberCloud(remote);setMsg(tr('โหลด JSON ต้นฉบับสำเร็จ · ','Original JSON loaded · ')+describe(counts(data.records)));}
   }finally{if(active.current)setApplyingRestore(false);}
