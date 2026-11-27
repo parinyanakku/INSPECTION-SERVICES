@@ -87,6 +87,8 @@ interface ExportTabProps {
   isExportingPdf: boolean;
   exportBatch: {all:boolean;format:'PDF'|'Word'|'Excel';index:number;total:number}|null;
   onExportAll: (reportBook: ReportBookData) => void;
+  exportCancelling: boolean;
+  onCancelExport: () => void;
   onExportPDF: (reportBook: ReportBookData) => void;
   onExportWord: (reportBook: ReportBookData) => void;
   onExportExcel: (reportBook: ReportBookData) => void;
@@ -118,6 +120,8 @@ export const ExportTab: React.FC<ExportTabProps> = ({
   brand,
   isExportingPdf,
   exportBatch,
+  exportCancelling,
+  onCancelExport,
   onExportAll,
   onExportPDF,
   onExportWord,
@@ -461,9 +465,13 @@ export const ExportTab: React.FC<ExportTabProps> = ({
             {lang==='en'?'Download all 3 files':'ดาวน์โหลดทั้ง 3 ไฟล์ (PDF / Word / Excel)'}
           </button>
           <p className="text-xs text-slate-600">{lang==='en'?'Generated one at a time to reduce memory use. Allow multiple downloads if prompted.':'สร้างทีละไฟล์อัตโนมัติเพื่อลดการใช้หน่วยความจำ หากเบราว์เซอร์ถามให้อนุญาตดาวน์โหลดหลายไฟล์'}</p>
+          {exportBatch&&<button type="button" onClick={onCancelExport} disabled={exportCancelling} className="ml-auto rounded-xl border border-rose-400 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60 flex items-center gap-2">
+            {exportCancelling?<Loader2 className="w-4 h-4 animate-spin"/>:<span aria-hidden="true">✕</span>}
+            {exportCancelling?(lang==='en'?'Cancelling…':'กำลังยกเลิก…'):(lang==='en'?'Cancel export':'ยกเลิกการดาวน์โหลด')}
+          </button>}
         </div>
         {exportBatch&&<div role="status" aria-live="polite" className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-          <div className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin"/>{lang==='en'?'Generating':'กำลังสร้างไฟล์'} {exportBatch.format} {exportBatch.index}/{exportBatch.total}</div>
+          <div className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin"/>{exportCancelling?(lang==='en'?'Cancelling current task…':'กำลังหยุดงานและคืนหน่วยความจำ…'):(lang==='en'?'Generating':'กำลังสร้างไฟล์')} {exportBatch.format} {exportBatch.index}/{exportBatch.total}</div>
           <progress className="mt-2 w-full" value={exportBatch.index-1} max={exportBatch.total}/>
         </div>}
       </section>
