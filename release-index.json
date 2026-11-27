@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.58",
+  "latest": "v1.0.59",
   "releases": [
+    {
+      "version": "v1.0.59",
+      "build": 59,
+      "storageSchema": 2,
+      "date": "2026-11-27T01:50:33.060Z",
+      "notes": "Add opt-in private temporary DOCX to PDF conversion endpoint",
+      "commit": "8cf02cef46021b3bad5abc02d1429710eb4f628b"
+    },
     {
       "version": "v1.0.58",
       "build": 58,
