@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.119",
+  "latest": "v1.0.121",
   "releases": [
+    {
+      "version": "v1.0.121",
+      "build": 121,
+      "storageSchema": 2,
+      "date": "2026-11-27T06:35:37.901Z",
+      "notes": "Fit enlarged customer plans and evidence photos to viewport before zoom",
+      "commit": "a405eca4479778a20ef63c1b6b7d57f4b340c705"
+    },
     {
       "version": "v1.0.119",
       "build": 119,
