@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://geleptwbxjoumxyxbhqa.supabase.co; frame-src 'self' about: blob:; base-uri 'none'; form-action 'none'"><title>รายงานตรวจบ้านสำหรับลูกค้า</title>
+<style>body{margin:0;font:16px/1.6 system-ui,sans-serif;background:#f1f5f9;color:#172033}#status{max-width:480px;margin:18vh auto;padding:24px;text-align:center}iframe{display:block;border:0;width:100%;height:100dvh}iframe[hidden]{display:none}</style></head>
+<body><div id="status" role="status">กำลังเปิดรายงานตรวจบ้าน…</div><iframe id="report" title="รายงานตรวจบ้าน" sandbox="allow-scripts" referrerpolicy="no-referrer" hidden></iframe><script>
+(async()=>{const status=document.getElementById('status'),frame=document.getElementById('report');
+try{
+ const p=new URLSearchParams(location.hash.slice(1)),url=new URL(p.get('u')||''),key=p.get('k')||'';
+ if(url.origin!=='https://geleptwbxjoumxyxbhqa.supabase.co'||!/^\/storage\/v1\/object\/sign\/inspection-client-reports\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.bin$/.test(url.pathname)||!url.searchParams.get('token')||!/^([a-f0-9]{64})$/.test(key))throw Error('Invalid report link');
+ const res=await fetch(url.href,{cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'});
+ if(!res.ok)throw Error('Report unavailable');
+ const encrypted=new Uint8Array(await res.arrayBuffer());if(encrypted.length<29||encrypted.length>47185920)throw Error('Invalid report');
+ const raw=Uint8Array.from(key.match(/../g),v=>parseInt(v,16));const cryptoKey=await crypto.subtle.importKey('raw',raw,'AES-GCM',false,['decrypt']);
+ const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv:encrypted.slice(0,12)},cryptoKey,encrypted.slice(12));
+ frame.srcdoc=new TextDecoder('utf-8',{fatal:true}).decode(plain);frame.hidden=false;status.hidden=true;
+}catch(e){status.textContent='ไม่สามารถเปิดรายงานได้ ลิงก์อาจหมดอายุ ถูกยกเลิก หรือเปิดไม่ครบ กรุณาขอลิงก์ใหม่จากผู้ตรวจสอบ';}
+})();
+</script></body></html>
