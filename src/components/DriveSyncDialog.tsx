@@ -80,8 +80,8 @@ async function readSnapshot(token:string,userId:string,id:string,signal?:AbortSi
  const total=Number(response.headers.get('Content-Length'))||0;
  let data;
  if(progress&&response.body){
-  const reader=response.body.getReader();let parts:Uint8Array<ArrayBuffer>[]=[];let received=0;
-  try{for(;;){const chunk=await reader.read();if(chunk.done)break;parts.push(new Uint8Array(chunk.value));received+=chunk.value.byteLength;progress(received,total);}}finally{reader.releaseLock();}
+  const reader=response.body.getReader();let parts:Uint8Array<ArrayBuffer>[]=[];let received=0,lastUpdate=0;
+  try{for(;;){const chunk=await reader.read();if(chunk.done)break;parts.push(new Uint8Array(chunk.value));received+=chunk.value.byteLength;if(performance.now()-lastUpdate>200){lastUpdate=performance.now();progress(received,total);}}}finally{reader.releaseLock();}
   const blob=new Blob(parts,{type:'application/json'});parts=[];
   progress(received,received);data=JSON.parse(await blob.text());
  }else data=await response.json();
