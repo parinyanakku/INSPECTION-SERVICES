@@ -560,7 +560,7 @@ function estimateDefectRowHeight(
       4 + Math.max(1, Math.ceil((solutionPrefix.length + 1 + cleanSolution.length) / (46*capacity))) * 17;
   }
 
-  const rowTextTotal = textHeight + 77; // padding, spacing and two-row status grid
+  const rowTextTotal = textHeight + 83; // padding, spacing and two-row status grid
   const rowImageTotal = 116 + 30; // landscape photo box + vertical padding/border
   return Math.max(rowImageTotal, rowTextTotal);
 }
@@ -1301,16 +1301,16 @@ export function buildSharedReportPages(
                   {value:'กำลังแก้ไข',label:isEn?'Repaired but<br />incomplete':'แก้แล้วแต่<br />ยังไม่เรียบร้อย'},
                   {value:'รอแก้ไข',label:isEn?'Pending':'รอแก้ไข'},
                 ];
-                const statusGrid=`<table data-report-status="true" style="width:100%; table-layout:fixed; border-collapse:collapse; margin-top:6px; margin-bottom:2px; background:#ffffff;"><colgroup><col style="width:27%"/><col style="width:46%"/><col style="width:27%"/></colgroup><tbody><tr>${states.map(st=>`<td data-pdf-center-text="true" style="border:1px solid #cbd5e1; background:#ffffff; text-align:center; vertical-align:middle; padding:2px 1px 3px; font-size:11px; line-height:1.2; font-weight:700; color:#000000;">${st.label}</td>`).join('')}</tr><tr>${states.map(st=>`<td data-pdf-center-text="true" style="border:1px solid #cbd5e1; background:#ffffff; text-align:center; vertical-align:middle; height:22px; padding:1px; font-size:15px; line-height:1.2; font-weight:700; color:#000000;">${d.status===st.value?'☑':'☐'}</td>`).join('')}</tr></tbody></table>`;
+                const statusGrid=`<table data-report-status="true" style="width:100%; table-layout:fixed; border-collapse:collapse; margin-top:7px; margin-bottom:4px; background:#ffffff;"><colgroup><col style="width:27%"/><col style="width:46%"/><col style="width:27%"/></colgroup><tbody><tr>${states.map(st=>`<td data-pdf-center-text="true" style="border:1px solid #cbd5e1; background:#ffffff; text-align:center; vertical-align:middle; height:30px; padding:4px 3px; font-size:11px; line-height:1.25; font-weight:700; color:#000000;">${st.label}</td>`).join('')}</tr><tr>${states.map(st=>`<td data-pdf-center-text="true" style="border:1px solid #cbd5e1; background:#ffffff; text-align:center; vertical-align:middle; height:26px; padding:3px 2px; font-size:15px; line-height:1.25; font-weight:700; color:#000000;">${d.status===st.value?'☑':'☐'}</td>`).join('')}</tr></tbody></table>`;
                 return `<tr style="break-inside:avoid; page-break-inside:avoid; background:${rowBg};">
                   <td style="${cell} text-align:center; font-weight:800; font-size:14px;">${escapeHtml(d.number)}</td>
                   <td style="${cell} text-align:center;">
                     ${locationSrc?`<img src="${locationSrc}" width="158" style="max-width:100%; max-height:${photoBoxH-12}px; width:auto; height:auto; display:block; margin:0 auto; object-fit:contain; border:1px solid #e2e8f0;" />`:`<div style="height:80px; border:1px dashed #cbd5e1; font-size:11px; color:#64748b;">${isEn?'Location preview unavailable':'ไม่มีภาพตำแหน่งแปลน'}</div>`}
-                    <div data-pdf-center-text="true" style="font-size:10.5px; line-height:1.4; font-weight:700; margin-top:3px; padding-bottom:2px;">${escapeHtml(flName)} · #${escapeHtml(d.number)}</div>
+                    <div data-pdf-center-text="true" style="font-size:10.5px; line-height:1.4; font-weight:700; margin-top:4px; padding:2px 0 4px;">${escapeHtml(flName)} · #${escapeHtml(d.number)}</div>
                   </td>
                   <td style="${cell} text-align:center;">${photo(beforeSrc,L.noImg)}</td>
                   ${beforeOnly?'':`<td style="${cell} text-align:center;">${photo(afterSrc,isEn?'Awaiting after photo':'รอรูปหลังแก้ไข')}</td>`}
-                  <td style="${cell} vertical-align:top; text-align:left; padding:6px 8px 8px; line-height:1.4; overflow-wrap:break-word; word-break:normal;">
+                  <td style="${cell} vertical-align:middle; text-align:left; padding:8px 9px; line-height:1.4; overflow-wrap:break-word; word-break:normal;">
                       <div style="font-weight:800; font-size:13.1px; color:${accentHex}; line-height:1.4; margin-bottom:2px;">
                         ${escapeHtml(zoneLabel)}
                       </div>
@@ -1353,7 +1353,7 @@ export function buildSharedReportPages(
           </colgroup>
           <thead>
             <tr>
-              ${[L.colSeq,isEn?'Plan location':'ตำแหน่งหมุด',isEn?'Before':'ก่อนแก้ไข',...(beforeOnly?[]:[isEn?'After':'หลังแก้ไข']),isEn?'Details / status':'รายละเอียด / สถานะ'].map((label,index)=>`<th data-pdf-center-text="true" style="border:1px solid #cbd5e1; height:38px; padding:4px 4px 7px; text-align:center; vertical-align:middle; color:#ffffff; background:${accentHex}; font-size:14px; font-weight:700; line-height:1.4; overflow-wrap:break-word;">${escapeHtml(label)}</th>`).join('')}
+              ${[L.colSeq,isEn?'Plan location':'ตำแหน่งหมุด',isEn?'Before':'ก่อนแก้ไข',...(beforeOnly?[]:[isEn?'After':'หลังแก้ไข']),isEn?'Details / status':'รายละเอียด / สถานะ'].map((label,index)=>`<th data-pdf-center-text="true" style="border:1px solid #cbd5e1; height:38px; padding:6px 4px; text-align:center; vertical-align:middle; color:#ffffff; background:${accentHex}; font-size:14px; font-weight:700; line-height:1.4; overflow-wrap:break-word;">${escapeHtml(label)}</th>`).join('')}
             </tr>
           </thead>
           <tbody>
