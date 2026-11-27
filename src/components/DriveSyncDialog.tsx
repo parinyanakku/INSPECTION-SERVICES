@@ -47,7 +47,7 @@ function cloudInfo(file:FileMeta,records?:Records):CloudSummary|null{
  if(!file.createdTime||!Number.isFinite(Date.parse(file.createdTime))||!Number.isSafeInteger(c.projects)||!Number.isSafeInteger(c.defects)||c.projects<0||c.defects<0)return null;
  return {id:file.id,date:file.createdTime,...c,legacy:p.tisJson!=='1'};
 }
-async function files(token:string,userId:string,signal?:AbortSignal){
+async function files(token:string,userId:string,signal?:AbortSignal,explicitChoice=false){
  // New visible JSON revisions are authoritative after migration. Legacy appData remains readable.
  for(const space of ['drive','appDataFolder']){
   const all:FileMeta[]=[];let next='';
@@ -65,7 +65,7 @@ async function files(token:string,userId:string,signal?:AbortSignal){
   }
   const parents=new Set(all.map(f=>f.appProperties?.parent).filter(Boolean));
   const heads=all.filter(f=>!parents.has(f.id));
-  if(heads.length!==1)throw Error('CONFLICT');
+  if(heads.length!==1){if(explicitChoice&&heads.length)return heads.sort((a,b)=>Date.parse(b.createdTime||'')-Date.parse(a.createdTime||'')||b.id.localeCompare(a.id))[0];throw Error('CONFLICT');}
   return heads[0];
  }
  return undefined;
@@ -272,10 +272,10 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
  async function publishLatest(token:string,op:AbortController){
   const records=await readSyncRecords();check(op);const c=counts(records);
   if(!c.projects)throw Error(tr('ไม่ส่งข้อมูลว่างขึ้น Drive','Cannot publish an empty workspace'));
-  const remote=await files(token,userId,op.signal);check(op);
+  const remote=await files(token,userId,op.signal,true);check(op);
   const prior=remote?(cloudInfo(remote)||cloudInfo(remote,(await readSnapshot(token,userId,remote.id,op.signal)).records)):null;check(op);
   if(!window.confirm(tr('ส่ง JSON จากเครื่องนี้เป็นฉบับล่าสุดบน Drive: ','Publish this device as the latest Drive JSON: ')+describe(c)+(prior?'\nDrive: '+describe(prior)+' · '+showTime(prior.date):'')+'\n'+tr('ฉบับก่อนหน้าจะยังอยู่ใน Drive ไม่ลบไฟล์เดิม ยืนยันเฉพาะเมื่อเครื่องนี้มีงานล่าสุดจริง','Previous versions are retained. Confirm only if this device has the intended latest work.')))return;
-  check(op);if((await files(token,userId,op.signal))?.id!==remote?.id)throw Error('CONFLICT');
+  check(op);if((await files(token,userId,op.signal,true))?.id!==remote?.id)throw Error('CONFLICT');
   const current=await readSyncRecords();if(await hash(current)!==await hash(records))throw Error(tr('งานเปลี่ยนระหว่างยืนยัน กรุณากดส่งอีกครั้ง','Work changed during confirmation; publish again.'));
   check(op);setMsg(tr('กำลังส่ง JSON ฉบับล่าสุด…','Uploading latest JSON…'));
   const file=await upload(token,userId,records,remote?.id||'',op.signal);check(op);
@@ -416,9 +416,9 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
  <button data-tour="drive-recover" disabled={!ready||busy||!link} onClick={()=>connect('browse')} className="w-full rounded border border-indigo-500 text-indigo-700 p-3 font-semibold disabled:opacity-50">{tr('ค้นหาและเลือกฉบับสำรองจาก Drive','Find and select a Drive backup version')}</button>
  {recoveryOpen&&<section className="rounded-xl border border-indigo-300 p-3 space-y-3">
   <div className="flex justify-between items-center gap-2"><strong>{tr('เลือกฉบับสำรอง','Select backup version')}</strong><button type="button" disabled={busy} onClick={()=>{setRecoveryOpen(false);setRecoveryData(null);setPreview([]);}} className="text-xs underline">{tr('ปิดรายการ','Close list')}</button></div>
-  <p className="text-xs text-slate-600">{tr('เลือก Workspace เพื่อกู้แฟ้มพร้อมข้อมูลรายงาน หรือเลือกไฟล์ข้อมูลโครงการแยก หากฉบับล่าสุดไม่ใช่ที่ต้องการให้ลองฉบับก่อนหน้า','Choose Workspace for projects with report settings, or a single project backup. If the latest is not correct, inspect earlier versions.')}</p>
-  <div className="max-h-48 overflow-y-auto space-y-1">{sources.map(source=><button key={source.id} disabled={busy} type="button" onClick={()=>void inspectBackup(source)} className={'block w-full text-left rounded-lg border p-2 text-xs '+(selectedSource?.id===source.id?'border-indigo-500 bg-indigo-50':'border-slate-200')}><strong>{source.kind==='workspace'?'Workspace':tr('ข้อมูลโครงการ','Project data')}</strong> · {new Date(source.date).toLocaleString(lang==='th'?'th-TH':'en-GB')}<br/>{source.name}</button>)}</div>
-  {recoveryData&&<><div className="rounded-lg bg-slate-50 p-2 text-xs">{selectedSource?.kind==='project'?tr('ไฟล์โครงการแยก: กู้เป็นแฟ้มใหม่เท่านั้น ไม่รวมข้อมูลเล่มรายงานแยก','Single project file: restore as a separate copy only; separate report settings are not included.'):tr('เลือกวิธีกู้คืนเมื่อมีแฟ้มรหัสเดียวกัน','Choose how to restore a matching project ID')}{selectedSource?.kind==='workspace'&&<select value={restoreMode} onChange={e=>setRestoreMode(e.target.value==='replace'?'replace':'copy')} disabled={busy} className="block w-full mt-2 border rounded p-2"><option value="copy">{tr('เก็บทั้งสองฉบับ (แนะนำ)','Keep both versions (recommended)')}</option><option value="replace">{tr('แทนที่แฟ้มเดิมหลังยืนยัน','Replace existing after confirmation')}</option></select>}</div>
+  <p className="text-xs text-slate-600">{tr('เลือก TIS FullBackup JSON หรือ Workspace เพื่อกู้แฟ้มพร้อมข้อมูลรายงาน หรือเลือกไฟล์ข้อมูลโครงการแยก หากฉบับล่าสุดไม่ใช่ที่ต้องการให้ลองฉบับก่อนหน้า','Choose TIS FullBackup JSON or Workspace for projects with report settings, or a single project backup. If the latest is not correct, inspect earlier versions.')}</p>
+  <div className="max-h-48 overflow-y-auto space-y-1">{sources.map(source=><button key={source.id} disabled={busy} type="button" onClick={()=>void inspectBackup(source)} className={'block w-full text-left rounded-lg border p-2 text-xs '+(selectedSource?.id===source.id?'border-indigo-500 bg-indigo-50':'border-slate-200')}><strong>{source.kind==='json'?'TIS FullBackup JSON':source.kind==='workspace'?'Workspace':tr('ข้อมูลโครงการ','Project data')}</strong> · {new Date(source.date).toLocaleString(lang==='th'?'th-TH':'en-GB')}<br/>{source.name}</button>)}</div>
+  {recoveryData&&<><div className="rounded-lg bg-slate-50 p-2 text-xs">{selectedSource?.kind==='project'?tr('ไฟล์โครงการแยก: กู้เป็นแฟ้มใหม่เท่านั้น ไม่รวมข้อมูลเล่มรายงานแยก','Single project file: restore as a separate copy only; separate report settings are not included.'):tr('เลือกวิธีกู้คืนเมื่อมีแฟ้มรหัสเดียวกัน','Choose how to restore a matching project ID')}{selectedSource?.kind!=='project'&&<select value={restoreMode} onChange={e=>setRestoreMode(e.target.value==='replace'?'replace':'copy')} disabled={busy} className="block w-full mt-2 border rounded p-2"><option value="copy">{tr('เก็บทั้งสองฉบับ (แนะนำ)','Keep both versions (recommended)')}</option><option value="replace">{tr('แทนที่แฟ้มเดิมหลังยืนยัน','Replace existing after confirmation')}</option></select>}</div>
   {preview.map(item=><div key={item.id} className="rounded-lg border border-slate-200 p-3 space-y-2"><strong className="text-sm break-words">{item.name}</strong><div className="grid grid-cols-2 gap-2 text-xs"><div>{tr('ในเครื่อง','Local')}: {item.localCount===null?tr('ยังไม่มี','Missing'):item.localCount} {tr('ข้อ','defects')}</div><div className="font-bold text-emerald-700">Drive: {item.cloudCount} {tr('ข้อ','defects')}</div></div><button type="button" disabled={busy||item.identical} onClick={()=>void restoreProject(item.id)} className="w-full rounded bg-emerald-700 text-white p-2 text-sm disabled:opacity-50">{item.identical?tr('ข้อมูลตรงกันแล้ว','Already identical'):tr('กู้คืนแฟ้มนี้','Restore this project')}</button></div>)}</>}
  </section>}
  <h3 className="font-semibold text-sm border-t pt-3">{tr('2. ส่งไฟล์ไปยัง Google Drive','2. Export files to Google Drive')}</h3>
