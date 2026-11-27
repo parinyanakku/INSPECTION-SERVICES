@@ -1,8 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {flushSync} from 'react-dom';
 import type {AppLanguage} from '../types/inspection';
-import {createImageIndexScanner,type ImageRange} from '../utils/driveImageIndex.mjs';
-import {DriveReadOnlyPreview,type DrivePreviewIndex} from './DriveReadOnlyPreview';
 import {streamOriginal} from '../utils/driveStreamOriginal';
 import {withDriveDownload} from '../utils/driveDownload';
 import {applyMobileRecords} from '../utils/driveMobileCopy';
@@ -198,7 +196,6 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
  const [checkedAt,setCheckedAt]=useState('');
  const [localSummary,setLocalSummary]=useState<{projects:number;defects:number}|null>(null);
  const [advanced,setAdvanced]=useState(false);
- const [mobilePreview,setMobilePreview]=useState<DrivePreviewIndex|null>(null);
  useEffect(()=>{if(!visible)return;let done=false;const refresh=()=>{void readSyncRecords().then(records=>{if(!done)setLocalSummary(counts(records));}).catch(()=>{if(!done)setLocalSummary(null);});};refresh();window.addEventListener('tis-workspace-sync-change',refresh);return()=>{done=true;window.removeEventListener('tis-workspace-sync-change',refresh);};},[visible]);
  const active=useRef(true);
  const [auto,setAuto]=useState(readAuto);
@@ -243,14 +240,14 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
    if(!await flushWorkspace())throw Error('Local connection settings could not be saved');
    if(active.current){setLink(value);if(live?.userId===userId)live.identity=value;}
  }
- function connect(action:'connect'|'sync'|'download'|'export'|'recover'|'browse'|'publish'|'preview'='connect',choose=false){
+ function connect(action:'connect'|'sync'|'download'|'export'|'recover'|'browse'|'publish'='connect',choose=false){
   if(operation.current){setMsg(tr('กำลังทำงานอยู่ กรุณารอหรือกดยกเลิก','An operation is already running. Wait or cancel it.'));return;}
   if(paused){setMsg(tr('ปิดหน้าต่างจัดการบัญชีก่อนซิงค์','Close account management before syncing.'));return;}
   if(!gis()){setMsg(tr('Google ยังโหลดไม่สำเร็จ กรุณาเปิดหน้าซิงค์ใหม่','Google sign-in is not ready. Reopen sync settings.'));return;}
   autoHold.current=false;
   const op=new AbortController();operation.current=op;setBusy(true);setCancelling(false);setMsg(tr('กำลังตรวจสิทธิ์ Google Drive…','Checking Google Drive authorization…'));
   const run=async(access:string)=>{
-   try{check(op);if(action==='export')await exportFiles(access,op);else if(action==='recover')await recoverBackup(access,op);else if(action==='browse')await browseBackups(access,op);else if(action==='publish')await publishLatest(access,op);else if(action==='preview')await previewOriginal(access,op);else if(action!=='connect')await sync(action==='download',access,op);}
+   try{check(op);if(action==='export')await exportFiles(access,op);else if(action==='recover')await recoverBackup(access,op);else if(action==='browse')await browseBackups(access,op);else if(action==='publish')await publishLatest(access,op);else if(action!=='connect')await sync(action==='download',access,op);}
    catch(e){handleError(e,op);}finally{end(op);}
   };
   if(!choose&&validToken(userId)){void run(validToken(userId));return;}
@@ -278,7 +275,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
       else if(action==='export')await exportFiles(access,op);
       else if(action==='recover')await recoverBackup(access,op);
       else if(action==='browse')await browseBackups(access,op);
-      else if(action==='publish')await publishLatest(access,op);else if(action==='preview')await previewOriginal(access,op);
+      else if(action==='publish')await publishLatest(access,op);
       else await sync(action==='download',access,op);
     }catch(e){handleError(e,op);}finally{end(op);}
    },error_callback:()=>{if(active.current&&operation.current===op){setMsg(tr('ยกเลิกหรือเปิดหน้าต่าง Google ไม่สำเร็จ','Google connection cancelled or popup failed'));end(op);}}}).requestAccessToken({prompt:!choose&&remembered?'':'select_account'});
@@ -291,80 +288,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   if(message==='CONFLICT'){autoHold.current=true;setMsg(tr('พบข้อมูลคนละชุดหรือแก้ไขทั้งสองเครื่อง ระบบหยุดซิงค์เพื่อไม่เขียนทับ กรุณาสำรอง JSON และติดต่อผู้ดูแล','Different or concurrent changes detected. Sync stopped to prevent overwriting. Export JSON and contact support.'));}
   else{if(message.includes('401')){live=null;setToken('');}setMsg(tr('ดำเนินการไม่สำเร็จ: ','Operation failed: ')+message);}
  }
-   async function openPreparedIndex(file:File){
-  if(operation.current||paused)return;
-  const token=validToken(userId);
-  if(!token){setMsg(tr('กรุณายืนยัน Google ก่อนเลือกไฟล์ดัชนี','Authorize Google before choosing the index'));return;}
-  if(file.size>8*1024*1024){setMsg(tr('เลือกไฟล์ดัชนีขนาดเล็ก ไม่ใช่ JSON ต้นฉบับ','Choose the small index, not the full backup'));return;}
-  autoHold.current=true;
-  const op=new AbortController();operation.current=op;setBusy(true);setCancelling(false);setMobilePreview(null);
-  setMsg(tr('กำลังตรวจสอบดัชนีกับ Drive…','Checking index against Drive…'));
-  try{
-   const data=JSON.parse(await file.text());check(op);
-   const remote=await files(token,userId,op.signal,true);check(op);
-   if(!remote||remote.appProperties?.tisJson!=='1'||remote.appProperties?.tisUser!==userId)throw Error('No authorized original backup');
-   const summary=cloudInfo(remote);
-   if(!summary||data.format!=='TIS_READONLY_INDEX_V1'||data.userId!==userId||data.fileId!==remote.id||data.hash!==remote.appProperties?.hash)throw Error(tr('ดัชนีไม่ตรงกับบัญชีหรือ JSON ล่าสุดบน Drive','Index does not match account or latest Drive revision'));
-   const info=await (await api(token,ROOT+'/'+encodeURIComponent(remote.id)+'?fields=id,size,appProperties,trashed',{signal:op.signal})).json();check(op);
-   if(info.id!==remote.id||info.trashed||info.appProperties?.tisUser!==userId||info.appProperties?.hash!==data.hash||!Number.isSafeInteger(data.total)||data.total!==Number(info.size))throw Error('Original file metadata mismatch');
-   const projects=data.projects as DrivePreviewIndex['projects'],ranges=data.ranges as ImageRange[];
-   if(!Array.isArray(projects)||!Array.isArray(ranges)||ranges.length>100000||projects.some(p=>!p||typeof p.id!=='string'||!Array.isArray(p.floors)||!Array.isArray(p.defects)||p.defects.some(d=>!d||typeof d.id!=='string'))||new Set(projects.map(p=>p.id)).size!==projects.length||projects.length!==summary.projects||projects.reduce((n,p)=>n+p.defects.length,0)!==summary.defects)throw Error('Project count or structure mismatch');
-   let end=-1;for(const range of ranges){if(!range||!Number.isSafeInteger(range.start)||!Number.isSafeInteger(range.end)||range.start<=end||range.end<range.start||range.end>=data.total)throw Error('Invalid image offsets');end=range.end;}
-   const next:DrivePreviewIndex={fileId:remote.id,hash:data.hash,date:summary.date,projects,ranges,total:data.total};
-   if((await files(token,userId,op.signal,true))?.id!==remote.id)throw Error('CONFLICT');check(op);
-   workspaceStorage.setItem('tis_drive_readonly_index_v1',JSON.stringify(next));if(!await flushWorkspace())throw Error('Could not save index');
-   check(op);setCloud(summary);setCheckedAt(new Date().toISOString());setMobilePreview(next);setMsg(tr('เปิดดัชนีสำเร็จ · อ่านอย่างเดียว · ','Prepared index opened · Read only · ')+describe(summary));
-  }catch(e){handleError(e,op);}finally{end(op);}
- }
- async function previewOriginal(token:string,op:AbortController){
-  autoHold.current=true;setMobilePreview(null);
-  const remote=await files(token,userId,op.signal,true);check(op);
-  if(!remote||remote.appProperties?.tisJson!=='1')throw Error(tr('ไม่พบ JSON ต้นฉบับ','No original JSON found'));
-  const summary=cloudInfo(remote),expectedHash=remote.appProperties?.hash;
-  if(!summary||!expectedHash||remote.appProperties?.tisUser!==userId)throw Error('Invalid Drive metadata');
-  setCloud(summary);setCheckedAt(new Date().toISOString());
-  const cacheKey='tis_drive_readonly_index_v1';
-  let saved:DrivePreviewIndex|null=null;
-  try{saved=JSON.parse(workspaceStorage.getItem(cacheKey)||'null');}catch{}
-  if(saved?.fileId===remote.id&&saved.hash===expectedHash&&saved.projects.length===summary.projects&&saved.projects.reduce((n,p)=>n+p.defects.length,0)===summary.defects){
-   setMobilePreview(saved);setMsg(tr('เปิดรายการจากดัชนีที่เก็บไว้ · อ่านอย่างเดียว','Opened saved index · Read only'));return;
-  }
-  const response=await api(token,ROOT+'/'+encodeURIComponent(remote.id)+'?alt=media',{signal:op.signal});
-  if(!response.body)throw Error('Streaming not supported');
-  const reader=response.body.getReader(),scanner=createImageIndexScanner();
-  let received=0,last=0;const total=Number(response.headers.get('Content-Length'))||0;
-  try{
-   for(;;){
-    check(op);const part=await reader.read();if(part.done)break;
-    scanner.feed(part.value);received+=part.value.byteLength;
-    if(performance.now()-last>250){last=performance.now();setMsg(tr('กำลังสร้างรายการงานโดยไม่เก็บรูปใน RAM ','Indexing work without retaining images ')+(received/1048576).toFixed(1)+' MB'+(total?' / '+(total/1048576).toFixed(1)+' MB':''));}
-   }
-  }finally{try{await reader.cancel();}catch{}reader.releaseLock();}
-  check(op);const index=scanner.finish();
-  const payload=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(index.bytes));
-  if(payload.format!=='TIS_HOME_INSPECTION_BACKUP_V10'||payload.userId!==userId||payload.contentHash!==expectedHash||!Array.isArray(payload.projects))throw Error('Invalid original snapshot identity');
-  const projects=payload.projects as DrivePreviewIndex['projects'];
-  if(projects.some(p=>!p||typeof p.id!=='string'||!Array.isArray(p.floors)||!Array.isArray(p.defects)||p.defects.some(d=>!d||typeof d.id!=='string'))||new Set(projects.map(p=>p.id)).size!==projects.length||projects.length!==summary.projects||projects.reduce((n,p)=>n+p.defects.length,0)!==summary.defects)throw Error('Project count or structure mismatch');
-  if((await files(token,userId,op.signal,true))?.id!==remote.id)throw Error('CONFLICT');
-  check(op);
-  const next={fileId:remote.id,hash:expectedHash,date:summary.date,projects,ranges:index.ranges,total:index.total};
-  // Non-sync cache. Never replaces the editable workspace.
-  workspaceStorage.setItem(cacheKey,JSON.stringify(next));if(!await flushWorkspace())throw Error('Could not save read-only index');
-  check(op);setMobilePreview(next);setMsg(tr('เปิดรายการจาก Drive สำเร็จ · อ่านอย่างเดียว · ','Drive list opened · Read only · ')+describe(summary));
- }
- async function previewPhoto(range:ImageRange,signal:AbortSignal){
-  const access=validToken(userId),index=mobilePreview;
-  if(!access||!index)throw Error(tr('กรุณายืนยัน Google และเปิดดูงานใหม่','Authorize Google and reopen the viewer'));
-  if(!Number.isSafeInteger(range.start)||!Number.isSafeInteger(range.end)||range.start<0||range.end<range.start||range.end>=index.total||range.end-range.start>32*1024*1024)throw Error('Image range exceeds safe size');
-  const r=await api(access,ROOT+'/'+encodeURIComponent(index.fileId)+'?alt=media',{signal,headers:{Range:'bytes='+range.start+'-'+range.end}});
-  if(r.status!==206){try{await r.body?.cancel();}catch{}throw Error(tr('Drive ไม่รองรับโหลดรูปแยกจากไฟล์นี้','Drive did not support partial download for this file'));}
-  const contentRange=r.headers.get('Content-Range');if(contentRange&&!contentRange.startsWith('bytes '+range.start+'-'+range.end+'/'))throw Error('Incorrect image range');
-  const bytes=await r.arrayBuffer();if(bytes.byteLength!==range.end-range.start+1)throw Error('Incomplete original photo');
-  const value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));
-  if(typeof value!=='string'||!/^data:image\/(jpeg|jpg|png|webp|gif|bmp|svg\+xml)[;,]/i.test(value))throw Error('Unsupported image');
-  return value;
- }
- async function exportFiles(token:string,op:AbortController){
+   async function exportFiles(token:string,op:AbortController){
   const records=await readSyncRecords();check(op);
   if(!window.confirm(tr('ส่งสำเนาแฟ้มงานและรูปภาพที่บันทึกแล้วไปยัง My Drive หรือไม่?','Send visible copies of saved projects and images to My Drive?')))return;
   check(op);
@@ -440,62 +364,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
  async function originalReady(_token:string,source:FileMeta,_records:Records,op:AbortController,_force=false){
    check(op);return source.appProperties?.tisJson==='1'&&!!source.appProperties.hash;
   }
-  async function markMobile(marker:Marker){
-  workspaceStorage.setItem(MARK,JSON.stringify(marker));if(!await flushWorkspace())throw Error('Local marker save failed');
- }
- async function mobileSync(token:string,op:AbortController,downloadOnly:boolean,automatic=false,publishOnly=false){
-  const remote=await files(token,userId,op.signal,true);check(op);
-  if(!remote||remote.appProperties?.tisJson!=='1'){setMsg(tr('ยังไม่มี JSON ต้นฉบับ กรุณาส่งจากคอมพิวเตอร์ก่อนหนึ่งครั้ง','No full JSON yet. Publish once from the computer first.'));return;}
-  setCloud(cloudInfo(remote));setCheckedAt(new Date().toISOString());
-  const records=await readSyncRecords(),localHash=await hash(records);check(op);
-  const marker=readMarker(),copy=remote;check(op);
-   // Full revision is the lossless baseline; pending legacy mobile edits retain their original base.
-  const sameSource=marker?.mobile&&marker.sourceId===remote.id&&marker.id===copy.id;
-  const previousBase=marker?.mobile&&marker.sourceId===remote.id&&marker.id!==copy.id?marker.id:null;
-  const acknowledged=!!(marker?.sentId&&remote.appProperties?.mobileAck===marker.sentId&&marker.sentHash===localHash);
-  const dirty=!!marker?.mobile&&localHash!==marker.hash;
-  if((sameSource||previousBase)&&!downloadOnly&&dirty){
-    if(!counts(records).projects)throw Error(tr('ไม่ส่งข้อมูลว่างขึ้น Drive','Cannot publish an empty workspace'));
-   const latest=await linkedFile(token,userId,remote.id,'edit',op.signal);check(op);
-   if(latest&&latest.id!==marker.sentId){autoHold.current=true;throw Error('CONFLICT');}
-   if(marker.sentHash===localHash&&latest?.id===marker.sentId){setMsg(tr('ส่งงานมือถือแล้ว รอคอมพิวเตอร์รับ','Mobile changes sent; waiting for computer.'));return;}
-   if(!automatic&&!window.confirm(tr('ส่งการแก้ไขจากมือถือให้คอมพิวเตอร์ โดยคงรูปต้นฉบับที่ไม่ได้แก้ไขหรือไม่?','Send mobile edits to the computer, keeping unchanged original photos?')))return;
-   if((await files(token,userId,op.signal,true))?.id!==remote.id||(await linkedFile(token,userId,remote.id,'edit',op.signal))?.id!==latest?.id)throw Error('CONFLICT');
-   if(!equalRecords(await readSyncRecords(),records))throw Error(tr('งานเปลี่ยนระหว่างส่ง กรุณากดส่งใหม่','Work changed before send; please retry.'));
-   check(op);const baseId=previousBase||copy.id;
-   const sent=await upload(token,userId,records,latest?.id||baseId,op.signal,uploadProgress,{kind:'edit',source:remote.id,base:baseId});
-   await markMobile({...marker,sentId:sent.id,sentHash:localHash});check(op);
-   setMsg(tr('ส่งงานจากมือถือแล้ว · ','Mobile work sent · ')+describe(counts(records))+tr(' · รอคอมรับและรวมรูปต้นฉบับ',' · waiting for computer to merge originals'));return;
-  }
-  if(publishOnly){
-   setMsg(sameSource?tr('ไม่มีงานใหม่จากมือถือให้ส่ง','No new mobile edits to send.'):tr('โหลด JSON ล่าสุดจาก Drive ก่อนส่งงานมือถือ เพื่อเชื่อมฉบับต้นทาง','Load latest Drive JSON first to link mobile edits to the source.'));return;
-  }
-  if(sameSource){
-   if(dirty)setMsg(tr('มีงานมือถือที่แก้ไขอยู่ กดส่ง JSON ล่าสุดขึ้น Drive ก่อน','Mobile edits exist. Send latest JSON to Drive first.'));
-   else setMsg(tr('ข้อมูลมือถือเป็นฉบับล่าสุดแล้ว · ','Mobile data is current · ')+describe(counts(records)));
-   return;
-  }
-  if(dirty&&!acknowledged){autoHold.current=true;throw Error('CONFLICT');}
-  if(automatic&&!marker?.mobile&&counts(records).projects>0){setMsg(tr('พบ JSON ต้นฉบับ กดโหลด JSON ล่าสุดเพื่อยืนยันครั้งแรก','Full JSON available. Load latest JSON once to confirm.'));return;}
-  if(!safeRestoreRef.current()){setMsg(tr('มี JSON ใหม่ จะรับเมื่อกลับหน้าแฟ้มโครงการ','New JSON available; return to the project list.'));return;}
-  if(!automatic&&!window.confirm(tr('โหลด JSON ต้นฉบับจาก Drive: ','Load original JSON: ')+(cloudInfo(remote)?describe(cloudInfo(remote)!):'')+' · '+showTime(remote.createdTime||copy.createdTime||'')+'\n'+tr('ระบบเก็บข้อมูลเดิมในเครื่องก่อนโหลด รูปต้นฉบับยังอยู่บน Drive','Local data is backed up before restore; originals remain on Drive.')))return;
-  setMsg(tr('กำลังโหลด JSON ต้นฉบับ…','Loading original JSON…'));
-  const data=await readOriginalStream(token,userId,copy.id,op.signal,(received,total)=>setMsg(tr('ดาวน์โหลด JSON ','Downloading JSON ')+(received/1048576).toFixed(1)+' MB'+(total?' / '+(total/1048576).toFixed(1)+' MB':'')),()=>setMsg(tr('ดาวน์โหลดครบแล้ว · กำลังตรวจสอบความถูกต้องของไฟล์…','Download complete · Verifying integrity…')));
-  const h=await hash(data.records);check(op);if(copy.appProperties?.hash!==h)throw Error('Original JSON integrity check failed');
-   const verified=counts(data.records),summary=cloudInfo(remote);
-   if(!summary||summary.projects!==verified.projects||summary.defects!==verified.defects)throw Error('Original JSON count verification failed');
-   if(!verified.projects&&counts(records).projects)throw Error('CONFLICT');
-  if((await files(token,userId,op.signal,true))?.id!==remote.id)throw Error('CONFLICT');
-  check(op);if(!safeRestoreRef.current()||!equalRecords(await readSyncRecords(),records))throw Error('CONFLICT');
-  flushSync(()=>setApplyingRestore(true));
-  try{
-   setMsg(tr('ตรวจสอบผ่าน · กำลังบันทึกข้อมูลลงมือถือ…','Verified · Saving data to device…'));
-    await restoreSyncRecords(data.records,records,JSON.stringify({id:copy.id,hash:h,mobile:true,sourceId:remote.id}));
-   if(!equalRecords(await readSyncRecords(),data.records))throw Error('Local restore verification failed');
-   if(active.current){onRestored();setLocalSummary(counts(data.records));await rememberCloud(remote);setMsg(tr('โหลด JSON ต้นฉบับสำเร็จ · ','Original JSON loaded · ')+describe(counts(data.records)));}
-  }finally{if(active.current)setApplyingRestore(false);}
- }
- async function receiveMobileEdits(token:string,remote:FileMeta,records:Records,localHash:string,op:AbortController,automatic:boolean){
+  async function receiveMobileEdits(token:string,remote:FileMeta,records:Records,localHash:string,op:AbortController,automatic:boolean){
   if(remote.appProperties?.tisJson!=='1')return false;
   const edit=await linkedFile(token,userId,remote.id,'edit',op.signal);check(op);if(!edit)return false;
   const baseId=edit.appProperties?.base;
@@ -522,16 +391,21 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   return true;
  }
  async function publishLatest(token:string,op:AbortController){
-  if(isMobileReceiver())return mobileSync(token,op,false,false,true);
+  // Canonical full revisions are now published by either device. Legacy pending edits remain recoverable.
   const records=await readSyncRecords();check(op);const c=counts(records);
   if(!c.projects)throw Error(tr('ไม่ส่งข้อมูลว่างขึ้น Drive','Cannot publish an empty workspace'));
   const remote=await files(token,userId,op.signal,true);check(op);
-  if(remote&&await receiveMobileEdits(token,remote,records,await hash(records),op,false))return;
+  const localHash=await hash(records),marker=readMarker();check(op);
+  if(remote&&remote.appProperties?.tisJson==='1'&&await linkedFile(token,userId,remote.id,'edit',op.signal)){
+   if(isMobileReceiver()){setMsg(tr('พบงานแก้ไขค้างจากระบบมือถือรุ่นเก่า ให้คอมรับงานเดิมก่อนเพื่อป้องกันข้อมูลสูญหาย','Pending legacy mobile edits. Merge them on the computer first to prevent data loss.'));return;}
+   if(await receiveMobileEdits(token,remote,records,localHash,op,false))return;
+  }
+  if(remote&&remote.appProperties?.hash!==localHash&&marker?.id!==remote.id)throw Error('CONFLICT');
   if(remote?.appProperties?.tisJson==='1'&&remote.appProperties.hash===await hash(records)){
    check(op);const ready=await originalReady(token,remote,records,op,true);check(op);
    workspaceStorage.setItem(MARK,JSON.stringify({id:remote.id,hash:await hash(records)}));if(!await flushWorkspace())throw Error('Local marker save failed');
    await rememberCloud(remote,records);setCheckedAt(new Date().toISOString());
-   setMsg(tr('ต้นฉบับบน Drive ตรงกับเครื่องแล้ว · ','Full JSON already matches · ')+describe(c)+(ready?tr(' · มือถือพร้อมโหลด',' · mobile ready'):tr(' · ตรวจสอบ JSON ต้นฉบับอีกครั้ง',' · verify original JSON')));return;
+   setMsg(tr('ต้นฉบับบน Drive ตรงกับเครื่องแล้ว · ','Full JSON already matches · ')+describe(c)+(ready?tr(' · อีกเครื่องพร้อมโหลด',' · other device can load'):tr(' · ตรวจสอบ JSON ต้นฉบับอีกครั้ง',' · verify original JSON')));return;
   }
   const prior=remote?cloudInfo(remote):null;check(op);
   if(!window.confirm(tr('ส่ง JSON จากเครื่องนี้เป็นฉบับล่าสุดบน Drive: ','Publish this device as the latest Drive JSON: ')+describe(c)+(prior?'\nDrive: '+describe(prior)+' · '+showTime(prior.date):'')+'\n'+tr('ฉบับก่อนหน้าจะยังอยู่ใน Drive ไม่ลบไฟล์เดิม ยืนยันเฉพาะเมื่อเครื่องนี้มีงานล่าสุดจริง','Previous versions are retained. Confirm only if this device has the intended latest work.')))return;
@@ -544,10 +418,10 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   await rememberCloud(file,records);check(op);
   const identity=readLink();if(identity)await saveLink({...identity,lastSync:new Date().toISOString()});
   const ready=await originalReady(token,file,records,op,true);check(op);
-  setCheckedAt(new Date().toISOString());setMsg(tr('ส่ง JSON ล่าสุดสำเร็จ · ','Latest JSON uploaded · ')+describe(c)+' · '+showTime(file.createdTime!)+(ready?tr(' · มือถือพร้อมโหลด',' · mobile ready'):tr(' · ตรวจสอบ JSON ต้นฉบับอีกครั้ง',' · verify original JSON')));
+  setCheckedAt(new Date().toISOString());setMsg(tr('ส่ง JSON ล่าสุดสำเร็จ · ','Latest JSON uploaded · ')+describe(c)+' · '+showTime(file.createdTime!)+(ready?tr(' · อีกเครื่องพร้อมโหลด',' · other device can load'):tr(' · ตรวจสอบ JSON ต้นฉบับอีกครั้ง',' · verify original JSON')));
  }
  async function sync(downloadOnly:boolean,token:string,op:AbortController,automatic=false){
-  if(isMobileReceiver())return mobileSync(token,op,downloadOnly,automatic);
+  // Both devices use the same authoritative full revision and sync path.
   setMsg(tr('กำลังตรวจสอบข้อมูลซิงค์…','Checking sync data…'));
   {
    const records=await readSyncRecords(),localHash=await hash(records);check(op);
@@ -577,9 +451,13 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
     await rememberCloud(file,records);
     await originalReady(token,file,records,op,true);await finish(records,tr('ส่งข้อมูลครั้งแรกสำเร็จ','First upload completed'));return;
    }
-   if(await receiveMobileEdits(token,remote,records,localHash,op,automatic))return;
-   if(marker?.id===remote.id&&marker.hash===localHash&&!downloadOnly){await rememberCloud(remote,records);const ready=await originalReady(token,remote,records,op);await finish(records,ready?tr('ข้อมูลตรงกันแล้ว · มือถือพร้อมโหลด','Already synchronized · mobile ready'):tr('ข้อมูลตรงกันแล้ว · ตรวจสอบ JSON ต้นฉบับอีกครั้ง','Already synchronized · verify original JSON'));return;}
+   if(remote.appProperties?.tisJson==='1'&&await linkedFile(token,userId,remote.id,'edit',op.signal)){
+    if(isMobileReceiver()){setMsg(tr('พบงานแก้ไขค้างจากระบบมือถือรุ่นเก่า ให้คอมรับงานเดิมก่อน','Pending legacy mobile edits. Merge on the computer first.'));return;}
+    if(await receiveMobileEdits(token,remote,records,localHash,op,automatic))return;
+   }
+   if(marker?.id===remote.id&&marker.hash===localHash&&!downloadOnly){await rememberCloud(remote,records);const ready=await originalReady(token,remote,records,op);await finish(records,ready?tr('ข้อมูลตรงกันแล้ว · อีกเครื่องพร้อมโหลด','Already synchronized · other device can load'):tr('ข้อมูลตรงกันแล้ว · ตรวจสอบ JSON ต้นฉบับอีกครั้ง','Already synchronized · verify original JSON'));return;}
    if(marker?.id===remote.id&&!downloadOnly){
+    if(empty)throw Error(tr('ไม่ส่งข้อมูลว่างขึ้น Drive','Cannot publish an empty workspace'));
     if(!automatic&&!window.confirm(tr('ส่งงานที่แก้ไขล่าสุดไปยัง Google Drive หรือไม่?','Upload your latest saved changes?')))return;
     if((await files(token,userId,op.signal))?.id!==remote.id)throw Error('CONFLICT');check(op);
     if(await linkedFile(token,userId,remote.id,'edit',op.signal))throw Error('CONFLICT');
@@ -590,11 +468,18 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
     await originalReady(token,file,records,op,true);await finish(records,tr('อัปโหลดข้อมูลล่าสุดแล้ว','Latest saved work uploaded'));return;
    }
    setMsg(tr('กำลังดาวน์โหลด JSON จาก Drive…','Downloading JSON from Drive…'));
-   const data=await readSnapshot(token,userId,remote.id,op.signal,(received,total)=>{if(active.current&&!op.signal.aborted)setMsg(tr('ดาวน์โหลด JSON ','Downloading JSON ')+(received/1048576).toFixed(1)+' MB'+(total?' / '+(total/1048576).toFixed(1)+' MB':''));});
+   const downloadProgress=(received:number,total:number)=>{if(active.current&&!op.signal.aborted)setMsg(tr('ดาวน์โหลด JSON ','Downloading JSON ')+(received/1048576).toFixed(1)+' MB'+(total?' / '+(total/1048576).toFixed(1)+' MB':''));};
+   const data=remote.appProperties?.tisJson==='1'?await readOriginalStream(token,userId,remote.id,op.signal,downloadProgress,()=>setMsg(tr('กำลังตรวจสอบไฟล์ JSON…','Verifying JSON…'))):await readSnapshot(token,userId,remote.id,op.signal,downloadProgress);
    setMsg(tr('กำลังตรวจสอบไฟล์ JSON…','Verifying JSON…'));
    if(data.format!=='TIS_DRIVE_V1'||data.userId!==userId||!data.records||typeof data.records!=='object')throw Error('Invalid snapshot');
-   const remoteHash=await hash(data.records);check(op);await rememberCloud(remote,data.records);check(op);
+   const remoteHash=await hash(data.records);check(op);
+   if(remote.appProperties?.tisJson==='1'){
+    const expected=cloudInfo(remote),actual=counts(data.records);
+    if(remote.appProperties.hash!==remoteHash||!expected||expected.projects!==actual.projects||expected.defects!==actual.defects)throw Error('Original JSON hash or counts mismatch');
+   }
+   await rememberCloud(remote,data.records);check(op);
    if(remoteHash===localHash){workspaceStorage.setItem(MARK,JSON.stringify({id:remote.id,hash:localHash}));if(!await flushWorkspace())throw Error('Local marker save failed');await originalReady(token,remote,records,op,downloadOnly);await finish(records,tr('ข้อมูลตรงกันแล้ว','Already synchronized'));return;}
+   if(downloadOnly&&!empty&&(!marker||marker.hash!==localHash)&&!(marker?.sentId&&remote.appProperties?.mobileAck===marker.sentId&&marker.sentHash===localHash))throw Error('CONFLICT');
    const remoteCount=counts(data.records).projects;
    let incoming=data.records;
    if(!downloadOnly&&!empty&&(!marker||marker.hash!==localHash)){
@@ -606,6 +491,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
     if(merged.conflicts.length){autoHold.current=true;setMsg(tr('พบข้อมูลแก้ไขต่างกันในแฟ้ม: ','Conflicting edits in: ')+merged.conflicts.slice(0,5).join(', ')+tr(' — ไม่เขียนทับ กรุณาสำรอง JSON ทั้งสองเครื่อง',' — no overwrite. Back up both devices.'));return;}
     incoming=merged.records;
    }
+   if(marker?.mobile&&marker.hash!==localHash&&!(marker.sentId&&remote.appProperties?.mobileAck===marker.sentId&&marker.sentHash===localHash))throw Error('CONFLICT');
    if(!remoteCount&&localCount){setMsg(tr('แฟ้มบน Drive ว่าง แต่เครื่องนี้มีงาน ระบบไม่โหลดทับ','Cloud workspace is empty but this device has work. Restore stopped.'));return;}
    if(!safeRestoreRef.current()){setMsg(tr('มีข้อมูลใหม่บน Drive '+remoteCount+' แฟ้ม จะรับเมื่อกลับหน้าแฟ้มโครงการ','New cloud data: '+remoteCount+' projects. Download deferred until the project list is idle.'));return;}
    if(!automatic&&!window.confirm(tr('ข้อมูลในเครื่อง: ','Local: ')+describe(counts(records))+'\nDrive: '+describe(counts(data.records))+' · '+(remote.createdTime?showTime(remote.createdTime):tr('ไม่ทราบเวลาไฟล์','Unknown file time'))+'\n'+tr(downloadOnly?'ใช้ JSON ล่าสุดบน Drive แทนข้อมูลในเครื่องหรือไม่? ระบบเก็บข้อมูลก่อนโหลดไว้ในเครื่อง':'รับและรวมข้อมูลจาก Drive หรือไม่? ระบบเก็บข้อมูลก่อนโหลดไว้ในเครื่อง',downloadOnly?'Replace local data with latest Drive JSON? The previous local snapshot is retained.':'Receive and merge Drive data? The previous local snapshot is retained.')))return;
@@ -666,7 +552,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
  {applyingRestore&&<div role="status" aria-live="polite" className="fixed inset-0 z-[9999] bg-slate-900/60 flex items-center justify-center p-4"><div className="rounded-xl bg-white text-slate-900 p-5 font-semibold">{tr('กำลังบันทึกข้อมูลที่รับจาก Drive ลงเครื่อง กรุณารอให้เสร็จก่อนแก้ไขแฟ้ม','Applying restored Drive data. Editing will resume when complete.')}</div></div>}
  </>;
  return <div className="fixed inset-0 z-[80] bg-slate-900/60 flex items-center justify-center p-4"><section role="dialog" aria-modal="true" className="bg-white rounded-2xl p-5 max-w-lg w-full max-h-[90vh] overflow-auto space-y-4">
- <div className="sticky top-0 z-10 -mx-1 bg-white px-1 pb-2 space-y-2"><div className="flex justify-between items-center"><h2 className="font-bold text-slate-900">{tr('Google Drive · สำรองข้อมูล','Google Drive · Backup')}</h2><button type="button" disabled={applyingRestore} onClick={()=>{if(!busy){setRecoveryOpen(false);setAdvanced(false);setMobilePreview(null);}onClose();}} className="border border-slate-300 rounded px-3 py-1 text-slate-800 font-semibold disabled:opacity-50">{busy?tr('ซ่อนหน้าต่าง','Minimize'):tr('ปิด','Close')}</button></div>
+ <div className="sticky top-0 z-10 -mx-1 bg-white px-1 pb-2 space-y-2"><div className="flex justify-between items-center"><h2 className="font-bold text-slate-900">{tr('Google Drive · สำรองข้อมูล','Google Drive · Backup')}</h2><button type="button" disabled={applyingRestore} onClick={()=>{if(!busy){setRecoveryOpen(false);setAdvanced(false);}onClose();}} className="border border-slate-300 rounded px-3 py-1 text-slate-800 font-semibold disabled:opacity-50">{busy?tr('ซ่อนหน้าต่าง','Minimize'):tr('ปิด','Close')}</button></div>
  {msg&&<div role="status" aria-live="polite" className="rounded-lg border border-slate-300 bg-slate-50 p-2 text-sm text-slate-900 break-words">{busy&&<span className="inline-block mr-2 w-3 h-3 rounded-full border-2 border-current border-r-transparent animate-spin"/>}{msg}</div>}
  {busy&&!applyingRestore&&<button type="button" disabled={cancelling} onClick={cancel} className="text-sm font-semibold text-red-700 underline">{tr('ยกเลิกการดำเนินการ','Cancel operation')}</button>}
  </div>
@@ -678,12 +564,9 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   <div className="rounded-lg border border-slate-200 p-3"><strong>{tr('ในเครื่องนี้','This device')}</strong><div className="mt-1 font-bold">{localSummary?describe(localSummary):'—'}</div></div>
   <div className="rounded-lg border border-slate-200 p-3"><strong>Google Drive</strong><div className="mt-1 font-bold text-emerald-700">{cloud?describe(cloud):'—'}</div>{cloud&&<div className="mt-1 text-xs text-slate-500">{showTime(cloud.date)}{!checkedAt&&(' · '+tr('ข้อมูลครั้งก่อน','Last known'))}</div>}</div>
  </div>
- <p className="text-xs text-slate-600">{isMobileReceiver()?tr('มือถือโหลด JSON ต้นฉบับได้แม้คอมปิด ไม่ลดความละเอียด ส่งงานที่แก้ไขกลับคอมได้ คอมต้องเปิดเว็บและยืนยัน Google เพื่อรับงาน','Mobile loads the original JSON even when the computer is off, and sends edits without resizing. Keep the computer app open and authorized to receive edits.'):tr('ส่ง JSON ต้นฉบับครั้งเดียว มือถือโหลดได้โดยตรง รับงานมือถือเมื่ออยู่หน้าแฟ้มโครงการ','Publish one original JSON for direct mobile loading. Receive mobile edits on the project list.')}</p>
+ <p className="text-xs text-slate-600">{tr('คอมและมือถือใช้ JSON ล่าสุดชุดเดียวกันบน Drive ส่งจากเครื่องที่มีงานล่าสุดแล้วโหลดบนอีกเครื่อง ไม่ต้องสร้างไฟล์ฉบับมือถือหรือไฟล์ดัชนีเอง','Computer and mobile use the same latest Drive JSON. Send from the device with the latest saved work, then load on the other device. No separate mobile copy or manual index.')}</p>
  <button data-tour="drive-json-send" disabled={!ready||busy} onClick={()=>connect('publish')} className="w-full rounded-lg bg-emerald-700 text-white p-3 font-bold disabled:opacity-50">{tr('ส่ง JSON ล่าสุดขึ้น Drive','Send latest JSON to Drive')}</button>
  <button data-tour="drive-json-load" disabled={!ready||busy} onClick={()=>connect('download')} className="w-full rounded-lg bg-blue-700 text-white p-3 font-bold disabled:opacity-50">{tr('โหลด JSON ล่าสุดจาก Drive','Load latest JSON from Drive')}</button>
- <button disabled={!ready||busy} onClick={()=>connect('preview')} className="w-full rounded-lg border-2 border-indigo-600 text-indigo-800 p-3 font-bold disabled:opacity-50">{tr('ดูแฟ้มจาก Drive แบบเบา (อ่านอย่างเดียว)','Lightweight Drive viewer (read only)')}</button>
-  <label className="block text-xs font-semibold text-slate-700">{tr('เปิดไฟล์ดัชนีที่ตรวจสอบไว้ (ไม่โหลด JSON ใหญ่)','Open prepared index (skip large JSON download)')}<input type="file" accept=".json,application/json" disabled={!validToken(userId)||busy||paused} onChange={e=>{const file=e.currentTarget.files?.[0];e.currentTarget.value='';if(file)void openPreparedIndex(file);}} className="block w-full mt-1 rounded border p-2 bg-white"/></label>
-  {mobilePreview&&<DriveReadOnlyPreview key={mobilePreview.fileId} index={mobilePreview} lang={lang} loadPhoto={previewPhoto} onClose={()=>setMobilePreview(null)}/>}
   <div className="rounded-lg border border-slate-200 p-3 space-y-1">{switchControl}<p className="text-xs text-slate-500">{tr('ตรวจทุก 20 วินาทีเมื่อเปิดเว็บและ Google พร้อมใช้งาน ไม่เขียนทับงานที่ขัดแย้งกัน','Checks every 20 seconds while open and authorized; conflicting work is not overwritten.')}</p></div>
  <details open={advanced||recoveryOpen} onToggle={e=>{setAdvanced(e.currentTarget.open);if(!e.currentTarget.open&&!busy)setRecoveryOpen(false);}} className="border-t border-slate-200 pt-3 space-y-3">
  <summary className="cursor-pointer text-sm font-semibold text-slate-700">{tr('เพิ่มเติม · กู้คืน / ตั้งค่า','More · Recovery / settings')}</summary>
