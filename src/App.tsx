@@ -2,6 +2,7 @@ import { workspaceStorage, flushWorkspace, writeWorkspaceBatch } from './utils/w
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
+  ArrowUp,
   Building2,
   ClipboardList,
   Download,
@@ -211,6 +212,15 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
     onConfirm: () => void;
   } | null>(null);
 
+  const [showBackToTop,setShowBackToTop]=useState(false);
+  useEffect(()=>{
+    const update=()=>setShowBackToTop(window.scrollY>320);
+    update();
+    window.addEventListener('scroll',update,{passive:true});
+    window.addEventListener('resize',update,{passive:true});
+    return()=>{window.removeEventListener('scroll',update);window.removeEventListener('resize',update);};
+  },[]);
+  const scrollToTop=()=>window.scrollTo({top:0,behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
   const jsonImportRef = useRef<HTMLInputElement | null>(null);
   React.useLayoutEffect(()=>{
     if(autoRestoreSafe)autoRestoreSafe.current=!activeProjectId&&!showBrandModal&&!showApiKeyModal&&!showApiKeyGuideModal&&!projectModalTarget.open&&!defectModalTarget.open&&!annotateTarget&&!zoneModalTargetId&&!showSaveAsModal&&!lightbox&&!confirmState&&!isExportingPdf;
@@ -975,6 +985,16 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
         })}
       </div>
 
+      {showBackToTop&&!showBrandModal&&!showApiKeyModal&&!showApiKeyGuideModal&&!projectModalTarget.open&&!defectModalTarget.open&&!annotateTarget&&!zoneModalTargetId&&!showSaveAsModal&&!lightbox&&!confirmState&&!pdfOverlayVisible&&(
+        <button type="button" onClick={scrollToTop}
+          aria-label={lang==='en'?'Back to top':'เลื่อนไปบนสุด'}
+          title={lang==='en'?'Back to top':'เลื่อนไปบนสุด'}
+          className="no-print fixed z-30 right-4 sm:right-6 flex min-h-11 items-center justify-center gap-1.5 rounded-full brand-bg px-3.5 py-2.5 text-white text-xs font-semibold shadow-lg border border-white/30 hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-500 cursor-pointer"
+          style={{bottom:'calc(1rem + env(safe-area-inset-bottom, 0px))'}}>
+          <ArrowUp className="w-5 h-5 shrink-0" aria-hidden="true"/>
+          <span>{lang==='en'?'Back to top':'บนสุด'}</span>
+        </button>
+      )}
       {/* Main Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-5 no-print">
         {/* Global White-Label Header */}
