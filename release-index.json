@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.81",
+  "latest": "v1.0.82",
   "releases": [
+    {
+      "version": "v1.0.82",
+      "build": 82,
+      "storageSchema": 2,
+      "date": "2026-11-27T02:33:44.013Z",
+      "notes": "Select explicit zone tab before pin placement and isolate overlapping zones on plan",
+      "commit": "527dedb76646bf0ec1e65c2050fc594f8d69e84d"
+    },
     {
       "version": "v1.0.81",
       "build": 81,
