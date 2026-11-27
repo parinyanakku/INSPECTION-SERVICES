@@ -108,8 +108,36 @@ export function normalizeSeverity(sev?: string): SeverityLevel {
   return 'ปานกลาง';
 }
 
+// Group by floor, then by the order in which zones were first inspected.
+// A new item in an already inspected zone joins that group, not the project tail.
+// Only presentation numbers change: IDs, coordinates, photos and statuses stay intact.
+export function orderProjectDefects(proj: ProjectFile): ProjectFile {
+  if (!proj.defects?.length) return proj;
+  const floorRank = new Map(proj.floors.map((floor,index)=>[floor.id,index]));
+  const source = proj.defects.map((item,index)=>({item,index})).sort((a,b)=>{
+    const an=Number.isFinite(a.item.number)&&a.item.number>0?a.item.number:Number.MAX_SAFE_INTEGER;
+    const bn=Number.isFinite(b.item.number)&&b.item.number>0?b.item.number:Number.MAX_SAFE_INTEGER;
+    return an-bn||a.index-b.index;
+  });
+  const missingFloors=new Map<string,number>();
+  const zoneRanks=new Map<string,Map<string,number>>();
+  const groupKey=(d:DefectItem)=>String(d.zone??'').trim();
+  for(const {item} of source){
+    if(!floorRank.has(item.floorId)&&!missingFloors.has(item.floorId))missingFloors.set(item.floorId,missingFloors.size);
+    let ranks=zoneRanks.get(item.floorId);
+    if(!ranks){ranks=new Map();zoneRanks.set(item.floorId,ranks);}
+    const key=groupKey(item);
+    if(!ranks.has(key))ranks.set(key,ranks.size);
+  }
+  const rank=(d:DefectItem)=>floorRank.get(d.floorId)??(floorRank.size+(missingFloors.get(d.floorId)??0));
+  source.sort((a,b)=>rank(a.item)-rank(b.item)||
+    (zoneRanks.get(a.item.floorId)?.get(groupKey(a.item))??0)-(zoneRanks.get(b.item.floorId)?.get(groupKey(b.item))??0));
+  const defects=source.map(({item},index)=>item.number===index+1?item:{...item,number:index+1});
+  return defects.every((item,index)=>item===proj.defects[index])?proj:{...proj,defects};
+}
+
 export function migrateProject(proj: ProjectFile): ProjectFile {
-  return {
+  return orderProjectDefects({
     ...proj,
     floors: (proj.floors || []).map((fl) => ({
       ...fl,
@@ -122,7 +150,7 @@ export function migrateProject(proj: ProjectFile): ProjectFile {
       afterImg: d.afterImg ?? null,
       severity: normalizeSeverity(d.severity),
     })),
-  };
+  });
 }
 
 export function createDefaultSirinaphaProject(): ProjectFile {
