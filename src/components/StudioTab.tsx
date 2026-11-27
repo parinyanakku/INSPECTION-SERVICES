@@ -698,9 +698,9 @@ export const StudioTab: React.FC<StudioTabProps> = ({
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 items-start">
       <EditorContextMenu point={context.point} actions={contextActions} onClose={context.close} closeLabel={tr('ปิดเมนู','Close menu')}/>
       {/* LEFT: Interactive Floor Plan Studio */}
-      <div className="min-w-0 lg:col-span-6 xl:col-span-7 bg-white rounded-2xl border border-slate-200 p-3 sm:p-4">
+      <div className="min-w-0 lg:col-span-6 xl:col-span-7 bg-white rounded-2xl border border-slate-200 p-2.5 sm:p-4">
         {/* Floor Tabs */}
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2 sm:mb-3">
           <div className="flex flex-wrap items-center gap-1.5">
             {project.floors.map((f) => {
               const cnt = project.defects.filter((d) => d.floorId === f.id).length;
@@ -739,7 +739,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                 onClick={()=>setRenameFloor({id:activeFloor.id,name:activeFloor.name})}
                 className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 whitespace-nowrap cursor-pointer flex items-center gap-1">
                 <Pencil className="w-3.5 h-3.5"/>
-                {lang==='en'?'Rename floor':'เปลี่ยนชื่อชั้น'}
+                <span className="sm:hidden">{lang==='en'?'Rename':'เปลี่ยนชื่อ'}</span><span className="hidden sm:inline">{lang==='en'?'Rename floor':'เปลี่ยนชื่อชั้น'}</span>
               </button>
             )}
             {project.floors.length > 1 && activeFloor && (
@@ -771,10 +771,10 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         )}
 
         {/* Floor Controls */}
-        <div className="flex flex-wrap items-center gap-2 mb-3 pb-3 border-b border-slate-100">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-2 sm:mb-3 pb-2 sm:pb-3 border-b border-slate-100">
           <label data-tour="floor" className="text-xs px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold cursor-pointer transition-colors flex items-center gap-1.5 whitespace-nowrap">
             <Upload className="w-3.5 h-3.5" />
-            {t.uploadFloorBtn}
+            <span className="sm:hidden">{lang==='en'?'Upload plan':'อัปโหลดแปลน'}</span><span className="hidden sm:inline">{t.uploadFloorBtn}</span>
             <input
               type="file"
 
@@ -879,17 +879,23 @@ export const StudioTab: React.FC<StudioTabProps> = ({
             onDone={() => {setEditingFloorId(null); setShowZoneOverlays(true);}} />
         ) : (
         <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 border border-slate-200 p-2 text-xs">
-            <span className="font-semibold">{lang==='en'?'Pin size':'ขนาดหมุด'}</span>
-            <input aria-label={lang==='en'?'Pin size':'ขนาดหมุด'} type="range" min={14} max={32} step={1} value={pinSize} onChange={ev=>setPinSize(+ev.target.value)} className="w-24 accent-blue-700"/>
-            <span className="tabular-nums min-w-9">{pinSize}px</span>
-            <span className="font-semibold ml-1">{lang==='en'?'Zoom':'ซูมแปลน'}</span>
+          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-1.5 sm:gap-2 rounded-lg bg-slate-50 border border-slate-200 p-2 text-xs">
+            <div className="flex items-center gap-2 sm:contents min-w-0">
+            <span className="font-semibold shrink-0">{lang==='en'?'Pin size':'ขนาดหมุด'}</span>
+            <input aria-label={lang==='en'?'Pin size':'ขนาดหมุด'} type="range" min={14} max={32} step={1} value={pinSize} onChange={ev=>setPinSize(+ev.target.value)} className="flex-1 min-w-0 sm:flex-none sm:w-24 accent-blue-700"/>
+            <span className="tabular-nums min-w-9 text-right">{pinSize}px</span>
+            </div>
+            <div className="flex items-center gap-1.5 sm:contents min-w-0">
+            <span className="font-semibold shrink-0 sm:ml-1">{lang==='en'?'Zoom':'ซูมแปลน'}</span>
             <button type="button" onClick={()=>changeZoom(planZoom-25)} className="border bg-white rounded px-2 py-1 font-bold" aria-label="Zoom out">−</button>
-            <input aria-label={lang==='en'?'Plan zoom':'ซูมแปลน'} type="range" min={50} max={300} step={5} value={planZoom} onChange={ev=>changeZoom(+ev.target.value)} className="w-20 accent-blue-700"/>
+            <input aria-label={lang==='en'?'Plan zoom':'ซูมแปลน'} type="range" min={50} max={300} step={5} value={planZoom} onChange={ev=>changeZoom(+ev.target.value)} className="flex-1 min-w-0 sm:flex-none sm:w-20 accent-blue-700"/>
             <button type="button" onClick={()=>changeZoom(planZoom+25)} className="border bg-white rounded px-2 py-1 font-bold" aria-label="Zoom in">+</button>
-            <span className="tabular-nums">{planZoom}%</span>
+            <span className="tabular-nums shrink-0">{planZoom}%</span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 sm:contents">
             <button type="button" onClick={()=>{changeZoom(100);const vp=planViewport.current;if(vp){vp.scrollLeft=0;vp.scrollTop=0;}}} className="border bg-white rounded px-2 py-1">{lang==='en'?'Fit':'พอดีจอ'}</button>
             <button type="button" aria-pressed={panMode} onClick={()=>setPanMode(v=>!v)} className={'border rounded px-2 py-1 '+(panMode?'bg-blue-700 text-white':'bg-white')}>{lang==='en'?'Pan':'เลื่อนแปลน'}</button>
+            </div>
           </div>
           <div ref={planViewport} className={'relative w-full aspect-[4/3] overflow-auto rounded-xl border border-slate-300 bg-slate-50 '+(panMode?'cursor-grab active:cursor-grabbing touch-none':'')}
             {...context.bind}
