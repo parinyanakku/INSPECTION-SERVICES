@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.72",
+  "latest": "v1.0.77",
   "releases": [
+    {
+      "version": "v1.0.77",
+      "build": 77,
+      "storageSchema": 2,
+      "date": "2026-11-27T02:09:56.673Z",
+      "notes": "Close context menu before exiting fullscreen with Escape",
+      "commit": "8f7dbb761f7ce1adbb025c8e96eacb773384ef3e"
+    },
     {
       "version": "v1.0.72",
       "build": 72,
