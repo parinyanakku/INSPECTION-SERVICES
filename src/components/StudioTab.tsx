@@ -772,7 +772,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
 
         {/* Floor Controls */}
         <div className="flex flex-wrap items-center gap-2 mb-3 pb-3 border-b border-slate-100">
-          <label className="text-xs px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold cursor-pointer transition-colors flex items-center gap-1.5 whitespace-nowrap">
+          <label data-tour="floor" className="text-xs px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold cursor-pointer transition-colors flex items-center gap-1.5 whitespace-nowrap">
             <Upload className="w-3.5 h-3.5" />
             {t.uploadFloorBtn}
             <input
@@ -799,6 +799,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
 
           <button
             type="button"
+            data-tour="zone"
             onClick={() => {
               setEditingFloorId(null);
               const next = !isZoneSetupMode;
@@ -1095,7 +1096,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
           {/* (1) Header + Upload Photo Button */}
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <h3 className="font-bold text-slate-900 text-sm sm:text-base">{t.markupTitle}</h3>
-            <label className="text-xs px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold cursor-pointer flex items-center gap-1.5 whitespace-nowrap">
+            <label data-tour="photo" className="text-xs px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold cursor-pointer flex items-center gap-1.5 whitespace-nowrap">
               <Upload className="w-3.5 h-3.5" />
               {t.uploadFieldPhotoBtn}
               <input type="file" className="hidden" onChange={handleMarkupUpload} />
@@ -1123,6 +1124,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <button
                 type="button"
+                data-tour="analyze"
                 onClick={handleAnalyzeWithAI}
                 disabled={isAnalyzing}
                 className="py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs sm:text-sm font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
@@ -1384,7 +1386,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                   </div>
                   </div>
                 {/* Two-step pin placement, shared with the plan zone tabs. */}
-                <div className="min-w-0 lg:col-span-4 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div data-tour="pin" className="min-w-0 lg:col-span-4 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <h4 className="flex items-center gap-1.5 text-sm font-bold text-slate-800"><MapPin className="w-4 h-4"/>{tr('ปักหมุดลงแปลน','Place pin on plan')} · {activeFloor?.name}</h4>
                   <div className="text-xs font-semibold text-slate-700">{tr('1. เลือกโซน','1. Select zone')}</div>
                   {zoneTabs(true)}
