@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.107",
+  "latest": "v1.0.108",
   "releases": [
+    {
+      "version": "v1.0.108",
+      "build": 108,
+      "storageSchema": 2,
+      "date": "2026-11-27T06:16:56.261Z",
+      "notes": "Add backward-compatible report table layout preference",
+      "commit": "e26abb04e4a45ad618f810a60db6e44a9b29767a"
+    },
     {
       "version": "v1.0.107",
       "build": 107,
