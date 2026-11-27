@@ -5,6 +5,7 @@ import {
   ArrowUp,
   ArrowDown,
   Building2,
+  BookOpen,
   Globe,
   ClipboardList,
   Download,
@@ -73,6 +74,7 @@ import { StudioTab } from './components/StudioTab';
 import { DefectListTab } from './components/DefectListTab';
 import { ExportTab } from './components/ExportTab';
 import { ClientWebsiteTab } from './components/ClientWebsiteTab';
+import { BuyerTour,buyerTourSeen,markBuyerTourSeen } from './components/BuyerTour';
 import {
   ApiKeyGuideModal,
   ApiKeySettingsModal,
@@ -175,6 +177,10 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
   const [activeTab, setActiveTab] = useState<WorkspaceTab>(initialView.tab);
   const [activeFloorId, setActiveFloorId] = useState<string | null>(initialView.floorId);
   const [hubSearch, setHubSearch] = useState('');
+  const [tourActive,setTourActive]=useState(false);
+  const [tourOffer,setTourOffer]=useState(()=>!isAdmin&&!buyerTourSeen());
+  const closeTour=useCallback(()=>{setTourActive(false);setTourOffer(false);markBuyerTourSeen();},[]);
+  const startTour=()=>{setTourOffer(false);setTourActive(true);markBuyerTourSeen();};
   const [pageTheme,setPageTheme]=useState<PageTheme>(readPageTheme);
   React.useLayoutEffect(()=>{document.documentElement.dataset.inspectionTheme=pageTheme;try{localStorage.setItem(PAGE_THEME_KEY,pageTheme);}catch{}return()=>{delete document.documentElement.dataset.inspectionTheme;};},[pageTheme]);
 
@@ -1049,6 +1055,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
             </div>
 
             <div className="flex flex-wrap items-center justify-start md:justify-end gap-2 min-w-0">
+              {!isAdmin&&<button type="button" onClick={startTour} className="inline-flex items-center gap-1.5 rounded-xl border border-blue-300 bg-blue-50 px-3 py-2 text-xs sm:text-sm font-semibold text-blue-800 hover:bg-blue-100 whitespace-nowrap"><BookOpen className="w-4 h-4"/>{lang==='en'?'Guided tour':'แนะนำการใช้งาน'}</button>}
               <label className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700">
                 <Palette className="w-4 h-4 shrink-0"/>
                 <span className="whitespace-nowrap">{lang==='en'?'Theme':'โทนสี'}</span>
@@ -1059,6 +1066,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
               <VersionUpdate lang={lang} onBackup={handleVersionBackup} onPrepare={handlePrepareVersionUpdate} />
               <button
                 type="button"
+                data-tour="brand"
                 onClick={() => setShowBrandModal(true)}
                 className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
               >
@@ -1068,6 +1076,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
               {activeProject ? (
                 <button
                   type="button"
+                  data-tour="hub"
                   onClick={() => setActiveProjectId(null)}
                   className="px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
                 >
@@ -1077,6 +1086,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
               ) : (
                 <button
                   type="button"
+                  data-tour="project"
                   onClick={() => setProjectModalTarget({ open: true, project: null })}
                   className="px-4 py-2 rounded-xl brand-bg hover:opacity-95 text-white text-xs sm:text-sm font-semibold transition-opacity flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
                 >
@@ -1117,7 +1127,8 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
               </button>
               <button
                 type="button"
-                onClick={() => setShowApiKeyModal(true)}
+                data-tour="api"
+                 onClick={() => setShowApiKeyModal(true)}
                 className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer"
               >
                 {t.apiKeySettingsBtn}
@@ -1161,6 +1172,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
                 </button>
                 <button
                   type="button"
+                  data-tour="backup"
                   onClick={handleBackupAllJson}
                   className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
                 >
@@ -1380,6 +1392,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
                       <div className="mt-4 pt-3.5 border-t border-slate-100">
                         <button
                           type="button"
+                          data-tour="open-project"
                           onClick={() => {
                             setActiveProjectId(p.id);
                             setActiveTab('studio');
@@ -1450,6 +1463,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
               <div className="flex flex-wrap gap-2 mt-4">
                 <button
                   type="button"
+                  data-tour="tab-studio"
                   onClick={() => setActiveTab('studio')}
                   className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                     activeTab === 'studio'
@@ -1462,6 +1476,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
                 </button>
                 <button
                   type="button"
+                  data-tour="tab-list"
                   onClick={() => setActiveTab('list')}
                   className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer tabular-nums ${
                     activeTab === 'list'
@@ -1474,6 +1489,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
                 </button>
                 <button
                   type="button"
+                  data-tour="tab-export"
                   onClick={() => setActiveTab('export')}
                   className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                     activeTab === 'export'
@@ -1484,7 +1500,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
                   <Download className="w-4 h-4" />
                   {t.tabExport}
                 </button>
-                <button type="button" onClick={()=>setActiveTab('client')} className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${activeTab==='client'?'brand-bg text-white':'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}>
+                <button type="button" data-tour="tab-client" onClick={()=>setActiveTab('client')} className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${activeTab==='client'?'brand-bg text-white':'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}>
                   <Globe className="w-4 h-4"/>{lang==='en'?'Customer website':'เว็บไซต์ลูกค้า'}
                 </button>
               </div>
@@ -1546,6 +1562,13 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
           </div>
         )}
       </main>
+
+      {!isAdmin&&tourOffer&&!tourActive&&<div role="region" aria-label={lang==='en'?'Welcome to the guided tour':'ยินดีต้อนรับ'} className="fixed bottom-4 right-4 z-[9000] w-[min(92vw,390px)] rounded-2xl border border-blue-300 bg-white p-4 shadow-2xl">
+        <div className="flex items-center gap-2 font-bold text-slate-900"><BookOpen className="w-5 h-5 text-blue-600"/>{lang==='en'?'New here?':'เริ่มใช้งานครั้งแรก?'}</div>
+        <p className="mt-2 text-sm text-slate-600">{lang==='en'?'Learn with a step-by-step guide on the actual app. No manual needed.':'เรียนรู้จากปุ่มจริงทีละขั้น ตั้งแต่สร้างโครงการจนส่งรายงานให้ลูกค้า ไม่ต้องเปิดคู่มือ'}</p>
+        <div className="mt-3 flex flex-wrap gap-2 justify-end"><button type="button" onClick={closeTour} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">{lang==='en'?'Later':'ไว้ภายหลัง'}</button><button type="button" onClick={startTour} className="rounded-lg bg-blue-600 text-white px-4 py-2 text-sm font-semibold">{lang==='en'?'Start tour':'เริ่มแนะนำการใช้งาน'}</button></div>
+      </div>}
+      {!isAdmin&&<BuyerTour lang={lang} active={tourActive} hasProject={!!activeProject} hasProjects={projects.length>0} tab={activeTab} paused={!!(showBrandModal||showApiKeyModal||showApiKeyGuideModal||projectModalTarget.open||defectModalTarget.open||annotateTarget||zoneModalTargetId||showSaveAsModal||lightbox||confirmState||exportBatch)} onClose={closeTour}/>}
 
       {/* Full-Screen PDF Generation Overlay (covers #pdfRenderContainer at z-index 9998) */}
       {isExportingPdf && pdfOverlayVisible && (
