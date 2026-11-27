@@ -6,6 +6,7 @@ import {
   ArrowDown,
   Building2,
   BookOpen,
+  Film,
   Globe,
   ClipboardList,
   Download,
@@ -75,6 +76,7 @@ import { DefectListTab } from './components/DefectListTab';
 import { ExportTab } from './components/ExportTab';
 import { ClientWebsiteTab } from './components/ClientWebsiteTab';
 import { BuyerTour,buyerTourSeen,markBuyerTourSeen } from './components/BuyerTour';
+import { BuyerVideoLessons } from './components/BuyerVideoLessons';
 import {
   ApiKeyGuideModal,
   ApiKeySettingsModal,
@@ -178,9 +180,12 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
   const [activeFloorId, setActiveFloorId] = useState<string | null>(initialView.floorId);
   const [hubSearch, setHubSearch] = useState('');
   const [tourActive,setTourActive]=useState(false);
+  const [videoOpen,setVideoOpen]=useState(false);
+  const closeVideo=useCallback(()=>setVideoOpen(false),[]);
+  const openVideo=()=>{setTourOffer(false);setTourActive(false);setVideoOpen(true);markBuyerTourSeen();};
   const [tourOffer,setTourOffer]=useState(()=>!isAdmin&&!buyerTourSeen());
   const closeTour=useCallback(()=>{setTourActive(false);setTourOffer(false);markBuyerTourSeen();},[]);
-  const startTour=()=>{setTourOffer(false);setTourActive(true);markBuyerTourSeen();};
+  const startTour=()=>{setVideoOpen(false);setTourOffer(false);setTourActive(true);markBuyerTourSeen();};
   const [pageTheme,setPageTheme]=useState<PageTheme>(readPageTheme);
   React.useLayoutEffect(()=>{document.documentElement.dataset.inspectionTheme=pageTheme;try{localStorage.setItem(PAGE_THEME_KEY,pageTheme);}catch{}return()=>{delete document.documentElement.dataset.inspectionTheme;};},[pageTheme]);
 
@@ -1055,6 +1060,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
             </div>
 
             <div className="flex flex-wrap items-center justify-start md:justify-end gap-2 min-w-0">
+              {!isAdmin&&<button type="button" onClick={openVideo} className="inline-flex items-center gap-1.5 rounded-xl border border-violet-300 bg-violet-50 px-3 py-2 text-xs sm:text-sm font-semibold text-violet-800 hover:bg-violet-100 whitespace-nowrap"><Film className="w-4 h-4"/>{lang==='en'?'Video lessons':'วิดีโอสอนใช้งาน'}</button>}
               {!isAdmin&&<button type="button" onClick={startTour} className="inline-flex items-center gap-1.5 rounded-xl border border-blue-300 bg-blue-50 px-3 py-2 text-xs sm:text-sm font-semibold text-blue-800 hover:bg-blue-100 whitespace-nowrap"><BookOpen className="w-4 h-4"/>{lang==='en'?'Guided tour':'แนะนำการใช้งาน'}</button>}
               <label className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700">
                 <Palette className="w-4 h-4 shrink-0"/>
@@ -1563,11 +1569,12 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
         )}
       </main>
 
-      {!isAdmin&&tourOffer&&!tourActive&&<div role="region" aria-label={lang==='en'?'Welcome to the guided tour':'ยินดีต้อนรับ'} className="fixed bottom-4 right-4 z-[9000] w-[min(92vw,390px)] rounded-2xl border border-blue-300 bg-white p-4 shadow-2xl">
+      {!isAdmin&&tourOffer&&!tourActive&&!videoOpen&&<div role="region" aria-label={lang==='en'?'Welcome to the guided tour':'ยินดีต้อนรับ'} className="fixed bottom-4 right-4 z-[9000] w-[min(92vw,390px)] rounded-2xl border border-blue-300 bg-white p-4 shadow-2xl">
         <div className="flex items-center gap-2 font-bold text-slate-900"><BookOpen className="w-5 h-5 text-blue-600"/>{lang==='en'?'New here?':'เริ่มใช้งานครั้งแรก?'}</div>
         <p className="mt-2 text-sm text-slate-600">{lang==='en'?'Learn with a step-by-step guide on the actual app. No manual needed.':'เรียนรู้จากปุ่มจริงทีละขั้น ตั้งแต่สร้างโครงการจนส่งรายงานให้ลูกค้า ไม่ต้องเปิดคู่มือ'}</p>
         <div className="mt-3 flex flex-wrap gap-2 justify-end"><button type="button" onClick={closeTour} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">{lang==='en'?'Later':'ไว้ภายหลัง'}</button><button type="button" onClick={startTour} className="rounded-lg bg-blue-600 text-white px-4 py-2 text-sm font-semibold">{lang==='en'?'Start tour':'เริ่มแนะนำการใช้งาน'}</button></div>
       </div>}
+      {!isAdmin&&videoOpen&&<BuyerVideoLessons lang={lang} onClose={closeVideo} onTour={startTour}/>}
       {!isAdmin&&<BuyerTour lang={lang} active={tourActive} hasProject={!!activeProject} hasProjects={projects.length>0} tab={activeTab} paused={!!(showBrandModal||showApiKeyModal||showApiKeyGuideModal||projectModalTarget.open||defectModalTarget.open||annotateTarget||zoneModalTargetId||showSaveAsModal||lightbox||confirmState||exportBatch)} onClose={closeTour}/>}
 
       {/* Full-Screen PDF Generation Overlay (covers #pdfRenderContainer at z-index 9998) */}
