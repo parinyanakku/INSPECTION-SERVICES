@@ -14,10 +14,10 @@ export function translateSeverity(sev: SeverityLevel, lang: AppLanguage): string
 export function translateDefectStatus(status: DefectStatus, lang: AppLanguage): string {
   if (lang === 'en') {
     if (status === 'แก้ไขแล้ว') return 'Fixed';
-    if (status === 'กำลังแก้ไข') return 'In Progress';
+    if (status === 'กำลังแก้ไข') return 'Repaired but incomplete';
     return 'Pending';
   }
-  return status;
+  return status === 'กำลังแก้ไข' ? 'แก้แล้วแต่ยังไม่เรียบร้อย' : status;
 }
 
 export function translateProjectStatus(status: ProjectStatus, lang: AppLanguage): string {
