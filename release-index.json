@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.87",
+  "latest": "v1.0.88",
   "releases": [
+    {
+      "version": "v1.0.88",
+      "build": 88,
+      "storageSchema": 2,
+      "date": "2026-11-27T03:01:53.838Z",
+      "notes": "Add preview-only photo zoom up to 600 percent and pan controls with coordinate-safe markup",
+      "commit": "e58266df175ab1ab67dda5dffa427c01a4dba147"
+    },
     {
       "version": "v1.0.87",
       "build": 87,
