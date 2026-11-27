@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.179",
+  "latest": "v1.0.182",
   "releases": [
+    {
+      "version": "v1.0.182",
+      "build": 182,
+      "storageSchema": 2,
+      "date": "2026-11-27T08:49:43.394Z",
+      "notes": "Simplify file management and buyer guide for two-button Drive workflow",
+      "commit": "cd8ef92d4abb536fdcc72ef1f9a3258f3110bdf6"
+    },
     {
       "version": "v1.0.179",
       "build": 179,
