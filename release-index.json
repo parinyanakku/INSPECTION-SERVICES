@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.68",
+  "latest": "v1.0.70",
   "releases": [
+    {
+      "version": "v1.0.70",
+      "build": 70,
+      "storageSchema": 2,
+      "date": "2026-11-27T02:03:16.695Z",
+      "notes": "Add scoped keyboard undo redo duplicate and arrow nudging to custom floor plan editor",
+      "commit": "533272a12d402d528d09c547ba5b08652724b4ca"
+    },
     {
       "version": "v1.0.68",
       "build": 68,
