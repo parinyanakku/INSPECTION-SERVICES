@@ -24,6 +24,8 @@ jobs:
           node-version: '22'
       - run: npm install --no-package-lock
       - run: npm run build -- --base=./
+        env:
+          VITE_REPORT_PDF_CONVERTER_URL: ${{ vars.REPORT_PDF_CONVERTER_URL }}
       - name: Archive immutable release and assemble Pages site
         shell: bash
         run: |
