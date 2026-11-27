@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.114",
+  "latest": "v1.0.118",
   "releases": [
+    {
+      "version": "v1.0.118",
+      "build": 118,
+      "storageSchema": 2,
+      "date": "2026-11-27T06:24:29.239Z",
+      "notes": "Center report table content and provide clearance around monochrome status labels and checks",
+      "commit": "b85c92dadb46c286533320f575173f4591934596"
+    },
     {
       "version": "v1.0.114",
       "build": 114,
