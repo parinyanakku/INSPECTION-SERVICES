@@ -576,6 +576,14 @@ export function buildSharedReportPages(
   reportBookInput?: ReportBookData
 ): BuiltReportPage[] {
   const rb = reportBookInput || loadReportBookData(proj, lang);
+  const owners=(rb.clientName||'').split(/\r?\n/).map(v=>v.trim()).filter(Boolean);
+  const fitText=(value:string,normal:number,min:number,capacity:number)=>{
+    const length=Array.from(value.normalize('NFC').replace(/[\u0e31\u0e34-\u0e3a\u0e47-\u0e4e]/g,'')).length;
+    return Math.max(min,Math.min(normal,Math.floor(normal*capacity/Math.max(1,length)*10)/10));
+  };
+  const ownerFont=fitText(owners.reduce((a,b)=>a.length>=b.length?a:b,''),15.6,11,43);
+  const ownerHtml=owners.map(v=>escapeHtml(v)).join('<br />')||'-';
+  const titleFont=fitText(rb.coverTitle||'',32.5,18,37);
   const custom = {
     ...createDefaultCustomExportSettings(),
     ...(rb.customExport || {}),
@@ -914,7 +922,7 @@ export function buildSharedReportPages(
             ? `<div style="margin:0 auto 18px auto;"><img data-pdf-photo="true" src="${coverGraphicSrc}" style="max-width:460px; max-height:300px; width:auto; height:auto; object-fit:contain; display:inline-block;" /></div>`
             : ''
         }
-        <div style="font-size:32.5px; font-weight:800; color:#0f172a; line-height:1.3; margin-bottom:10px;">
+        <div style="font-size:${titleFont}px; font-weight:800; color:#0f172a; line-height:1.3; margin-bottom:10px; overflow-wrap:anywhere; word-break:normal;">
           ${escapeHtml(rb.coverTitle)}
         </div>
         <div data-pdf-center-text="true" style="display:inline-block; padding:7px 18px 11px; text-align:center; vertical-align:middle; line-height:1.45; border-radius:6px; background:#eff6ff; border:1.5px solid ${accentHex}; color:${accentHex}; font-size:16.9px; font-weight:700; margin-bottom:20px;">
@@ -938,8 +946,8 @@ export function buildSharedReportPages(
             <td data-pdf-center-text="true" style="border:1px solid #cbd5e1; padding:8px 13px 11px; vertical-align:middle; line-height:1.5; overflow-wrap:break-word; text-align:center; font-weight:700; color:${accentHex}; background:#eff6ff;">
               ${L.clientLabel}
             </td>
-            <td data-pdf-center-text="true" style="border:1px solid #cbd5e1; padding:8px 13px 11px; vertical-align:middle; line-height:1.5; overflow-wrap:break-word; color:#0f172a; font-weight:700;">
-              ${escapeHtml(rb.clientName)}
+            <td data-pdf-center-text="true" style="border:1px solid #cbd5e1; padding:8px 13px 11px; vertical-align:middle; line-height:1.5; overflow-wrap:break-word; color:#0f172a; font-weight:700; font-size:${ownerFont}px; line-height:1.35; overflow-wrap:anywhere;">
+              ${ownerHtml}
             </td>
           </tr>
           <tr>
@@ -1083,7 +1091,7 @@ export function buildSharedReportPages(
       </colgroup>
       <tr>
         <td style="border:1px solid #cbd5e1; padding:7px 12px 9px; vertical-align:middle; line-height:1.4;"><strong>${L.projectLabel}:</strong> ${escapeHtml(rb.coverTitle)}</td>
-        <td style="border:1px solid #cbd5e1; padding:7px 12px 9px; vertical-align:middle; line-height:1.4;"><strong>${L.clientLabel}:</strong> ${escapeHtml(rb.clientName)}</td>
+        <td style="border:1px solid #cbd5e1; padding:7px 12px 9px; vertical-align:middle; line-height:1.4; overflow-wrap:anywhere; font-size:${Math.min(14.4,fitText(owners.reduce((a,b)=>a.length>=b.length?a:b,''),14.4,11,32))}px;"><strong>${L.clientLabel}:</strong> ${ownerHtml}</td>
       </tr>
       <tr>
         <td style="border:1px solid #cbd5e1; padding:7px 12px 9px; vertical-align:middle; line-height:1.4;"><strong>${L.locationLabel}:</strong> ${escapeHtml(rb.locationText)}</td>
