@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.64",
+  "latest": "v1.0.65",
   "releases": [
+    {
+      "version": "v1.0.65",
+      "build": 65,
+      "storageSchema": 2,
+      "date": "2026-11-27T02:01:03.907Z",
+      "notes": "Add cooperative PDF cancellation and page progress without altering report layout",
+      "commit": "b800d9c0c7d86031b30f6ea60060f4270098dc3d"
+    },
     {
       "version": "v1.0.64",
       "build": 64,
