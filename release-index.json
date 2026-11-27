@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.91",
+  "latest": "v1.0.92",
   "releases": [
+    {
+      "version": "v1.0.92",
+      "build": 92,
+      "storageSchema": 2,
+      "date": "2026-11-27T03:35:45.656Z",
+      "notes": "Guard inset drag during crop and fullscreen changes and preserve cropped image positioning",
+      "commit": "d79b401f5f415fd4490740e59c48e3bdfc0cb630"
+    },
     {
       "version": "v1.0.91",
       "build": 91,
