@@ -373,8 +373,10 @@ export interface SharedReportAssets {
 
 export async function prepareSharedReportAssets(
   proj: ProjectFile,
-  brand: BrandConfig
+  brand: BrandConfig,
+  signal?:AbortSignal
 ): Promise<SharedReportAssets> {
+  signal?.throwIfAborted();
   await prepareReportCanvasFonts();
   const sorted = [...proj.defects].sort((a, b) => (a.number || 0) - (b.number || 0));
 
@@ -401,6 +403,7 @@ export async function prepareSharedReportAssets(
     floorEntriesPromise,
   ]);
 
+  signal?.throwIfAborted();
   const floorplanPngMap: Record<string, string> = {};
   const floorplanZonePngMap: Record<string, string> = {};
   floorEntries.forEach(([id, pinDataUrl, zoneDataUrl]) => {
@@ -419,7 +422,9 @@ export async function prepareSharedReportAssets(
       const base = floorplanZonePngMap[floor.id];
       if (!base) continue;
       const plan = await loadImageElement(base);
+      let processed=0;
       for (const d of sorted) {
+        signal?.throwIfAborted();
         if (d.floorId !== floor.id || !Number.isFinite(d.x) || !Number.isFinite(d.y)) continue;
         loc.clearRect(0,0,640,480);
         loc.drawImage(plan,0,0,640,480);
@@ -430,6 +435,7 @@ export async function prepareSharedReportAssets(
         loc.font='bold 19px sans-serif';loc.textAlign='center';loc.textBaseline='middle';loc.fillStyle='#ffffff';
         loc.fillText(String(d.number),x,y,30);
         defectLocationPngMap[d.id]=locationCanvas.toDataURL('image/png');
+        if(++processed%4===0)await new Promise<void>(resolve=>setTimeout(resolve,0));
       }
     }
   } finally {locationCanvas.width=1;locationCanvas.height=1;}
@@ -1531,7 +1537,7 @@ async function convertReportWordToPDF(pages:BuiltReportPage[],filename:string,si
   if(endpoint.protocol!=='https:' && !(endpoint.protocol==='http:'&&['localhost','127.0.0.1'].includes(endpoint.hostname)))throw Error('PDF converter must use HTTPS');
   if(endpoint.username||endpoint.password)throw Error('Invalid PDF converter URL');
   signal?.throwIfAborted();
-  const docx=await buildNativeWordReport(pages);
+  const docx=await buildNativeWordReport(pages,signal);
   signal?.throwIfAborted();
   const controller=new AbortController();
   const cancel=()=>controller.abort();
@@ -1648,7 +1654,7 @@ export async function exportProjectPDF(
   signal?.throwIfAborted();
   const rb = reportBookInput || loadReportBookData(proj, lang);
   const fileName=inspectionDownloadName(proj,'pdf',rb);
-  const assets = await prepareSharedReportAssets(proj, brand);
+  const assets = await prepareSharedReportAssets(proj, brand,signal);
   signal?.throwIfAborted();
   const pages = buildSharedReportPages(proj, brand, lang, assets, rb);
   const large=useLargeReportMode(proj,pages);
@@ -1815,13 +1821,16 @@ export async function exportProjectWord(
   proj: ProjectFile,
   brand: BrandConfig,
   lang: AppLanguage = 'th',
-  reportBookInput?: ReportBookData
+  reportBookInput?: ReportBookData,
+  signal?:AbortSignal
 ): Promise<void> {
+  signal?.throwIfAborted();
   const rb = reportBookInput || loadReportBookData(proj, lang);
-  const assets = await prepareSharedReportAssets(proj, brand);
+  const assets = await prepareSharedReportAssets(proj, brand,signal);
+  signal?.throwIfAborted();
   const pages = buildSharedReportPages(proj, brand, lang, assets, rb);
-  await optimizeExportPages(pages,useLargeReportMode(proj,pages));
-  await downloadNativeWordReport(pages, inspectionDownloadName(proj,'docx',rb));
+  await optimizeExportPages(pages,useLargeReportMode(proj,pages),signal);
+  await downloadNativeWordReport(pages, inspectionDownloadName(proj,'docx',rb),signal);
 }
 
 function estimateRowHeight(texts: Array<{ text: string; colWidth: number }>): number {
@@ -1843,8 +1852,10 @@ export async function exportProjectExcel(
   proj: ProjectFile,
   brand: BrandConfig,
   lang: AppLanguage = 'th',
-  reportBookInput?: ReportBookData
+  reportBookInput?: ReportBookData,
+  signal?:AbortSignal
 ): Promise<'xlsx' | 'csv'> {
+  signal?.throwIfAborted();
   const sorted = [...proj.defects].sort((a, b) => (a.number || 0) - (b.number || 0));
   const isEn = lang === 'en';
   const total = sorted.length;
@@ -1858,10 +1869,12 @@ export async function exportProjectExcel(
     workbook.created = new Date();
 
     const rb=reportBookInput || loadReportBookData(proj,lang);
-    const assets=await prepareSharedReportAssets(proj,brand);
+    const assets=await prepareSharedReportAssets(proj,brand,signal);
+    signal?.throwIfAborted();
     const pages=buildSharedReportPages(proj,brand,lang,assets,rb);
-    await optimizeExportPages(pages,useLargeReportMode(proj,pages));
-    await appendPrintableExcelReport(workbook,pages,lang);
+    await optimizeExportPages(pages,useLargeReportMode(proj,pages),signal);
+    await appendPrintableExcelReport(workbook,pages,lang,signal);
+    signal?.throwIfAborted();
 
     const ws = workbook.addWorksheet('Defect List', {
       views: [{ state: 'frozen', ySplit: 6 }],
@@ -2059,7 +2072,9 @@ export async function exportProjectExcel(
     // Keep the editable source list separate from the formatted report.
     ws.state='hidden';
     workbook.views=[{firstSheet:0,activeTab:0,visibility:'visible',x:0,y:0,width:18000,height:10000}];
+    signal?.throwIfAborted();
     const buffer = await workbook.xlsx.writeBuffer();
+    signal?.throwIfAborted();
     const blob = new Blob([buffer], {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
