@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.55",
+  "latest": "v1.0.56",
   "releases": [
+    {
+      "version": "v1.0.56",
+      "build": 56,
+      "storageSchema": 2,
+      "date": "2026-11-27T01:12:35.415Z",
+      "notes": "Use five-column landscape report with single-pin plan, aligned photos and three status check boxes",
+      "commit": "a8f720ef171f1e503f2193fce3d3f3ea23b5e4da"
+    },
     {
       "version": "v1.0.55",
       "build": 55,
