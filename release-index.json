@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.92",
+  "latest": "v1.0.93",
   "releases": [
+    {
+      "version": "v1.0.93",
+      "build": 93,
+      "storageSchema": 2,
+      "date": "2026-11-27T03:37:52.638Z",
+      "notes": "Combine crop insert image and zoom controls into one compact responsive toolbar",
+      "commit": "ee04efcd23e5e6a84af5a0e148f898fb4caf7158"
+    },
     {
       "version": "v1.0.92",
       "build": 92,
