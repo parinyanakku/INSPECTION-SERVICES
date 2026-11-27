@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.70",
+  "latest": "v1.0.71",
   "releases": [
+    {
+      "version": "v1.0.71",
+      "build": 71,
+      "storageSchema": 2,
+      "date": "2026-11-27T02:04:22.540Z",
+      "notes": "Add keyboard undo and redo for defect pin position changes on floor plan",
+      "commit": "5c69c955eea8d7c648b16140455e3131ba98ffb6"
+    },
     {
       "version": "v1.0.70",
       "build": 70,
