@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.173",
+  "latest": "v1.0.175",
   "releases": [
+    {
+      "version": "v1.0.175",
+      "build": 175,
+      "storageSchema": 2,
+      "date": "2026-11-27T08:22:31.106Z",
+      "notes": "Update guide for visible Drive status and fallback recovery",
+      "commit": "59f4b00daa279caed551ddbecbb1c3a5b4b47c3d"
+    },
     {
       "version": "v1.0.173",
       "build": 173,
