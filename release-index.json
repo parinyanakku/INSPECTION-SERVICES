@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.121",
+  "latest": "v1.0.122",
   "releases": [
+    {
+      "version": "v1.0.122",
+      "build": 122,
+      "storageSchema": 2,
+      "date": "2026-11-27T06:40:39.028Z",
+      "notes": "Queue all three report downloads sequentially with shared export lock and progress",
+      "commit": "fbc5484860d4c76c32b3825e6a8fe03968a00afb"
+    },
     {
       "version": "v1.0.121",
       "build": 121,
