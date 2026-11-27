@@ -8,6 +8,7 @@ import {
   Circle,
   Eraser,
   Maximize2,
+  Minus,
   Pen,
   RotateCcw,
   RotateCw,
@@ -148,6 +149,11 @@ export function drawMarkupShape(
       Math.abs(x2 - x1),
       Math.abs(y2 - y1)
     );
+  } else if (s.tool === 'line') {
+    ctx.beginPath();
+    ctx.moveTo(x1,y1);
+    ctx.lineTo(x2,y2);
+    ctx.stroke();
   } else if (s.tool === 'arrow') {
     ctx.beginPath();
     ctx.moveTo(x1, y1);
@@ -337,7 +343,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       return;
     }
     if(e.shiftKey||e.repeat||pendingTextPosRef.current||isDrawingRef.current||textDrag.current)return;
-    const shortcuts:Record<string,MarkupTool>={p:'pen',c:'circle',a:'arrow',r:'rect',t:'text'};
+    const shortcuts:Record<string,MarkupTool>={p:'pen',c:'circle',a:'arrow',r:'rect',t:'text',l:'line'};
     const next=shortcuts[key];
     if(next){e.preventDefault();e.stopPropagation();chooseTool(next);}
   };
@@ -598,6 +604,22 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     };
   };
 
+  // Snap in image pixel coordinates, not normalized square coordinates.
+  // Limit the snapped segment at the image edge without changing its angle.
+  const updateLineEnd=(shape:OrientedShape,e:React.PointerEvent<HTMLCanvasElement>,nx:number,ny:number)=>{
+    const img=loadedImageRef.current;
+    if(!e.shiftKey||!img){shape.x2=nx;shape.y2=ny;return;}
+    const {w,h}=orientedSize(img.naturalWidth,img.naturalHeight,rotationRef.current);
+    if(w<=0||h<=0){shape.x2=nx;shape.y2=ny;return;}
+    const dx=(nx-shape.x1)*w,dy=(ny-shape.y1)*h;
+    const theta=Math.round(Math.atan2(dy,dx)/(Math.PI/4))*Math.PI/4;
+    const ux=Math.cos(theta),uy=Math.sin(theta);
+    let len=Math.max(0,dx*ux+dy*uy);
+    if(Math.abs(ux)>1e-9)len=Math.min(len,(ux>0?(1-shape.x1)*w:shape.x1*w)/Math.abs(ux));
+    if(Math.abs(uy)>1e-9)len=Math.min(len,(uy>0?(1-shape.y1)*h:shape.y1*h)/Math.abs(uy));
+    shape.x2=Math.max(0,Math.min(1,shape.x1+len*ux/w));
+    shape.y2=Math.max(0,Math.min(1,shape.y1+len*uy/h));
+  };
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const drag=textDrag.current;
     if(drag&&drag.id===e.pointerId){
@@ -622,6 +644,8 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
         ...(currentShapeRef.current.points || []),
         { x: nx, y: ny },
       ];
+    } else if(currentShapeRef.current.tool==='line'){
+      updateLineEnd(currentShapeRef.current,e,nx,ny);
     } else {
       currentShapeRef.current.x2 = nx;
       currentShapeRef.current.y2 = ny;
@@ -645,6 +669,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     if(tap&&tap.id===e.pointerId&&Math.hypot(e.clientX-tap.x,e.clientY-tap.y)<=4){setPendingTextPos({x:tap.nx,y:tap.ny});setPendingTextValue('');return;}
     if (!isDrawingRef.current || !currentShapeRef.current) return;
     const s = currentShapeRef.current;
+    if(s.tool==='line'){const {nx,ny}=getPos(e,e.currentTarget);updateLineEnd(s,e,nx,ny);}
     isDrawingRef.current = false;
     currentShapeRef.current = null;
     const hasMovement =
@@ -743,6 +768,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     { id: 'pen', label: t.toolPen, icon: <Pen className="w-3.5 h-3.5" /> },
     { id: 'circle', label: t.toolCircle, icon: <Circle className="w-3.5 h-3.5" /> },
     { id: 'arrow', label: t.toolArrow, icon: <ArrowUpRight className="w-3.5 h-3.5" /> },
+    { id: 'line', label: lang==='en'?'Line':'เส้นตรง', icon: <Minus className="w-3.5 h-3.5" /> },
     { id: 'rect', label: t.toolRect, icon: <Square className="w-3.5 h-3.5" /> },
     { id: 'text', label: t.toolText, icon: <TypeIcon className="w-3.5 h-3.5" /> },
   ];
@@ -753,7 +779,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     {label:tr('ย้อนกลับ','Undo'),shortcut:'Ctrl+Z',run:undoEdit,disabled:!undoRef.current.length},
     {label:tr('ทำซ้ำ','Redo'),shortcut:'Ctrl+Y',run:redoEdit,disabled:!redoRef.current.length},
     {label:tr('แก้ข้อความที่เลือก','Edit selected text'),run:()=>{const i=selectedTextRef.current;if(i!==null)editExistingText(i,isFullscreen?fullscreenCanvasRef.current:canvasRef.current);},disabled:selectedText===null},
-    ...tools.map((item,i)=>({label:item.label,shortcut:['P','C','A','R','T'][i],run:()=>{chooseTool(item.id);}})),
+    ...tools.map(item=>({label:item.label,shortcut:({pen:'P',circle:'C',arrow:'A',line:'L',rect:'R',text:'T'} as Record<MarkupTool,string>)[item.id],run:()=>{chooseTool(item.id);}})),
     {label:tr('หมุนซ้าย 90°','Rotate left 90°'),run:()=>rotatePhoto(-1)},
     {label:tr('หมุนขวา 90°','Rotate right 90°'),run:()=>rotatePhoto(1)},
     {label:isFullscreen?tr('ออกจากเต็มหน้าจอ','Exit fullscreen'):tr('เต็มหน้าจอ','Fullscreen'),run:isFullscreen?closeFullscreen:openFullscreen},
@@ -883,7 +909,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
         </div>
       )}
 
-      <p className="text-[10px] text-slate-500 hidden sm:block">{lang==='en'?'Right-click / hold for menu · Click the editor first · Ctrl+Z Undo · Ctrl+Y Redo · P Pen · C Circle · A Arrow · R Rectangle · T Text':'คลิกขวา / แตะค้างเพื่อเปิดเมนู · คลิกกระดานก่อนใช้คีย์ลัด · Ctrl+Z ย้อนกลับ · Ctrl+Y ทำซ้ำ · P ปากกา · C วงกลม · A ลูกศร · R สี่เหลี่ยม · T ข้อความ'}</p>
+      <p className="text-[10px] text-slate-500 hidden sm:block">{lang==='en'?'Right-click / hold for menu · Click the editor first · Ctrl+Z Undo · Ctrl+Y Redo · P Pen · C Circle · A Arrow · L Line (Shift: snap) · R Rectangle · T Text':'คลิกขวา / แตะค้างเพื่อเปิดเมนู · คลิกกระดานก่อนใช้คีย์ลัด · Ctrl+Z ย้อนกลับ · Ctrl+Y ทำซ้ำ · P ปากกา · C วงกลม · A ลูกศร · L เส้นตรง (Shift ล็อกแนว) · R สี่เหลี่ยม · T ข้อความ'}</p>
       {/* Inline Canvas Container */}
       <div
         ref={wrapRef}
