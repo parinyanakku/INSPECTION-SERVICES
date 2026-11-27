@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.206",
+  "latest": "v1.0.207",
   "releases": [
+    {
+      "version": "v1.0.207",
+      "build": 207,
+      "storageSchema": 2,
+      "date": "2026-11-27T12:03:30.819Z",
+      "notes": "Add read-only Drive image-range viewer with bounded index and original photos; update guide",
+      "commit": "f47c10d7b79a95bf4a7aa42341e8811e0cfd8de3"
+    },
     {
       "version": "v1.0.206",
       "build": 206,
