@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.139",
+  "latest": "v1.0.144",
   "releases": [
+    {
+      "version": "v1.0.144",
+      "build": 144,
+      "storageSchema": 2,
+      "date": "2026-11-27T07:15:07.010Z",
+      "notes": "Connect guided tour spotlight to real ClientWebsiteTab.tsx controls",
+      "commit": "68d356cd59fde3b3dfbd21873c91fcb421754d94"
+    },
     {
       "version": "v1.0.139",
       "build": 139,
