@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.65",
+  "latest": "v1.0.68",
   "releases": [
+    {
+      "version": "v1.0.68",
+      "build": 68,
+      "storageSchema": 2,
+      "date": "2026-11-27T02:02:07.583Z",
+      "notes": "Cancel pending version navigation when update dialog is dismissed",
+      "commit": "efa1b59fc1110a32b90dc6b428b463c6e2bc712b"
+    },
     {
       "version": "v1.0.65",
       "build": 65,
