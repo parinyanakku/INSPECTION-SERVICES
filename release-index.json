@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.93",
+  "latest": "v1.0.94",
   "releases": [
+    {
+      "version": "v1.0.94",
+      "build": 94,
+      "storageSchema": 2,
+      "date": "2026-11-27T04:27:00.399Z",
+      "notes": "Add reviewable AI re-analysis of existing before photos in defect edit modal",
+      "commit": "4e608ecbc3736f8679ebf2b77ca5bd59037bcb1d"
+    },
     {
       "version": "v1.0.93",
       "build": 93,
