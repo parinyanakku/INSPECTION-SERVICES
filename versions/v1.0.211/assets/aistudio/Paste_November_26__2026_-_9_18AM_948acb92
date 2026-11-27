@@ -1,0 +1,3284 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ระบบตรวจรับบ้าน &amp; AI วิเคราะห์ Defect — TEAM INSPECTION SERVICES</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- SheetJS for Excel (.xlsx) Export with graceful CSV fallback -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- Google Fonts: Sarabun -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root { --brand-color: #1e3a8a; }
+    body {
+      font-family: 'Sarabun', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+      -webkit-tap-highlight-color: transparent;
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+    .brand-bg { background-color: var(--brand-color); }
+    .brand-text { color: var(--brand-color); }
+    .brand-border { border-color: var(--brand-color); }
+
+    .pin-marker {
+      touch-action: none;
+      user-select: none;
+      transition: transform 0.12s ease;
+    }
+    .pin-marker:hover { transform: translate(-50%, -50%) scale(1.18); z-index: 35 !important; }
+
+    .zone-box { transition: box-shadow 0.15s ease, border-color 0.15s ease; }
+    .zone-setup-active .zone-box { cursor: move; pointer-events: auto !important; touch-action: none; }
+    .zone-setup-active .zone-box:hover { box-shadow: 0 0 0 2px #1d4ed8, 0 8px 18px -4px rgba(15,23,42,0.2); z-index: 25 !important; }
+    .zone-box-selected { box-shadow: 0 0 0 3px #1e3a8a, 0 10px 24px -4px rgba(30,58,138,0.35) !important; z-index: 28 !important; }
+    .zone-resize-handle {
+      position: absolute; right: 2px; bottom: 2px; width: 22px; height: 22px; border-radius: 6px;
+      background: #1e3a8a; color: #fff; font-size: 11px; display: flex; align-items: center;
+      justify-content: center; cursor: nwse-resize; box-shadow: 0 1px 3px rgba(0,0,0,0.3); z-index: 32;
+      touch-action: none;
+    }
+    .floor-drop-active { outline: 3px dashed #2563eb; outline-offset: -4px; background-color: #eff6ff !important; }
+    #markupCanvas { touch-action: none; }
+
+    @media print {
+      body { background: #ffffff !important; color: #000000 !important; font-family: 'Sarabun', sans-serif !important; }
+      .no-print { display: none !important; }
+      #printArea { display: block !important; }
+      .print-break-inside-avoid { break-inside: avoid; page-break-inside: avoid; }
+      .print-page-break { break-before: page; page-break-before: always; }
+      @page { size: A4 portrait; margin: 12mm; }
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Toast Notification Stack -->
+  <div id="toastContainer" class="fixed bottom-4 right-4 z-[60] flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0 no-print"></div>
+
+  <!-- Main Application Root -->
+  <main id="appRoot" class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6 no-print"></main>
+
+  <!-- Printable A4 Report Area (Hidden on screen, shown on print) -->
+  <div id="printArea" class="hidden bg-white text-slate-900"></div>
+
+  <!-- Reusable Primary Modal Backdrop -->
+  <div id="modalBackdrop" class="fixed inset-0 bg-slate-900/55 backdrop-blur-xs z-40 hidden items-center justify-center p-3 sm:p-4 no-print" onclick="if(event.target===this) closeModal()">
+    <div id="modalDialog" class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full overflow-hidden max-h-[92vh] flex flex-col"></div>
+  </div>
+
+  <!-- Secondary Modal Backdrop (for Confirmations & API Guide over Primary Modal) -->
+  <div id="subModalBackdrop" class="fixed inset-0 bg-slate-900/65 backdrop-blur-xs z-50 hidden items-center justify-center p-3 sm:p-4 no-print" onclick="if(event.target===this) closeSubModal()">
+    <div id="subModalDialog" class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden max-h-[90vh] flex flex-col"></div>
+  </div>
+
+  <!-- Fullscreen Lightbox Viewer -->
+  <div id="lightboxModal" class="fixed inset-0 bg-slate-950/92 z-[70] hidden flex-col items-center justify-center p-4 no-print" onclick="closeLightbox()">
+    <div class="w-full max-w-5xl flex items-center justify-between gap-3 text-white mb-3" onclick="event.stopPropagation()">
+      <span id="lightboxCaption" class="text-xs sm:text-sm font-semibold bg-white/15 px-3.5 py-1.5 rounded-xl truncate"></span>
+      <button type="button" onclick="closeLightbox()" class="px-3.5 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-xs sm:text-sm font-semibold whitespace-nowrap transition">✕ ปิดหน้าต่าง (ESC)</button>
+    </div>
+    <img id="lightboxImg" src="" alt="Fullscreen Preview" onclick="event.stopPropagation()" class="max-h-[84vh] max-w-full rounded-2xl shadow-2xl object-contain border border-white/15 bg-black/30" />
+  </div>
+
+  <!-- Hidden File Inputs -->
+  <input type="file" id="jsonImportInput" accept=".json,application/json" class="hidden" onchange="handleJsonImportFile(event)" />
+
+  <script>
+    /*************************************************************************
+     * 1. CONSTANTS, DEFAULT BRANDING & 46-DEFECT DATASET
+     *************************************************************************/
+    const STORAGE_KEY_BRAND = 'tis_wl_brand_v10';
+    const STORAGE_KEY_PROJECTS = 'tis_wl_projects_v10';
+    const STORAGE_KEY_LAST_SAVED = 'tis_wl_last_saved_v10';
+
+    const DEFAULT_GEAR_LOGO_SVG = `
+      <svg viewBox="0 0 140 140" class="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+        <defs><path id="tisTopArc" d="M 22,70 A 48,48 0 1,1 118,70" /></defs>
+        <circle cx="70" cy="70" r="64" fill="#1e3a8a" stroke="#1e3a8a" stroke-width="6" stroke-dasharray="7 4.2" />
+        <circle cx="70" cy="70" r="60" fill="#1e3a8a" />
+        <circle cx="70" cy="70" r="55" fill="#dc2626" />
+        <circle cx="70" cy="70" r="51" fill="#fefce8" />
+        <path d="M 19,74 L 121,74 A 51,51 0 0,1 19,74 Z" fill="#1e3a8a" />
+        <text fill="#1e3a8a" font-size="10.2" font-weight="800" font-family="Sarabun, sans-serif" letter-spacing="0.3">
+          <textPath href="#tisTopArc" startOffset="50%" text-anchor="middle">TEAM INSPECTION SERVICES</textPath>
+        </text>
+        <circle cx="70" cy="64" r="24" fill="#ffffff" stroke="#1e3a8a" stroke-width="2.5" />
+        <polygon points="70,45 50,60 90,60" fill="#dc2626" />
+        <rect x="55" y="60" width="30" height="20" fill="#1e3a8a" rx="1.5" />
+        <rect x="65" y="67" width="10" height="13" fill="#fefce8" rx="1" />
+        <rect x="58" y="63" width="5" height="5" fill="#93c5fd" rx="0.5" />
+        <rect x="77" y="63" width="5" height="5" fill="#93c5fd" rx="0.5" />
+        <text x="70" y="105" text-anchor="middle" fill="#ffffff" font-size="7.5" font-weight="700" letter-spacing="0.4">HOME INSPECTOR</text>
+        <text x="70" y="116" text-anchor="middle" fill="#fde047" font-size="7.5" font-weight="800">• 2024 •</text>
+      </svg>`;
+
+    const ZONE_COLOR_PRESETS = [
+      { label: 'ส้ม', bg: '#ffedd5', border: '#ea580c' },
+      { label: 'ฟ้า', bg: '#dbeafe', border: '#2563eb' },
+      { label: 'เขียว', bg: '#dcfce7', border: '#16a34a' },
+      { label: 'ชมพู', bg: '#fce7f3', border: '#db2777' },
+      { label: 'ม่วง', bg: '#e0e7ff', border: '#4f46e5' },
+      { label: 'เหลือง', bg: '#fef3c7', border: '#d97706' },
+      { label: 'เทา', bg: '#f1f5f9', border: '#475569' }
+    ];
+
+    function getArchitecturalFloorSvg(floorIndex) {
+      if (floorIndex === 0) {
+        return `<svg viewBox="0 0 800 600" class="w-full h-full pointer-events-none select-none" xmlns="http://www.w3.org/2000/svg">
+          <defs><pattern id="grid1" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M 20 0 L 0 0 0 20" fill="none" stroke="#e2e8f0" stroke-width="0.7" /></pattern></defs>
+          <rect width="800" height="600" fill="#f8fafc" /><rect width="800" height="600" fill="url(#grid1)" />
+          <rect x="40" y="28" width="720" height="544" fill="#ffffff" stroke="#334155" stroke-width="6" rx="4" />
+          <line x1="40" y1="145" x2="760" y2="145" stroke="#334155" stroke-width="4" />
+          <rect x="60" y="42" width="210" height="36" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5" />
+          <rect x="115" y="48" width="54" height="24" fill="#e2e8f0" stroke="#64748b" stroke-width="1.2" rx="3" />
+          <line x1="510" y1="145" x2="510" y2="415" stroke="#334155" stroke-width="4" />
+          <line x1="510" y1="270" x2="760" y2="270" stroke="#334155" stroke-width="4" />
+          <g stroke="#94a3b8" stroke-width="1.5">
+            <line x1="525" y1="162" x2="745" y2="162" /><line x1="525" y1="178" x2="745" y2="178" />
+            <line x1="525" y1="194" x2="745" y2="194" /><line x1="525" y1="210" x2="745" y2="210" />
+            <line x1="525" y1="226" x2="745" y2="226" /><line x1="525" y1="242" x2="745" y2="242" />
+          </g>
+          <ellipse cx="720" cy="315" rx="18" ry="12" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5" />
+          <rect x="670" y="365" width="70" height="36" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5" rx="4" />
+          <rect x="85" y="210" width="130" height="46" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5" rx="6" />
+          <rect x="110" y="275" width="80" height="36" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5" rx="4" />
+          <line x1="40" y1="415" x2="760" y2="415" stroke="#334155" stroke-width="4" />
+          <line x1="170" y1="415" x2="360" y2="415" stroke="#0284c7" stroke-width="6" />
+          <rect x="105" y="442" width="175" height="108" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="6 4" rx="10" />
+          <rect x="330" y="442" width="175" height="108" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="6 4" rx="10" />
+          <line x1="90" y1="572" x2="710" y2="572" stroke="#0f172a" stroke-width="5" stroke-dasharray="14 6" />
+          <text x="400" y="592" text-anchor="middle" fill="#64748b" font-size="11" font-weight="600">▲ หน้าบ้าน / ประตูรั้วทางเข้า ▲</text>
+        </svg>`;
+      }
+      return `<svg viewBox="0 0 800 600" class="w-full h-full pointer-events-none select-none" xmlns="http://www.w3.org/2000/svg">
+        <defs><pattern id="grid2" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M 20 0 L 0 0 0 20" fill="none" stroke="#e2e8f0" stroke-width="0.7" /></pattern></defs>
+        <rect width="800" height="600" fill="#f8fafc" /><rect width="800" height="600" fill="url(#grid2)" />
+        <rect x="40" y="28" width="720" height="544" fill="#ffffff" stroke="#334155" stroke-width="6" rx="4" />
+        <line x1="40" y1="220" x2="760" y2="220" stroke="#334155" stroke-width="4" />
+        <line x1="510" y1="28" x2="510" y2="220" stroke="#334155" stroke-width="4" />
+        <rect x="90" y="55" width="130" height="110" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5" rx="6" />
+        <ellipse cx="710" cy="80" rx="18" ry="12" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5" />
+        <rect x="650" y="155" width="90" height="45" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5" rx="4" />
+        <line x1="40" y1="365" x2="760" y2="365" stroke="#334155" stroke-width="4" />
+        <line x1="510" y1="220" x2="510" y2="365" stroke="#334155" stroke-width="4" />
+        <g stroke="#94a3b8" stroke-width="1.5">
+          <line x1="525" y1="240" x2="745" y2="240" /><line x1="525" y1="260" x2="745" y2="260" />
+          <line x1="525" y1="280" x2="745" y2="280" /><line x1="525" y1="300" x2="745" y2="300" />
+          <line x1="525" y1="320" x2="745" y2="320" /><line x1="525" y1="340" x2="745" y2="340" />
+        </g>
+        <rect x="280" y="405" width="180" height="120" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5" rx="6" />
+        <rect x="295" y="415" width="60" height="26" fill="#e2e8f0" rx="4" />
+        <rect x="385" y="415" width="60" height="26" fill="#e2e8f0" rx="4" />
+        <line x1="160" y1="572" x2="640" y2="572" stroke="#0284c7" stroke-width="6" />
+        <text x="400" y="592" text-anchor="middle" fill="#64748b" font-size="11" font-weight="600">▲ ด้านหน้าบ้าน (ระเบียงห้องนอนใหญ่) ▲</text>
+      </svg>`;
+    }
+
+    const DEFAULT_BRAND = {
+      companyName: 'TEAM INSPECTION SERVICES',
+      subtitle: 'HOME INSPECTOR 2024',
+      tagline: 'บริการตรวจรับบ้านและทาวน์โฮมโดยวิศวกรผู้ตรวจสอบมืออาชีพ',
+      inspectorName: 'นายปริญญา น่าบัณฑิต',
+      licenseNo: 'ภย.89097',
+      contactInfo: 'โทร. 089-999-8909 | Line: @teaminspect | จ.ขอนแก่น',
+      accentColor: '#1e3a8a',
+      customLogoDataUrl: null,
+      geminiApiKey: '',
+      geminiModel: 'gemini-2.5-flash'
+    };
+
+    function createDefaultSirinaphaProject() {
+      const f1 = 'fl_sirinapha_1';
+      const f2 = 'fl_sirinapha_2';
+
+      const floor1Zones = [
+        { id: 'z_f1_3', name: 'โซน 3: ห้องครัว/ซักล้าง', x: 5, y: 5, w: 90, h: 19, bg: '#dcfce7', border: '#16a34a' },
+        { id: 'z_f1_2', name: 'โซน 2: ห้องรับแขก/โถงชั้น 1', x: 5, y: 25, w: 58, h: 43, bg: '#dbeafe', border: '#2563eb' },
+        { id: 'z_f1_4', name: 'โซน 4: ห้องน้ำชั้น 1', x: 65, y: 45, w: 30, h: 23, bg: '#fce7f3', border: '#db2777' },
+        { id: 'z_f1_1', name: 'โซน 1: โรงจอดรถ/หน้าบ้าน', x: 5, y: 70, w: 90, h: 25, bg: '#ffedd5', border: '#ea580c' }
+      ];
+
+      const floor2Zones = [
+        { id: 'z_f2_7', name: 'โซน 7: ห้องนอน 2 และห้องน้ำชั้น 2', x: 5, y: 5, w: 90, h: 31, bg: '#fce7f3', border: '#db2777' },
+        { id: 'z_f2_5', name: 'โซน 5: โถงบันได/ชั้น 2', x: 5, y: 38, w: 90, h: 22, bg: '#e0e7ff', border: '#4f46e5' },
+        { id: 'z_f2_6', name: 'โซน 6: ห้องนอนใหญ่ (Master)', x: 5, y: 62, w: 90, h: 33, bg: '#fef3c7', border: '#d97706' }
+      ];
+
+      const Z1 = 'โซน 1: โรงจอดรถ/หน้าบ้าน';
+      const Z2 = 'โซน 2: ห้องรับแขก/โถงชั้น 1';
+      const Z3 = 'โซน 3: ห้องครัว/ซักล้าง';
+      const Z4 = 'โซน 4: ห้องน้ำชั้น 1';
+      const Z5 = 'โซน 5: โถงบันได/ชั้น 2';
+      const Z6 = 'โซน 6: ห้องนอนใหญ่ (Master)';
+      const Z7 = 'โซน 7: ห้องนอน 2 และห้องน้ำชั้น 2';
+
+      const rawDefects = [
+        { n: 1, f: f1, z: Z1, x: 16, y: 86, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'รั้วประตูหน้าบ้านมีสนิมบริเวณรอยเชื่อม', c: 'ความชื้นสะสมและสีรองพื้นกันสนิมเสื่อมสภาพ', s: 'ขัดสนิมออกให้หมด ทาสีรองพื้นกันสนิม Epoxy 2 เที่ยว และทาสีจริงทับหน้า' },
+        { n: 2, f: f1, z: Z1, x: 32, y: 84, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'กระเบื้องพื้นโรงจอดรถร่อนเป็นโพรง 1 จุด', c: 'ปูนกาวด้านหลังแผ่นกระเบื้องไม่เต็มหน้าสัมผัสเกิดโพรงอากาศ', s: 'รื้อแผ่นกระเบื้องที่ร่อนออก ขูดปูนเก่า ปาดปูนกาวเต็มแผ่นและปูใหม่' },
+        { n: 3, f: f1, z: Z1, x: 48, y: 86, sev: 'เล็กน้อย', st: 'แก้ไขแล้ว', t: 'ร่องยาแนวพื้นโรงจอดรถเป็นคราบสกปรก', c: 'คราบสิ่งสกปรกฝังแน่นในร่องยาแนวเดิม', s: 'ขูดล้างทำความสะอาดร่องยาแนวและลงยาแนวใหม่ให้เรียบร้อย' },
+        { n: 4, f: f1, z: Z1, x: 64, y: 84, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'โครงเหล็กกล่องหลังคาโรงจอดรถรอยต่อไม่ต่อเนื่อง', c: 'การตัดประกอบโครงเหล็กกล่องเชื่อมรอยต่อไม่ต่อเนื่อง', s: 'เชื่อมเสริมเหล็กกล่องให้แนวรอยต่อสนิท เจียรเรียบและเก็บสีกันสนิม' },
+        { n: 5, f: f1, z: Z1, x: 80, y: 86, sev: 'เล็กน้อย', st: 'แก้ไขแล้ว', t: 'ขอบพื้นต่างระดับหน้าประตูทางเข้าเก็บงานสีไม่เรียบร้อย', c: 'รอยถลอกและคราบเลอะบริเวณขอบพื้นต่างระดับ', s: 'ทำความสะอาดพื้นผิวและทาสีเก็บงานขอบพื้นต่างระดับให้เรียบร้อย' },
+        { n: 6, f: f1, z: Z1, x: 22, y: 76, sev: 'เล็กน้อย', st: 'แก้ไขแล้ว', t: 'ผิวกระเบื้องหน้าประตูทางเข้ามีคราบปูนติดค้าง', c: 'เศษปูนจากการก่อสร้างติดค้างบนผิวกระเบื้อง', s: 'ขูดและล้างคราบปูนออกจากผิวกระเบื้องอย่างระมัดระวัง' },
+        { n: 7, f: f1, z: Z1, x: 40, y: 76, sev: 'เล็กน้อย', st: 'แก้ไขแล้ว', t: 'ผนังโรงจอดรถมีคราบสีขาวเลอะ', c: 'หยดสีทาบ้านเลอะพื้นผิวบริเวณโรงจอดรถ', s: 'เช็ดล้างคราบสีขาวออกให้สะอาดเรียบร้อย' },
+        { n: 8, f: f1, z: Z1, x: 58, y: 76, sev: 'เล็กน้อย', st: 'รอแก้ไข', t: 'กระจกบานเลื่อนประตูหน้าบ้านมีคราบมัว', c: 'คราบฝุ่นและคราบน้ำเกาะสะสมบนกระจกบานเลื่อน', s: 'เช็ดทำความสะอาดกระจกทั้งสองด้านให้ใสสะอาด' },
+        { n: 9, f: f1, z: Z1, x: 76, y: 76, sev: 'เล็กน้อย', st: 'รอแก้ไข', t: 'ขอบเฟรมอลูมิเนียมประตูหน้าบ้านมีคราบสีเลอะ', c: 'สีทาผนังเลอะติดขอบเฟรมอลูมิเนียมและเก็บงานผิวไม่เรียบ', s: 'เช็ดล้างคราบสีบนเฟรมอลูมิเนียมออกและเก็บความเรียบร้อยขอบวงกบ' },
+
+        { n: 10, f: f1, z: Z2, x: 18, y: 40, sev: 'เล็กน้อย', st: 'รอแก้ไข', t: 'ขอบเฟรมประตูบานเลื่อนภายในบ้านมีคราบสีเลอะ', c: 'คราบสีและรอยขีดข่วนบริเวณขอบเฟรมอลูมิเนียมภายใน', s: 'ทำความสะอาดคราบสีออกและเก็บงานขอบเฟรมให้เรียบร้อย' },
+        { n: 11, f: f1, z: Z2, x: 35, y: 52, sev: 'เร่งด่วน', st: 'รอแก้ไข', t: 'กระเบื้องพื้นโถงรับแขกร่อนเป็นโพรงหลายจุด', c: 'การปูกระเบื้องพื้นโถงบ้านปูนกาวไม่เต็มแผ่นเกิดเสียงกลวงหลายจุด', s: 'รื้อกระเบื้องแผ่นที่ร่อนออกทั้งหมด ปรับระดับและปูใหม่ด้วยปูนกาวเต็มแผ่น' },
+        { n: 12, f: f1, z: Z2, x: 52, y: 42, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'ผนังห้องเก็บของใต้บันไดผิวไม่เรียบ มีรูโพรงหลายจุด', c: 'การฉาบปูนผนังภายในไม่แน่นและไม่ได้ขัดแต่งผิว', s: 'อุดโป๊วรูโพรงบนผนัง ฉาบปรับผิวให้เรียบและทาสีเก็บงานให้สมบูรณ์' },
+
+        { n: 13, f: f1, z: Z4, x: 72, y: 51, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'สกรูบานพับประตูห้องน้ำชั้น 1 ขึ้นสนิม', c: 'ใช้สกรูเหล็กธรรมดาแทนสกรูสแตนเลสในพื้นที่เปียกชื้น', s: 'ถอดเปลี่ยนสกรูบานพับเป็นสแตนเลสเกรด 304 ทั้งหมด' },
+        { n: 14, f: f1, z: Z4, x: 86, y: 51, sev: 'ปานกลาง', st: 'แก้ไขแล้ว', t: 'สายฉีดชำระห้องน้ำชั้น 1 น้ำไหลเบา', c: 'ตะแกรงกรองอุดตันหรือวาล์วเปิดน้ำเปิดไม่สุด', s: 'ถอดล้างตะแกรงกรองสายฉีดชำระและปรับตั้งวาล์วให้น้ำไหลแรงปกติ' },
+        { n: 15, f: f1, z: Z4, x: 72, y: 58, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'หัวก๊อกน้ำอ่างล้างหน้าเสื่อมสภาพ', c: 'หัวก๊อกน้ำมีคราบตะกรันอุดตันและปิดน้ำไม่สนิท', s: 'เปลี่ยนชุดหัวก๊อกน้ำใหม่และทดสอบการเปิด-ปิดไม่ให้รั่วซึม' },
+        { n: 16, f: f1, z: Z4, x: 86, y: 58, sev: 'เร่งด่วน', st: 'รอแก้ไข', t: 'น้ำรั่วซึมบริเวณท่อน้ำทิ้งใต้อ่างล้างหน้า', c: 'ซีลยางปะเก็นท่อน้ำทิ้งหรือข้อต่อใต้อ่างล้างหน้าหลวมเสื่อมสภาพ', s: 'ถอดชุดท่อน้ำทิ้งเปลี่ยนปะเก็นยาง พันเทปเกลียวและทดสอบขังน้ำตรวจรั่ว' },
+        { n: 17, f: f1, z: Z4, x: 72, y: 64, sev: 'เล็กน้อย', st: 'แก้ไขแล้ว', t: 'เก็บรูเจาะเดิมตามผนังกระเบื้องห้องน้ำ', c: 'รูเจาะเดิมบนผนังกระเบื้องไม่ได้อุดปิดให้เรียบร้อย', s: 'อุดปิดรูเจาะด้วยยาแนวหรือซิลิโคนสีเดียวกับกระเบื้อง' },
+        { n: 18, f: f1, z: Z4, x: 86, y: 64, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'กลอนประตูห้องน้ำชั้น 1 หลวมไม่แข็งแรง', c: 'สกรูยึดกลอนประตูคลายตัวและรูรับกลอนหลวม', s: 'ขันยึดสกรูกลอนประตูให้แน่นหนาและปรับตำแหน่งเดือยรับให้แข็งแรง' },
+
+        { n: 19, f: f1, z: Z3, x: 24, y: 14, sev: 'เล็กน้อย', st: 'แก้ไขแล้ว', t: 'หัวก๊อกซิงค์ล้างจานมีคราบสกปรกและคราบปูน', c: 'คราบปูนและคราบออกไซด์เกาะบริเวณหัวก๊อกซิงค์ครัว', s: 'ขัดล้างทำความสะอาดหัวก๊อกน้ำหรือเปลี่ยนหัวกรองปลายก๊อกใหม่' },
+        { n: 20, f: f1, z: Z3, x: 50, y: 14, sev: 'เร่งด่วน', st: 'รอแก้ไข', t: 'กระเบื้องพื้นครัวร่อน และมีน้ำฝนรั่วซึมบริเวณหน้าต่างบานเกล็ด', c: 'ปูนกาวไม่เต็มแผ่นและน้ำฝนสาดเข้าทางบานเกล็ดหลังบ้าน', s: 'รื้อปูกระเบื้องจุดที่ร่อนใหม่ และติดตั้งกันสาด/บานกันฝนหรือเปลี่ยนเป็นบานเลื่อน' },
+        { n: 21, f: f1, z: Z3, x: 76, y: 14, sev: 'เล็กน้อย', st: 'แก้ไขแล้ว', t: 'เก็บความสะอาดใต้ขอบเฟรมประตูและหน้าต่างครัวทุกจุด', c: 'เศษฝุ่นและคราบปูนค้างอยู่ใต้ขอบเฟรม', s: 'ดูดฝุ่นและเช็ดทำความสะอาดใต้ขอบเฟรมทุกจุดให้เรียบร้อย' },
+
+        { n: 22, f: f2, z: Z7, x: 68, y: 12, sev: 'เร่งด่วน', st: 'รอแก้ไข', t: 'ชักโครกห้องน้ำชั้น 2 ไม่ยึดแน่นและฝารองนั่งขยับหลวม', c: 'พุกยึดฐานชักโครกและน็อตยึดฝารองนั่งหลวมคลอน', s: 'ยึดฐานชักโครกให้มั่นคง ยิงซิลิโคนรอบฐาน และขันแน่น/เปลี่ยนชุดยึดฝารองนั่ง' },
+        { n: 23, f: f2, z: Z7, x: 78, y: 12, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'ร่องรอบอ่างล้างหน้าห้องน้ำชั้น 2 ไม่ได้ยิงซิลิโคน', c: 'รอยต่อระหว่างอ่างล้างหน้ากับผนังไม่มีซิลิโคนกันน้ำซึม', s: 'ทำความสะอาดร่องรอบอ่างล้างหน้าและยิงซิลิโคนกันเชื้อราให้เรียบร้อย' },
+        { n: 24, f: f2, z: Z7, x: 88, y: 12, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'ก๊อกอ่างล้างหน้าห้องน้ำชั้น 2 ติดตั้งหลวมโยกคลอน', c: 'แป้นเกลียวยึดก๊อกอ่างล้างหน้าหลวมคลอน', s: 'ขันแน่นชุดยึดก๊อกน้ำและตรวจสอบการรั่วซึมใต้เคาน์เตอร์' },
+        { n: 25, f: f2, z: Z7, x: 68, y: 24, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'กลอนประตูห้องน้ำชั้น 2 หลวมไม่แข็งแรง', c: 'ชุดกลอนประตูห้องน้ำชั้น 2 คลายตัวไม่กระชับ', s: 'ปรับตั้งและยึดสกรูกลอนประตูห้องน้ำให้แข็งแรง' },
+        { n: 26, f: f2, z: Z7, x: 78, y: 24, sev: 'เล็กน้อย', st: 'แก้ไขแล้ว', t: 'เก็บรูเจาะเดิมตามผนังกระเบื้องห้องน้ำชั้น 2', c: 'พบรูเจาะเก่าบนกระเบื้องผนังห้องน้ำ 2', s: 'อุดปิดรูเจาะกระเบื้องด้วยยาแนวสีใกล้เคียงให้เรียบเนียน' },
+        { n: 27, f: f2, z: Z7, x: 88, y: 24, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'ขอแขวนหัวฉีดชำระห้องน้ำชั้น 2 หลวมคลอน', c: 'พุกยึดขอแขวนหัวฉีดชำระหลวมคลอน', s: 'เปลี่ยนพุกยึดผนังใหม่และขันยึดขอแขวนหัวฉีดชำระให้แน่นหนา' },
+        { n: 28, f: f2, z: Z7, x: 14, y: 13, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'หน้าต่างบานเลื่อนห้องนอน 2 ฝืด', c: 'รางเลื่อนสกปรกและลูกล้อบานเลื่อนปรับตั้งไม่ได้ระดับ', s: 'ทำความสะอาดรางเลื่อนและปรับตั้งลูกล้อให้เลื่อนเปิด-ปิดได้คล่องตัว' },
+        { n: 29, f: f2, z: Z7, x: 26, y: 13, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'สกรูยึดเฟรมหน้าต่างขึ้นสนิมทั้งบาน', c: 'สกรูยึดเฟรมอลูมิเนียมเกิดสนิมผุกร่อน', s: 'ถอดเปลี่ยนสกรูที่เป็นสนิมทั้งหมดเป็นสกรูสแตนเลส' },
+        { n: 30, f: f2, z: Z7, x: 38, y: 13, sev: 'เล็กน้อย', st: 'รอแก้ไข', t: 'เก็บรูเจาะตามเฟรมกระจกหน้าต่าง (จุดที่ 1)', c: 'รูเจาะติดตั้งบนเฟรมกระจกไม่ได้ปิดจุกยาง/ซิลิโคน', s: 'ปิดจุกยางหรือแต้มซิลิโคนสีเดียวกับเฟรมให้เรียบร้อย' },
+        { n: 31, f: f2, z: Z7, x: 50, y: 13, sev: 'เล็กน้อย', st: 'รอแก้ไข', t: 'เก็บรูเจาะตามเฟรมกระจกหน้าต่าง (จุดที่ 2)', c: 'พบรูเจาะเปิดโล่งบริเวณเฟรมหน้าต่างอีกด้าน', s: 'อุดปิดรูเจาะตามเฟรมกระจกให้ครบทุกจุด' },
+        { n: 32, f: f2, z: Z7, x: 16, y: 26, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'บานเลื่อนหน้าต่างฝั่งซ้ายเปิด-ปิดฝืด', c: 'ลูกล้อบานหน้าต่างฝืดและรางมีฝุ่นสะสม', s: 'หล่อลื่นและปรับตั้งลูกล้อบานหน้าต่างให้เลื่อนลื่นไม่ติดขัด' },
+        { n: 33, f: f2, z: Z7, x: 28, y: 26, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'ตัวล็อคหน้าต่างฝืดเข้าร่องล็อคยาก (จุดที่ 1)', c: 'ตำแหน่งเขี้ยวล็อคกับเพลทรับล็อคเยื้องศูนย์', s: 'ปรับตำแหน่งตัวล็อคหน้าต่างให้ขบเข้าร่องล็อคได้พอดี' },
+        { n: 34, f: f2, z: Z7, x: 40, y: 26, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'ตัวล็อคหน้าต่างฝืดเข้าร่องล็อคยาก (จุดที่ 2)', c: 'กลไกมือจับล็อคบานเลื่อนฝืด', s: 'ปรับตั้งและหล่อลื่นชุดมือจับล็อคให้ใช้งานได้สะดวก' },
+        { n: 35, f: f2, z: Z7, x: 52, y: 26, sev: 'เล็กน้อย', st: 'รอแก้ไข', t: 'ตัวกันชนประตูห้องนอน 2 มีสีหลุดร่อน', c: 'สีเคลือบตัวกันชนประตูหลุดลอกจากการใช้งาน', s: 'เปลี่ยนตัวกันชนประตูใหม่หรือเก็บสีให้เรียบร้อย' },
+
+        { n: 36, f: f2, z: Z6, x: 14, y: 72, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'สกรูยึดบานพับ/เฟรมห้องนอนใหญ่ติดตั้งไม่ครบ', c: 'ช่างยึดสกรูบานพับ/เฟรมไม่ครบทุกรู', s: 'ตรวจสอบและติดตั้งสกรูให้ครบทุกจุดตามมาตรฐาน' },
+        { n: 37, f: f2, z: Z6, x: 30, y: 72, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'ลูกบิดประตูห้องนอนใหญ่เป็นสนิม', c: 'ผิวเคลือบลูกบิดประตูเสื่อมสภาพเกิดสนิม', s: 'เปลี่ยนชุดลูกบิดประตูใหม่ทั้งชุด' },
+        { n: 38, f: f2, z: Z6, x: 46, y: 72, sev: 'เล็กน้อย', st: 'รอแก้ไข', t: 'กันชนประตูห้องนอนใหญ่มีสีหลุดร่อน', c: 'สีตัวกันชนประตูหลุดล่อน', s: 'เปลี่ยนตัวกันชนประตูใหม่ให้เรียบร้อย' },
+        { n: 39, f: f2, z: Z6, x: 62, y: 72, sev: 'เล็กน้อย', st: 'รอแก้ไข', t: 'ผนังห้องนอนใหญ่มีคราบดำเลอะ', c: 'คราบเปื้อนดำจากการใช้งานบนผิวผนัง', s: 'เช็ดทำความสะอาดพื้นผิวและทาสีทับหน้าใหม่ให้สม่ำเสมอ' },
+        { n: 40, f: f2, z: Z6, x: 80, y: 72, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'เต้ารับปลั๊กไฟติดเอียงไม่ได้แนวระดับ', c: 'การยึดหน้ากากเต้ารับไฟฟ้าไม่ได้ระดับน้ำ', s: 'ถอดปรับตั้งสกรูยึดบล็อกปลั๊กไฟให้ได้แนวระดับตรงสวยงาม' },
+        { n: 41, f: f2, z: Z6, x: 16, y: 86, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'หน้ากากปลั๊กไฟแนบผนังไม่สนิท ตรวจสอบทุกจุด', c: 'ขอบหน้ากากปลั๊กไฟเผยอห่างจากผิวผนัง', s: 'ปรับแต่งตำแหน่งบล็อกฝังและกดล็อคหน้ากากปลั๊กให้แนบสนิททุกจุด' },
+        { n: 42, f: f2, z: Z6, x: 32, y: 86, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'สกรูยึดเฟรมหน้าต่างห้องนอนใหญ่เป็นสนิมทั้งบาน', c: 'สกรูยึดวงกบหน้าต่างเกิดสนิมทั้งบาน', s: 'เปลี่ยนสกรูยึดเฟรมทุกจุดเป็นสกรูสแตนเลสกันสนิม' },
+        { n: 43, f: f2, z: Z6, x: 48, y: 86, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'รอยต่อเข้ามุมเฟรมอลูมิเนียมมีช่องว่างแนบไม่สนิท', c: 'รอยต่อเข้ามุมเฟรมมีช่องว่างไม่แนบสนิท', s: 'ปรับประกอบรอยต่อเฟรมและซีลซิลิโคนปิดช่องว่างให้เรียบร้อยทุกจุด' },
+        { n: 44, f: f2, z: Z6, x: 66, y: 86, sev: 'เล็กน้อย', st: 'รอแก้ไข', t: 'คราบสีเลอะขอบเฟรมหน้าต่างห้องนอนใหญ่', c: 'คราบสีทาบ้านเลอะติดขอบเฟรมหน้าต่าง', s: 'ทำความสะอาดคราบสีและเก็บขอบสีรอบวงกบให้คมเรียบร้อย' },
+        { n: 45, f: f2, z: Z6, x: 84, y: 86, sev: 'ปานกลาง', st: 'รอแก้ไข', t: 'บานประตูระเบียงชนคานบน ล็อคไม่สนิท สกรูไม่เรียบร้อย', c: 'ระยะบานประตูเบียดคานบนทำให้ล็อคไม่สนิท', s: 'ปรับตั้งบานพับ/ลูกล้อไม่ให้ชนคานและตรวจสอบการล็อคกับสกรูทุกจุด' },
+
+        { n: 46, f: f2, z: Z5, x: 32, y: 49, sev: 'เร่งด่วน', st: 'รอแก้ไข', t: 'ตู้คอนซูมเมอร์ (Consumer Unit) ไม่มีเบรกเกอร์กันดูด (RCBO)', c: 'ตู้ไฟติดตั้งเฉพาะเมนเบรกเกอร์ธรรมดา ไม่มีอุปกรณ์ตัดไฟรั่ว', s: 'ติดตั้งเบรกเกอร์กันดูด (RCBO) พิกัดกระแสรั่วไม่เกิน 30 mA ตามมาตรฐาน วสท.' }
+      ];
+
+      const defects = rawDefects.map(d => ({
+        id: 'def_' + d.n,
+        number: d.n,
+        floorId: d.f,
+        zone: d.z,
+        x: d.x,
+        y: d.y,
+        title: d.t,
+        cause: d.c,
+        solution: d.s,
+        hideCause: false,
+        hideSolution: false,
+        severity: d.sev,
+        status: d.st,
+        beforeImg: null,
+        afterImg: null,
+        createdAt: '2026-11-25'
+      }));
+
+      return {
+        id: 'proj_sirinapha_999_18',
+        name: 'ตรวจรับบ้านทาวน์โฮม 2 ชั้น - คุณศิรินภา อุ่นศิริ',
+        houseNo: '999/18',
+        clientName: 'คุณศิรินภา อุ่นศิริ',
+        address: 'ทาวน์โฮม 999/18 จ.ขอนแก่น',
+        inspectionDate: 'วันพุธที่ 25 พฤศจิกายน พ.ศ. 2569',
+        inspectionRound: 'ตรวจรอบที่ 1',
+        projectStatus: 'กำลังดำเนินการ',
+        floors: [
+          { id: f1, name: 'ชั้น 1', subtitle: '4 โซน', imageUrl: null, svgPreset: 0, zones: floor1Zones },
+          { id: f2, name: 'ชั้น 2', subtitle: '3 โซน', imageUrl: null, svgPreset: 1, zones: floor2Zones }
+        ],
+        defects
+      };
+    }
+
+    /*************************************************************************
+     * 2. APPLICATION STATE & STORAGE HELPERS
+     *************************************************************************/
+    const appState = {
+      brand: loadBrand(),
+      projects: loadProjects(),
+      lastSavedAt: safeGetStorage(STORAGE_KEY_LAST_SAVED) || '',
+      activeProjectId: null,
+      activeTab: 'studio', // 'studio' | 'list' | 'export'
+      activeFloorId: null,
+      hubSearch: '',
+      listSearch: '',
+      listFloorFilter: 'all',
+      listZoneFilter: 'all',
+      listSeverityFilter: 'all',
+      listStatusFilter: 'all',
+      isZoneSetupMode: false,
+      showZoneOverlays: true,
+      selectedZoneId: null,
+      zoneInteraction: null,
+      placingDraftId: null,
+      draggingDefectId: null,
+      pinDragMoved: false,
+      pinDragStartX: 0,
+      pinDragStartY: 0,
+      markup: {
+        imageSrc: null,
+        fileName: '',
+        tool: 'circle', // 'circle' | 'arrow' | 'rect'
+        color: '#ef4444',
+        lineWidth: 3.5,
+        shapes: [],
+        isDrawing: false,
+        currentShape: null
+      },
+      aiPrompt: '',
+      isAnalyzing: false,
+      drafts: []
+    };
+
+    let loadedMarkupImageObj = null;
+    let tempModalBeforeImg = null;
+    let tempModalAfterImg = null;
+    let tempBrandLogoDataUrl = null;
+    let pendingConfirmCallback = null;
+
+    function safeGetStorage(key) {
+      try { return localStorage.getItem(key); } catch (e) { return null; }
+    }
+
+    function migrateDefectPhotos(proj) {
+      if (!proj || !Array.isArray(proj.defects)) return proj;
+      proj.defects.forEach(d => {
+        if (d.photoDataUrl && !d.beforeImg) {
+          d.beforeImg = d.photoDataUrl;
+        }
+        if (d.beforeImg === undefined) d.beforeImg = null;
+        if (d.afterImg === undefined) d.afterImg = null;
+        d.severity = normalizeSeverity(d.severity);
+      });
+      return proj;
+    }
+
+    function loadBrand() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_BRAND);
+        return raw ? { ...DEFAULT_BRAND, ...JSON.parse(raw) } : { ...DEFAULT_BRAND };
+      } catch (e) { return { ...DEFAULT_BRAND }; }
+    }
+
+    function loadProjects() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_PROJECTS);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed.map(migrateDefectPhotos);
+          }
+        }
+      } catch (e) {}
+      const initial = [createDefaultSirinaphaProject()];
+      try { localStorage.setItem(STORAGE_KEY_PROJECTS, JSON.stringify(initial)); } catch (e) {}
+      return initial;
+    }
+
+    function formatCurrentTimeTH() {
+      return new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    }
+
+    function getDefaultSaveAsFilename(prefix = 'home_inspection') {
+      const now = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      return `${prefix}_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.json`;
+    }
+
+    function normalizeSeverity(sev) {
+      if (sev === 'เร่งด่วน' || sev === 'สูง' || sev === 'วิกฤต' || sev === 'สูง/เร่งด่วน') return 'เร่งด่วน';
+      if (sev === 'เล็กน้อย' || sev === 'ต่ำ') return 'เล็กน้อย';
+      return 'ปานกลาง';
+    }
+
+    function saveAllToLocalStorage(showConfirmToast = false) {
+      try {
+        const ts = formatCurrentTimeTH();
+        localStorage.setItem(STORAGE_KEY_BRAND, JSON.stringify(appState.brand));
+        localStorage.setItem(STORAGE_KEY_PROJECTS, JSON.stringify(appState.projects));
+        localStorage.setItem(STORAGE_KEY_LAST_SAVED, ts);
+        appState.lastSavedAt = ts;
+        applyBrandTheme();
+        if (showConfirmToast) {
+          showToast(`บันทึกข้อมูลลงเครื่องเรียบร้อยแล้ว (${ts})`, 'success');
+          renderApp();
+        }
+        return true;
+      } catch (err) {
+        console.warn('localStorage quota warning:', err);
+        showToast('พื้นที่จัดเก็บในเบราว์เซอร์ใกล้เต็ม แนะนำให้กด "📄 บันทึกเป็นไฟล์ใหม่" เพื่อสำรองข้อมูลครับ', 'warning');
+        return false;
+      }
+    }
+
+    function applyBrandTheme() {
+      document.documentElement.style.setProperty('--brand-color', appState.brand.accentColor || '#1e3a8a');
+    }
+
+    function getActiveProject() {
+      return appState.projects.find(p => p.id === appState.activeProjectId) || null;
+    }
+
+    function getActiveFloor(project) {
+      if (!project || !project.floors || project.floors.length === 0) return null;
+      let fl = project.floors.find(f => f.id === appState.activeFloorId);
+      if (!fl) {
+        fl = project.floors[0];
+        appState.activeFloorId = fl.id;
+      }
+      return fl;
+    }
+
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function renderBrandLogoHtml(sizeClass = 'w-14 h-14') {
+      if (appState.brand.customLogoDataUrl) {
+        return `<img src="${appState.brand.customLogoDataUrl}" alt="Company Logo" class="${sizeClass} object-contain rounded-xl bg-white" />`;
+      }
+      return `<div class="${sizeClass}">${DEFAULT_GEAR_LOGO_SVG}</div>`;
+    }
+
+    /**
+     * Compress uploaded image file to JPEG data URL via Canvas to keep localStorage fast
+     */
+    function compressImageFile(file, maxWidth = 960, quality = 0.76) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let w = img.width;
+            let h = img.height;
+            if (w > maxWidth) {
+              h = Math.round((h * maxWidth) / w);
+              w = maxWidth;
+            }
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+          };
+          img.onerror = reject;
+          img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    /*************************************************************************
+     * 3. TOAST, CUSTOM MODALS & LIGHTBOX (ZERO NATIVE ALERT/CONFIRM/PROMPT)
+     *************************************************************************/
+    function showToast(message, type = 'success') {
+      const container = document.getElementById('toastContainer');
+      if (!container) return;
+      const styles = {
+        success: 'bg-slate-900 text-white border-emerald-500',
+        info: 'bg-blue-950 text-white border-blue-400',
+        warning: 'bg-amber-950 text-white border-amber-400',
+        danger: 'bg-rose-950 text-white border-rose-400'
+      };
+      const icons = { success: '✅', info: 'ℹ️', warning: '⚠️', danger: '❌' };
+      const el = document.createElement('div');
+      el.className = `pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-2xl shadow-xl border-l-4 text-xs sm:text-sm font-medium transition-all transform translate-y-2 opacity-0 ${styles[type] || styles.success}`;
+      el.innerHTML = `<span class="text-base">${icons[type] || '✅'}</span><span class="flex-1">${escapeHtml(message)}</span>`;
+      container.appendChild(el);
+      requestAnimationFrame(() => el.classList.remove('translate-y-2', 'opacity-0'));
+      setTimeout(() => {
+        el.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => el.remove(), 300);
+      }, 3600);
+    }
+
+    function openModal(html, maxWidthClass = 'max-w-2xl') {
+      const backdrop = document.getElementById('modalBackdrop');
+      const dialog = document.getElementById('modalDialog');
+      if (!backdrop || !dialog) return;
+      dialog.className = `bg-white rounded-3xl shadow-2xl border border-slate-200 ${maxWidthClass} w-full overflow-hidden max-h-[92vh] flex flex-col`;
+      dialog.innerHTML = html;
+      backdrop.classList.remove('hidden');
+      backdrop.classList.add('flex');
+    }
+
+    function closeModal() {
+      const backdrop = document.getElementById('modalBackdrop');
+      if (!backdrop) return;
+      backdrop.classList.add('hidden');
+      backdrop.classList.remove('flex');
+    }
+
+    function openSubModal(html, maxWidthClass = 'max-w-lg') {
+      const backdrop = document.getElementById('subModalBackdrop');
+      const dialog = document.getElementById('subModalDialog');
+      if (!backdrop || !dialog) return;
+      dialog.className = `bg-white rounded-3xl shadow-2xl border border-slate-200 ${maxWidthClass} w-full overflow-hidden max-h-[90vh] flex flex-col`;
+      dialog.innerHTML = html;
+      backdrop.classList.remove('hidden');
+      backdrop.classList.add('flex');
+    }
+
+    function closeSubModal() {
+      const backdrop = document.getElementById('subModalBackdrop');
+      if (!backdrop) return;
+      backdrop.classList.add('hidden');
+      backdrop.classList.remove('flex');
+      pendingConfirmCallback = null;
+    }
+
+    function openConfirmModal({ title, message, confirmText = 'ยืนยัน', confirmStyle = 'danger', onConfirm }) {
+      pendingConfirmCallback = onConfirm;
+      const btnCls = confirmStyle === 'danger'
+        ? 'bg-rose-600 hover:bg-rose-700 text-white'
+        : 'bg-blue-700 hover:bg-blue-800 text-white';
+      openSubModal(`
+        <div class="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+          <h3 class="font-bold text-slate-900 text-base">${escapeHtml(title)}</h3>
+          <button type="button" onclick="closeSubModal()" class="text-slate-400 hover:text-slate-700 text-xl leading-none">&times;</button>
+        </div>
+        <div class="p-6 text-sm text-slate-600 leading-relaxed">${escapeHtml(message)}</div>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+          <button type="button" onclick="closeSubModal()" class="px-4 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-sm font-semibold">ยกเลิก</button>
+          <button type="button" onclick="executePendingConfirm()" class="px-5 py-2 rounded-xl text-sm font-semibold shadow-sm transition ${btnCls}">${escapeHtml(confirmText)}</button>
+        </div>
+      `, 'max-w-md');
+    }
+
+    function executePendingConfirm() {
+      const cb = pendingConfirmCallback;
+      closeSubModal();
+      if (typeof cb === 'function') cb();
+    }
+
+    function openLightbox(src, caption = '') {
+      if (!src) return;
+      document.getElementById('lightboxImg').src = src;
+      document.getElementById('lightboxCaption').textContent = caption || 'ภาพขยายเต็มจอ';
+      const lb = document.getElementById('lightboxModal');
+      lb.classList.remove('hidden');
+      lb.classList.add('flex');
+    }
+
+    function closeLightbox() {
+      const lb = document.getElementById('lightboxModal');
+      lb.classList.add('hidden');
+      lb.classList.remove('flex');
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const lb = document.getElementById('lightboxModal');
+        if (lb && !lb.classList.contains('hidden')) {
+          closeLightbox();
+          return;
+        }
+        const sub = document.getElementById('subModalBackdrop');
+        if (sub && !sub.classList.contains('hidden')) {
+          closeSubModal();
+          return;
+        }
+        const main = document.getElementById('modalBackdrop');
+        if (main && !main.classList.contains('hidden')) {
+          closeModal();
+        }
+      }
+    });
+
+    /*************************************************************************
+     * 4. HEADER & GEMINI API KEY MANAGEMENT + GUIDE
+     *************************************************************************/
+    function hasValidApiKey() {
+      return Boolean((appState.brand.geminiApiKey || '').trim());
+    }
+
+    function renderGlobalHeader(isInsideProject = false) {
+      const b = appState.brand;
+      const apiConnected = hasValidApiKey();
+      return `
+        <header class="bg-white rounded-3xl shadow-sm border border-slate-200 p-4 sm:p-5 mb-5">
+          <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <!-- Left: Brand Identity -->
+            <div class="flex items-start sm:items-center gap-3.5 sm:gap-4">
+              <div class="p-1.5 bg-slate-50 rounded-2xl border border-slate-200 shrink-0 shadow-xs">
+                ${renderBrandLogoHtml('w-14 h-14 sm:w-16 sm:h-16')}
+              </div>
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                  <h1 class="text-lg sm:text-2xl font-extrabold tracking-tight brand-text leading-tight">${escapeHtml(b.companyName)}</h1>
+                  <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200">${escapeHtml(b.subtitle)}</span>
+                </div>
+                <p class="text-xs sm:text-sm text-slate-600 mt-1">
+                  ผู้ตรวจสอบ: <strong class="text-slate-900">${escapeHtml(b.inspectorName)}</strong>
+                  <span class="mx-1.5 text-slate-300">|</span>
+                  เลขที่ใบอนุญาต: <strong class="text-slate-900">${escapeHtml(b.licenseNo)}</strong>
+                </p>
+                <div class="flex flex-wrap items-center gap-2 mt-2">
+                  <button type="button" onclick="openBrandSettingsModal()" class="text-xs px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition flex items-center gap-1.5">
+                    🎨 แก้ไขข้อมูลบริษัท/โลโก้
+                  </button>
+                  ${isInsideProject ? `
+                    <button type="button" onclick="goToProjectHub()" class="text-xs px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 font-semibold transition flex items-center gap-1.5">
+                      🏠 คลังแฟ้มโครงการ
+                    </button>
+                  ` : `
+                    <button type="button" onclick="openCreateProjectModal()" class="text-xs px-3.5 py-1.5 rounded-xl brand-bg hover:opacity-95 text-white font-semibold shadow-sm transition flex items-center gap-1.5">
+                      + สร้างแฟ้มโครงการใหม่
+                    </button>
+                  `}
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: Gemini API Key Bar -->
+            <div class="flex flex-wrap items-center gap-2 lg:justify-end pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-100">
+              <span class="text-xs font-semibold px-3 py-1.5 rounded-full border flex items-center gap-1.5 ${apiConnected ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}">
+                <span class="w-2 h-2 rounded-full ${apiConnected ? 'bg-emerald-500' : 'bg-rose-500'}"></span>
+                ${apiConnected ? 'เชื่อมต่อ API Key แล้ว' : 'ยังไม่ตั้งค่า API Key'}
+              </span>
+              <button type="button" onclick="openApiGuideModal()" class="text-xs px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 font-semibold transition flex items-center gap-1.5">
+                📖 วิธีรับ API Key
+              </button>
+              <button type="button" onclick="openApiKeyModal()" class="text-xs px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-sm transition flex items-center gap-1.5">
+                🔑 ตั้งค่า API Key
+              </button>
+            </div>
+          </div>
+        </header>
+      `;
+    }
+
+    function openApiKeyModal(alertMsg = '') {
+      const currentKey = appState.brand.geminiApiKey || '';
+      const currentModel = appState.brand.geminiModel || 'gemini-2.5-flash';
+      openModal(`
+        <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="text-lg">🔑</span>
+            <h3 class="font-bold text-base">ตั้งค่า Google Gemini API Key</h3>
+          </div>
+          <button type="button" onclick="closeModal()" class="text-slate-300 hover:text-white text-xl leading-none">&times;</button>
+        </div>
+        <div class="p-6 space-y-4 overflow-y-auto">
+          ${alertMsg ? `
+            <div class="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs sm:text-sm text-rose-800 font-medium">
+              ⚠️ ${escapeHtml(alertMsg)}
+            </div>
+          ` : ''}
+          <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
+            กรอก <strong>Gemini API Key</strong> ของคุณเพื่อเปิดใช้งานระบบ AI วิเคราะห์ภาพ Defect หน้างาน ข้อมูลคีย์จะถูกจัดเก็บไว้เฉพาะในเบราว์เซอร์เครื่องนี้ (<code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs">localStorage</code>) เท่านั้น
+          </p>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5">Gemini API Key</label>
+            <div class="flex gap-2">
+              <input id="apiKeyField" type="password" value="${escapeHtml(currentKey)}" placeholder="AIzaSy..." class="flex-1 px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none font-mono" />
+              <button type="button" onclick="toggleApiKeyVisibility()" class="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-sm" title="แสดง/ซ่อนรหัส">👁️</button>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5">โมเดล AI ที่ใช้งาน</label>
+            <select id="apiModelField" class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
+              <option value="gemini-2.5-flash" ${currentModel === 'gemini-2.5-flash' ? 'selected' : ''}>gemini-2.5-flash (แนะนำ — รวดเร็วและแม่นยำ)</option>
+              <option value="gemini-2.0-flash" ${currentModel === 'gemini-2.0-flash' ? 'selected' : ''}>gemini-2.0-flash</option>
+            </select>
+          </div>
+
+          <div id="apiTestBox" class="hidden p-3 rounded-xl text-xs font-semibold"></div>
+
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+            <button type="button" onclick="openApiGuideModal()" class="text-xs font-bold text-indigo-700 hover:underline flex items-center gap-1">
+              📖 อ่านขั้นตอนการรับ API Key (ฟรี)
+            </button>
+            <button type="button" onclick="testGeminiApiKey()" class="text-xs px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-semibold transition">
+              🔌 ทดสอบการเชื่อมต่อ
+            </button>
+          </div>
+        </div>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2">
+          <button type="button" onclick="deleteGeminiApiKey()" class="text-xs px-3.5 py-2 rounded-xl text-rose-600 hover:bg-rose-50 font-semibold">🗑️ ลบ Key</button>
+          <div class="flex gap-2">
+            <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-sm font-semibold">ปิด</button>
+            <button type="button" onclick="saveGeminiApiKey()" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm">💾 บันทึกการตั้งค่า</button>
+          </div>
+        </div>
+      `, 'max-w-lg');
+    }
+
+    function toggleApiKeyVisibility() {
+      const inp = document.getElementById('apiKeyField');
+      if (!inp) return;
+      inp.type = inp.type === 'password' ? 'text' : 'password';
+    }
+
+    function saveGeminiApiKey() {
+      const key = (document.getElementById('apiKeyField')?.value || '').trim();
+      const model = document.getElementById('apiModelField')?.value || 'gemini-2.5-flash';
+      appState.brand.geminiApiKey = key;
+      appState.brand.geminiModel = model;
+      saveAllToLocalStorage(false);
+      closeModal();
+      showToast(key ? 'บันทึก Gemini API Key เรียบร้อยแล้ว' : 'ลบ Gemini API Key เรียบร้อยแล้ว', 'success');
+      renderApp();
+    }
+
+    function deleteGeminiApiKey() {
+      appState.brand.geminiApiKey = '';
+      const inp = document.getElementById('apiKeyField');
+      if (inp) inp.value = '';
+      saveAllToLocalStorage(false);
+      showToast('ลบ API Key ออกจากเครื่องแล้ว', 'info');
+      renderApp();
+    }
+
+    async function testGeminiApiKey() {
+      const key = (document.getElementById('apiKeyField')?.value || '').trim();
+      const model = document.getElementById('apiModelField')?.value || 'gemini-2.5-flash';
+      const box = document.getElementById('apiTestBox');
+      if (!box) return;
+      box.classList.remove('hidden');
+
+      if (!key) {
+        box.className = 'p-3 rounded-xl text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200';
+        box.textContent = '❌ กรุณากรอก API Key ก่อนกดทดสอบการเชื่อมต่อ';
+        return;
+      }
+
+      box.className = 'p-3 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200';
+      box.textContent = '⏳ กำลังทดสอบการเชื่อมต่อกับ Google Gemini API...';
+
+      try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: 'Reply OK' }] }] })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg = data?.error?.message || `HTTP ${res.status}`;
+          throw new Error(msg);
+        }
+        box.className = 'p-3 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200';
+        box.textContent = `✅ เชื่อมต่อสำเร็จ! โมเดล ${model} พร้อมใช้งาน (อย่าลืมกด "บันทึกการตั้งค่า")`;
+      } catch (err) {
+        box.className = 'p-3 rounded-xl text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200';
+        box.textContent = `❌ เชื่อมต่อไม่สำเร็จ: ${err.message} (ตรวจสอบว่าคัดลอก API Key ครบถ้วนและไม่มีช่องว่าง)`;
+      }
+    }
+
+    function openApiGuideModal() {
+      openSubModal(`
+        <div class="px-6 py-4 bg-indigo-700 text-white flex items-center justify-between">
+          <h3 class="font-bold text-base">📖 ขั้นตอนการรับ Google Gemini API Key (ฟรี)</h3>
+          <button type="button" onclick="closeSubModal()" class="text-indigo-200 hover:text-white text-xl leading-none">&times;</button>
+        </div>
+        <div class="p-6 space-y-4 overflow-y-auto text-sm text-slate-700">
+          <ol class="list-decimal pl-5 space-y-2.5 leading-relaxed">
+            <li>เข้าไปที่เว็บไซต์ <strong>Google AI Studio</strong>:
+              <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="text-indigo-700 font-bold underline break-all">https://aistudio.google.com/app/apikey</a>
+            </li>
+            <li>ลงชื่อเข้าใช้ด้วยบัญชี <strong>Google (Gmail)</strong> ของคุณ</li>
+            <li>คลิกที่ปุ่ม <strong>"Create API key"</strong> (สร้างคีย์ API)</li>
+            <li>เลือกโปรเจกต์ที่มีอยู่ หรือคลิก <strong>"Create API key in new project"</strong></li>
+            <li>คัดลอกรหัสคีย์ที่ได้ (จะขึ้นต้นด้วย <code class="bg-slate-100 px-1.5 py-0.5 rounded font-mono text-xs">AIzaSy...</code>)</li>
+            <li>กลับมาที่หน้าเว็บนี้ กดปุ่ม <strong>"🔑 ตั้งค่า API Key"</strong> วางรหัสคีย์ แล้วกด <strong>"บันทึกการตั้งค่า"</strong></li>
+          </ol>
+          <div class="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 leading-relaxed">
+            <strong>🔒 ความปลอดภัยของข้อมูล:</strong> API Key ของคุณถูกเก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น ไม่มีการส่งต่อไปยังเซิร์ฟเวอร์อื่น และควรเก็บเป็นความลับไม่แชร์ให้ผู้อื่น
+          </div>
+        </div>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+          <button type="button" onclick="closeSubModal(); openApiKeyModal();" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm">
+            🔑 ไปหน้ากรอก API Key
+          </button>
+          <button type="button" onclick="closeSubModal()" class="px-4 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-sm font-semibold">ปิด</button>
+        </div>
+      `, 'max-w-lg');
+    }
+
+    function openBrandSettingsModal() {
+      const b = appState.brand;
+      tempBrandLogoDataUrl = b.customLogoDataUrl || null;
+      openModal(`
+        <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+          <h3 class="font-bold text-base">🎨 แก้ไขข้อมูลบริษัท & โลโก้ (White-Label)</h3>
+          <button type="button" onclick="closeModal()" class="text-slate-300 hover:text-white text-xl leading-none">&times;</button>
+        </div>
+        <div class="p-6 space-y-4 overflow-y-auto">
+          <div class="flex flex-col sm:flex-row items-center gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-200">
+            <div id="brandLogoPreviewBox" class="w-20 h-20 rounded-2xl bg-white border border-slate-200 p-1.5 flex items-center justify-center shrink-0">
+              ${tempBrandLogoDataUrl ? `<img src="${tempBrandLogoDataUrl}" class="w-full h-full object-contain rounded-xl" />` : DEFAULT_GEAR_LOGO_SVG}
+            </div>
+            <div class="flex-1 text-center sm:text-left">
+              <div class="text-sm font-bold text-slate-800">โลโก้บริษัท (แสดงบนหน้าเว็บ & รายงาน PDF/Word)</div>
+              <p class="text-xs text-slate-500 mt-0.5">รองรับไฟล์ PNG, JPG, WEBP พื้นหลังโปร่งใส</p>
+              <div class="flex flex-wrap justify-center sm:justify-start gap-2 mt-2.5">
+                <label class="text-xs px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold cursor-pointer">
+                  📤 อัปโหลดโลโก้ใหม่
+                  <input type="file" accept="image/*" class="hidden" onchange="handleBrandLogoUpload(event)" />
+                </label>
+                <button type="button" onclick="resetBrandLogoToDefault()" class="text-xs px-3 py-1.5 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-semibold">ใช้โลโก้เริ่มต้น</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">ชื่อบริษัท / แบรนด์</label>
+              <input id="brCompany" type="text" value="${escapeHtml(b.companyName)}" class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">ป้ายกำกับรอง (Subtitle)</label>
+              <input id="brSubtitle" type="text" value="${escapeHtml(b.subtitle)}" class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">ชื่อผู้ตรวจสอบหลัก</label>
+              <input id="brInspector" type="text" value="${escapeHtml(b.inspectorName)}" class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">เลขที่ใบอนุญาตประกอบวิชาชีพ</label>
+              <input id="brLicense" type="text" value="${escapeHtml(b.licenseNo)}" class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">คำอธิบาย / สโลแกน</label>
+            <input id="brTagline" type="text" value="${escapeHtml(b.tagline)}" class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5 items-end">
+            <div class="sm:col-span-2">
+              <label class="block text-xs font-bold text-slate-700 mb-1">ข้อมูลติดต่อ (โทร / Line / ที่อยู่)</label>
+              <input id="brContact" type="text" value="${escapeHtml(b.contactInfo)}" class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">สีธีมหลัก (Brand Color)</label>
+              <div class="flex items-center gap-2">
+                <input id="brColor" type="color" value="${escapeHtml(b.accentColor || '#1e3a8a')}" class="w-12 h-10 rounded-xl border border-slate-300 cursor-pointer p-1" />
+                <span class="text-xs text-slate-500 font-mono">${escapeHtml(b.accentColor || '#1e3a8a')}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+          <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-sm font-semibold">ยกเลิก</button>
+          <button type="button" onclick="saveBrandSettings()" class="px-5 py-2 rounded-xl brand-bg text-white text-sm font-semibold shadow-sm">💾 บันทึกข้อมูลบริษัท</button>
+        </div>
+      `, 'max-w-xl');
+    }
+
+    async function handleBrandLogoUpload(event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        const dataUrl = await compressImageFile(file, 360, 0.85);
+        tempBrandLogoDataUrl = dataUrl;
+        const box = document.getElementById('brandLogoPreviewBox');
+        if (box) box.innerHTML = `<img src="${dataUrl}" class="w-full h-full object-contain rounded-xl" />`;
+      } catch (e) {
+        showToast('ไม่สามารถอ่านไฟล์รูปโลโก้ได้', 'danger');
+      }
+      event.target.value = '';
+    }
+
+    function resetBrandLogoToDefault() {
+      tempBrandLogoDataUrl = null;
+      const box = document.getElementById('brandLogoPreviewBox');
+      if (box) box.innerHTML = DEFAULT_GEAR_LOGO_SVG;
+    }
+
+    function saveBrandSettings() {
+      appState.brand.companyName = (document.getElementById('brCompany')?.value || '').trim() || DEFAULT_BRAND.companyName;
+      appState.brand.subtitle = (document.getElementById('brSubtitle')?.value || '').trim() || DEFAULT_BRAND.subtitle;
+      appState.brand.inspectorName = (document.getElementById('brInspector')?.value || '').trim() || DEFAULT_BRAND.inspectorName;
+      appState.brand.licenseNo = (document.getElementById('brLicense')?.value || '').trim() || DEFAULT_BRAND.licenseNo;
+      appState.brand.tagline = (document.getElementById('brTagline')?.value || '').trim();
+      appState.brand.contactInfo = (document.getElementById('brContact')?.value || '').trim();
+      appState.brand.accentColor = document.getElementById('brColor')?.value || '#1e3a8a';
+      appState.brand.customLogoDataUrl = tempBrandLogoDataUrl;
+      saveAllToLocalStorage(false);
+      closeModal();
+      showToast('อัปเดตข้อมูลบริษัทและธีมเรียบร้อยแล้ว', 'success');
+      renderApp();
+    }
+
+    /*************************************************************************
+     * 5. JSON DATA MANAGEMENT (SAVE, SAVE AS NEW FILE, BACKUP, IMPORT)
+     *************************************************************************/
+    async function saveJsonFileWithPickerOrDownload(payloadObj, rawFileName) {
+      const cleaned = (rawFileName || getDefaultSaveAsFilename())
+        .trim()
+        .replace(/[\\/:*?"<>|]/g, '_')
+        .replace(/\.json$/i, '');
+      const finalName = `${cleaned || 'home_inspection_backup'}.json`;
+      const jsonText = JSON.stringify(payloadObj, null, 2);
+
+      if (typeof window.showSaveFilePicker === 'function') {
+        try {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: finalName,
+            types: [{ description: 'JSON Inspection File', accept: { 'application/json': ['.json'] } }]
+          });
+          const writable = await handle.createWritable();
+          await writable.write(jsonText);
+          await writable.close();
+          return { saved: true, fileName: handle.name || finalName };
+        } catch (err) {
+          if (err && err.name === 'AbortError') return { saved: false, cancelled: true };
+        }
+      }
+
+      const blob = new Blob([jsonText], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = finalName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      return { saved: true, fileName: finalName };
+    }
+
+    function backupAllJsonImmediate() {
+      const payload = {
+        format: 'TIS_HOME_INSPECTION_BACKUP_V10',
+        exportedAt: new Date().toISOString(),
+        brand: { ...appState.brand, geminiApiKey: '' },
+        projects: appState.projects
+      };
+      const fileName = getDefaultSaveAsFilename('TIS_FullBackup');
+      saveJsonFileWithPickerOrDownload(payload, fileName).then(res => {
+        if (res.saved) showToast(`สำรองข้อมูลทั้งหมดเป็นไฟล์ ${res.fileName} เรียบร้อยแล้ว`, 'success');
+      });
+    }
+
+    function backupSingleProjectJson(projectId) {
+      const proj = appState.projects.find(p => p.id === projectId);
+      if (!proj) return;
+      const payload = {
+        format: 'TIS_SINGLE_PROJECT_V10',
+        exportedAt: new Date().toISOString(),
+        project: proj
+      };
+      const safeSlug = (proj.houseNo || proj.name || 'project').replace(/[^a-zA-Z0-9ก-๙_-]/g, '_');
+      const fileName = getDefaultSaveAsFilename(`Project_${safeSlug}`);
+      saveJsonFileWithPickerOrDownload(payload, fileName).then(res => {
+        if (res.saved) showToast(`สำรองแฟ้ม "${proj.name}" เรียบร้อยแล้ว`, 'success');
+      });
+    }
+
+    function openSaveAsModal() {
+      const defaultName = getDefaultSaveAsFilename('TIS_Inspection');
+      const projOptions = appState.projects.map(p =>
+        `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)} (${p.defects.length} ข้อ)</option>`
+      ).join('');
+
+      openModal(`
+        <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+          <h3 class="font-bold text-base">📄 บันทึกเป็นไฟล์ใหม่ (Save As JSON)</h3>
+          <button type="button" onclick="closeModal()" class="text-slate-300 hover:text-white text-xl leading-none">&times;</button>
+        </div>
+        <div class="p-6 space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5">ชื่อไฟล์ (.json)</label>
+            <input id="saveAsFileName" type="text" value="${escapeHtml(defaultName)}" class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-teal-500 font-mono" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5">ขอบเขตข้อมูลที่ต้องการบันทึก</label>
+            <select id="saveAsScope" class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 bg-white outline-none focus:ring-2 focus:ring-teal-500">
+              <option value="ALL">📦 ทุกแฟ้มโครงการทั้งหมด (${appState.projects.length} แฟ้ม) + ข้อมูลบริษัท</option>
+              ${projOptions}
+            </select>
+          </div>
+          <p class="text-xs text-slate-500">ระบบจะบันทึกข้อมูลแปลนบ้าน โซน รายการ Defect และรูปภาพก่อน-หลังแก้ไขทั้งหมดลงในไฟล์ .json (ไม่รวม API Key เพื่อความปลอดภัย)</p>
+        </div>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+          <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-sm font-semibold">ยกเลิก</button>
+          <button type="button" onclick="confirmSaveAsJson()" class="px-5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold shadow-sm">💾 บันทึกไฟล์ JSON</button>
+        </div>
+      `, 'max-w-md');
+    }
+
+    async function confirmSaveAsJson() {
+      const fileName = document.getElementById('saveAsFileName')?.value || getDefaultSaveAsFilename();
+      const scope = document.getElementById('saveAsScope')?.value || 'ALL';
+      let payload;
+      if (scope === 'ALL') {
+        payload = {
+          format: 'TIS_HOME_INSPECTION_BACKUP_V10',
+          exportedAt: new Date().toISOString(),
+          brand: { ...appState.brand, geminiApiKey: '' },
+          projects: appState.projects
+        };
+      } else {
+        const proj = appState.projects.find(p => p.id === scope);
+        if (!proj) return;
+        payload = {
+          format: 'TIS_SINGLE_PROJECT_V10',
+          exportedAt: new Date().toISOString(),
+          project: proj
+        };
+      }
+      const res = await saveJsonFileWithPickerOrDownload(payload, fileName);
+      if (res.saved) {
+        closeModal();
+        showToast(`บันทึกไฟล์ ${res.fileName} เรียบร้อยแล้ว`, 'success');
+      }
+    }
+
+    function triggerJsonImport() {
+      const inp = document.getElementById('jsonImportInput');
+      if (inp) {
+        inp.value = '';
+        inp.click();
+      }
+    }
+
+    function handleJsonImportFile(event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          // Case 1: Full backup with projects array
+          if (Array.isArray(parsed.projects) && parsed.projects.length > 0) {
+            openConfirmModal({
+              title: '📂 นำเข้าไฟล์สำรองข้อมูลทั้งหมด',
+              message: `พบแฟ้มโครงการทั้งหมด ${parsed.projects.length} แฟ้มในไฟล์ "${file.name}" คุณต้องการนำเข้าและแทนที่คลังแฟ้มโครงการปัจจุบันหรือไม่?`,
+              confirmText: 'นำเข้าข้อมูลทั้งหมด',
+              confirmStyle: 'primary',
+              onConfirm: () => {
+                appState.projects = parsed.projects.map(migrateDefectPhotos);
+                if (parsed.brand) {
+                  const keepKey = appState.brand.geminiApiKey;
+                  const keepModel = appState.brand.geminiModel;
+                  appState.brand = { ...DEFAULT_BRAND, ...parsed.brand, geminiApiKey: keepKey, geminiModel: keepModel };
+                }
+                appState.activeProjectId = null;
+                saveAllToLocalStorage(false);
+                showToast(`นำเข้า ${appState.projects.length} แฟ้มโครงการเรียบร้อยแล้ว`, 'success');
+                renderApp();
+              }
+            });
+            return;
+          }
+          // Case 2: Single project JSON
+          const singleProj = parsed.project || (parsed.id && Array.isArray(parsed.floors) ? parsed : null);
+          if (singleProj) {
+            const migrated = migrateDefectPhotos(singleProj);
+            openConfirmModal({
+              title: '📂 นำเข้าแฟ้มโครงการเดี่ยว',
+              message: `พบแฟ้ม "${migrated.name}" (${(migrated.defects || []).length} รายการ Defect) ต้องการเพิ่มเข้าสู่คลังแฟ้มโครงการของคุณหรือไม่?`,
+              confirmText: 'เพิ่มแฟ้มโครงการ',
+              confirmStyle: 'primary',
+              onConfirm: () => {
+                const existsIdx = appState.projects.findIndex(p => p.id === migrated.id);
+                if (existsIdx >= 0) {
+                  migrated.id = 'proj_' + Date.now();
+                }
+                appState.projects.unshift(migrated);
+                saveAllToLocalStorage(false);
+                showToast(`นำเข้าแฟ้ม "${migrated.name}" เรียบร้อยแล้ว`, 'success');
+                renderApp();
+              }
+            });
+            return;
+          }
+          showToast('รูปแบบไฟล์ JSON ไม่ถูกต้องหรือไม่รองรับ', 'danger');
+        } catch (err) {
+          showToast('ไม่สามารถอ่านไฟล์ JSON ได้: ' + err.message, 'danger');
+        }
+      };
+      reader.readAsText(file, 'utf-8');
+    }
+
+    /*************************************************************************
+     * 6. PROJECT HUB VIEW (PAGE 1)
+     *************************************************************************/
+    function goToProjectHub() {
+      appState.activeProjectId = null;
+      appState.placingDraftId = null;
+      appState.isZoneSetupMode = false;
+      renderApp();
+    }
+
+    function openProject(projectId) {
+      const proj = appState.projects.find(p => p.id === projectId);
+      if (!proj) return;
+      appState.activeProjectId = proj.id;
+      appState.activeTab = 'studio';
+      appState.activeFloorId = proj.floors?.[0]?.id || null;
+      appState.placingDraftId = null;
+      appState.isZoneSetupMode = false;
+      appState.listFloorFilter = 'all';
+      appState.listZoneFilter = 'all';
+      appState.listSeverityFilter = 'all';
+      appState.listStatusFilter = 'all';
+      appState.listSearch = '';
+      renderApp();
+    }
+
+    function confirmResetDemoProject() {
+      openConfirmModal({
+        title: '🔄 รีเซ็ตแฟ้มตัวอย่างเริ่มต้น',
+        message: 'ต้องการสร้างแฟ้มตัวอย่าง "คุณศิรินภา อุ่นศิริ (46 ข้อ บนแปลน 2 ชั้น 7 โซน)" กลับมาใหม่หรือไม่? (แฟ้มโครงการอื่นของคุณจะไม่ถูกลบ)',
+        confirmText: 'รีเซ็ตแฟ้มตัวอย่าง',
+        confirmStyle: 'primary',
+        onConfirm: () => {
+          const demo = createDefaultSirinaphaProject();
+          const idx = appState.projects.findIndex(p => p.id === demo.id);
+          if (idx >= 0) appState.projects[idx] = demo;
+          else appState.projects.unshift(demo);
+          saveAllToLocalStorage(false);
+          showToast('รีเซ็ตแฟ้มตัวอย่าง คุณศิรินภา อุ่นศิริ (46 ข้อ) เรียบร้อยแล้ว', 'success');
+          renderApp();
+        }
+      });
+    }
+
+    function openCreateProjectModal(editProjId = null) {
+      const p = editProjId ? appState.projects.find(x => x.id === editProjId) : null;
+      const todayThai = new Date().toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      openModal(`
+        <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+          <h3 class="font-bold text-base">${p ? '✏️ แก้ไขข้อมูลแฟ้มโครงการ' : '📁 สร้างแฟ้มโครงการใหม่'}</h3>
+          <button type="button" onclick="closeModal()" class="text-slate-300 hover:text-white text-xl leading-none">&times;</button>
+        </div>
+        <div class="p-6 space-y-4 overflow-y-auto">
+          <input type="hidden" id="pmEditId" value="${escapeHtml(p?.id || '')}" />
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">ชื่อแฟ้มโครงการ *</label>
+            <input id="pmName" type="text" value="${escapeHtml(p?.name || '')}" placeholder="เช่น ตรวจรับบ้านเดี่ยว 2 ชั้น - คุณสมชาย" class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">บ้านเลขที่ / แปลงที่</label>
+              <input id="pmHouseNo" type="text" value="${escapeHtml(p?.houseNo || '')}" placeholder="เช่น 123/45" class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">ชื่อลูกค้า / เจ้าของบ้าน</label>
+              <input id="pmClient" type="text" value="${escapeHtml(p?.clientName || '')}" placeholder="เช่น คุณสมชาย ใจดี" class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">ที่อยู่ / โครงการ / จังหวัด</label>
+            <input id="pmAddress" type="text" value="${escapeHtml(p?.address || '')}" placeholder="เช่น หมู่บ้านเดอะปาร์ค จ.ขอนแก่น" class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+            <div class="sm:col-span-2">
+              <label class="block text-xs font-bold text-slate-700 mb-1">วันที่ตรวจรับ</label>
+              <input id="pmDate" type="text" value="${escapeHtml(p?.inspectionDate || todayThai)}" class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">สถานะโครงการ</label>
+              <select id="pmStatus" class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 bg-white outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="กำลังดำเนินการ" ${(p?.projectStatus || 'กำลังดำเนินการ') === 'กำลังดำเนินการ' ? 'selected' : ''}>กำลังดำเนินการ</option>
+                <option value="ตรวจเสร็จสิ้น" ${p?.projectStatus === 'ตรวจเสร็จสิ้น' ? 'selected' : ''}>ตรวจเสร็จสิ้น</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+          <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-sm font-semibold">ยกเลิก</button>
+          <button type="button" onclick="saveProjectModal()" class="px-5 py-2 rounded-xl brand-bg text-white text-sm font-semibold shadow-sm">${p ? '💾 บันทึกการแก้ไข' : '+ สร้างแฟ้มโครงการ'}</button>
+        </div>
+      `, 'max-w-lg');
+    }
+
+    function saveProjectModal() {
+      const editId = document.getElementById('pmEditId')?.value || '';
+      const name = (document.getElementById('pmName')?.value || '').trim();
+      if (!name) {
+        showToast('กรุณากรอกชื่อแฟ้มโครงการ', 'warning');
+        return;
+      }
+      const houseNo = (document.getElementById('pmHouseNo')?.value || '').trim();
+      const clientName = (document.getElementById('pmClient')?.value || '').trim();
+      const address = (document.getElementById('pmAddress')?.value || '').trim();
+      const inspectionDate = (document.getElementById('pmDate')?.value || '').trim();
+      const projectStatus = document.getElementById('pmStatus')?.value || 'กำลังดำเนินการ';
+
+      if (editId) {
+        const proj = appState.projects.find(p => p.id === editId);
+        if (proj) {
+          proj.name = name;
+          proj.houseNo = houseNo;
+          proj.clientName = clientName;
+          proj.address = address;
+          proj.inspectionDate = inspectionDate;
+          proj.projectStatus = projectStatus;
+        }
+        saveAllToLocalStorage(false);
+        closeModal();
+        showToast('แก้ไขข้อมูลโครงการเรียบร้อยแล้ว', 'success');
+        renderApp();
+      } else {
+        const ts = Date.now();
+        const f1 = 'fl_' + ts + '_1';
+        const f2 = 'fl_' + ts + '_2';
+        const newProj = {
+          id: 'proj_' + ts,
+          name,
+          houseNo: houseNo || '-',
+          clientName: clientName || '-',
+          address: address || '-',
+          inspectionDate,
+          inspectionRound: 'ตรวจรอบที่ 1',
+          projectStatus,
+          floors: [
+            {
+              id: f1, name: 'ชั้น 1', subtitle: '4 โซน', imageUrl: null, svgPreset: 0,
+              zones: [
+                { id: 'z_' + ts + '_1', name: 'โซน 1: หน้าบ้าน/โรงจอดรถ', x: 5, y: 70, w: 90, h: 25, bg: '#ffedd5', border: '#ea580c' },
+                { id: 'z_' + ts + '_2', name: 'โซน 2: โถงรับแขกชั้น 1', x: 5, y: 25, w: 58, h: 43, bg: '#dbeafe', border: '#2563eb' },
+                { id: 'z_' + ts + '_3', name: 'โซน 3: ห้องครัว', x: 5, y: 5, w: 90, h: 19, bg: '#dcfce7', border: '#16a34a' },
+                { id: 'z_' + ts + '_4', name: 'โซน 4: ห้องน้ำชั้น 1', x: 65, y: 45, w: 30, h: 23, bg: '#fce7f3', border: '#db2777' }
+              ]
+            },
+            {
+              id: f2, name: 'ชั้น 2', subtitle: '3 โซน', imageUrl: null, svgPreset: 1,
+              zones: [
+                { id: 'z_' + ts + '_5', name: 'โซน 5: โถงบันไดชั้น 2', x: 5, y: 38, w: 90, h: 22, bg: '#e0e7ff', border: '#4f46e5' },
+                { id: 'z_' + ts + '_6', name: 'โซน 6: ห้องนอนใหญ่', x: 5, y: 62, w: 90, h: 33, bg: '#fef3c7', border: '#d97706' },
+                { id: 'z_' + ts + '_7', name: 'โซน 7: ห้องนอน 2 & ห้องน้ำ', x: 5, y: 5, w: 90, h: 31, bg: '#fce7f3', border: '#db2777' }
+              ]
+            }
+          ],
+          defects: []
+        };
+        appState.projects.unshift(newProj);
+        saveAllToLocalStorage(false);
+        closeModal();
+        showToast(`สร้างแฟ้มโครงการ "${name}" เรียบร้อยแล้ว`, 'success');
+        renderApp();
+      }
+    }
+
+    function confirmDeleteProject(projectId) {
+      const proj = appState.projects.find(p => p.id === projectId);
+      if (!proj) return;
+      openConfirmModal({
+        title: '🗑️ ลบแฟ้มโครงการ',
+        message: `ยืนยันการลบแฟ้ม "${proj.name}" และรายการ Defect ทั้งหมด (${proj.defects.length} ข้อ) อย่างถาวรหรือไม่?`,
+        confirmText: 'ลบแฟ้มโครงการ',
+        confirmStyle: 'danger',
+        onConfirm: () => {
+          appState.projects = appState.projects.filter(p => p.id !== projectId);
+          saveAllToLocalStorage(false);
+          showToast('ลบแฟ้มโครงการเรียบร้อยแล้ว', 'info');
+          renderApp();
+        }
+      });
+    }
+
+    function renderProjectHubHtml() {
+      const totalProjects = appState.projects.length;
+      const activeProjectsCount = appState.projects.filter(p => p.projectStatus !== 'ตรวจเสร็จสิ้น').length;
+
+      return `
+        ${renderGlobalHeader(false)}
+
+        <!-- JSON File Management Bar -->
+        <section class="bg-white rounded-3xl shadow-sm border border-blue-100 p-4 sm:p-5 mb-5">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3.5">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-lg shrink-0">💾</div>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base">จัดการไฟล์ข้อมูล (บันทึก / บันทึกเป็นไฟล์ใหม่ / สำรอง / นำเข้า)</h2>
+                <p class="text-xs text-slate-500">บันทึกข้อมูลลงเครื่อง สร้างไฟล์ .json ฉบับใหม่ หรือนำเข้าไฟล์ข้อมูลเดิมได้จากที่นี่</p>
+              </div>
+            </div>
+            <span class="text-xs font-semibold px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 self-start sm:self-center">
+              ${appState.lastSavedAt ? `บันทึกล่าสุดเวลา ${escapeHtml(appState.lastSavedAt)}` : 'พร้อมบันทึกข้อมูลลงเครื่อง'}
+            </span>
+          </div>
+          <div class="flex flex-wrap items-center gap-2.5">
+            <button type="button" onclick="saveAllToLocalStorage(true)" class="px-4 py-2.5 rounded-2xl brand-bg hover:opacity-95 text-white text-xs sm:text-sm font-semibold shadow-sm transition flex items-center gap-1.5">
+              💾 บันทึกข้อมูล
+            </button>
+            <button type="button" onclick="openSaveAsModal()" class="px-4 py-2.5 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white text-xs sm:text-sm font-semibold shadow-sm transition flex items-center gap-1.5">
+              📄 บันทึกเป็นไฟล์ใหม่ (Save As)
+            </button>
+            <button type="button" onclick="backupAllJsonImmediate()" class="px-4 py-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-semibold shadow-sm transition flex items-center gap-1.5">
+              📦 สำรองข้อมูล (JSON)
+            </button>
+            <button type="button" onclick="triggerJsonImport()" class="px-4 py-2.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 text-xs sm:text-sm font-semibold transition flex items-center gap-1.5">
+              📂 นำเข้าข้อมูล (JSON)
+            </button>
+          </div>
+        </section>
+
+        <!-- 2 Summary Cards -->
+        <section class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+          <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 flex items-center justify-between">
+            <div>
+              <div class="text-xs sm:text-sm font-semibold text-slate-500 flex items-center gap-1.5">📁 แฟ้มโครงการทั้งหมด</div>
+              <div class="mt-2 flex items-baseline gap-2">
+                <span class="text-3xl font-extrabold text-slate-900">${totalProjects}</span>
+                <span class="text-sm font-semibold text-slate-500">แฟ้ม</span>
+              </div>
+            </div>
+            <div class="w-12 h-12 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center text-2xl">🗂️</div>
+          </div>
+          <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 flex items-center justify-between">
+            <div>
+              <div class="text-xs sm:text-sm font-semibold text-slate-500 flex items-center gap-1.5">⏳ กำลังดำเนินการตรวจ/แก้ไข</div>
+              <div class="mt-2 flex items-baseline gap-2">
+                <span class="text-3xl font-extrabold text-amber-600">${activeProjectsCount}</span>
+                <span class="text-sm font-semibold text-slate-500">แฟ้ม</span>
+              </div>
+            </div>
+            <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center text-2xl">🛠️</div>
+          </div>
+        </section>
+
+        <!-- Search & Reset Bar -->
+        <section class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div class="relative flex-1 max-w-md">
+            <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
+            <input id="hubSearchInput" type="text" value="${escapeHtml(appState.hubSearch)}" oninput="onHubSearchInput(this.value)" placeholder="ค้นหาชื่อโครงการ, บ้านเลขที่, ชื่อลูกค้า..." class="w-full pl-10 pr-4 py-2.5 text-sm rounded-2xl border border-slate-300 bg-white outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" onclick="confirmResetDemoProject()" class="text-xs sm:text-sm px-3.5 py-2 rounded-2xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-semibold transition">
+              🔄 รีเซ็ตแฟ้มตัวอย่าง
+            </button>
+            <button type="button" onclick="openCreateProjectModal()" class="text-xs sm:text-sm px-4 py-2 rounded-2xl brand-bg hover:opacity-95 text-white font-semibold shadow-sm transition">
+              + สร้างแฟ้มโครงการใหม่
+            </button>
+          </div>
+        </section>
+
+        <!-- Project Cards Grid -->
+        <section id="hubProjectGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          ${renderProjectCardsInner()}
+        </section>
+      `;
+    }
+
+    function onHubSearchInput(val) {
+      appState.hubSearch = val;
+      const grid = document.getElementById('hubProjectGrid');
+      if (grid) grid.innerHTML = renderProjectCardsInner();
+    }
+
+    function renderProjectCardsInner() {
+      const q = (appState.hubSearch || '').trim().toLowerCase();
+      const filtered = appState.projects.filter(p =>
+        !q ||
+        (p.name || '').toLowerCase().includes(q) ||
+        (p.houseNo || '').toLowerCase().includes(q) ||
+        (p.clientName || '').toLowerCase().includes(q) ||
+        (p.address || '').toLowerCase().includes(q)
+      );
+
+      if (filtered.length === 0) {
+        return `
+          <div class="col-span-full bg-white rounded-3xl border border-dashed border-slate-300 p-12 text-center text-slate-400">
+            <div class="text-4xl mb-2">📂</div>
+            <p class="text-sm font-medium">ไม่พบแฟ้มโครงการที่ค้นหา</p>
+          </div>
+        `;
+      }
+
+      return filtered.map(p => {
+        const total = p.defects.length;
+        const fixed = p.defects.filter(d => d.status === 'แก้ไขแล้ว').length;
+        const urgent = p.defects.filter(d => d.severity === 'เร่งด่วน' && d.status !== 'แก้ไขแล้ว').length;
+        const pct = total > 0 ? Math.round((fixed / total) * 100) : 0;
+        const totalZones = p.floors.reduce((acc, fl) => acc + (fl.zones?.length || 0), 0);
+
+        return `
+          <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 hover:border-blue-300 hover:shadow-md transition flex flex-col justify-between">
+            <div>
+              <div class="flex items-start justify-between gap-2 mb-2">
+                <span class="text-xs font-bold px-2.5 py-1 rounded-full ${p.projectStatus === 'ตรวจเสร็จสิ้น' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}">
+                  ${escapeHtml(p.projectStatus || 'กำลังดำเนินการ')}
+                </span>
+                <div class="flex items-center gap-1">
+                  <button type="button" onclick="openCreateProjectModal('${p.id}')" class="p-1.5 rounded-xl hover:bg-slate-100 text-slate-500 text-xs" title="แก้ไขข้อมูลโครงการ">✏️</button>
+                  <button type="button" onclick="backupSingleProjectJson('${p.id}')" class="p-1.5 rounded-xl hover:bg-slate-100 text-slate-500 text-xs" title="สำรอง JSON เฉพาะแฟ้มนี้">📦</button>
+                  <button type="button" onclick="confirmDeleteProject('${p.id}')" class="p-1.5 rounded-xl hover:bg-rose-50 text-rose-500 text-xs" title="ลบโครงการ">🗑️</button>
+                </div>
+              </div>
+
+              <h3 class="font-extrabold text-slate-900 text-base sm:text-lg leading-snug">${escapeHtml(p.name)}</h3>
+              <p class="text-xs text-slate-500 mt-1">📍 ${escapeHtml(p.address)} • บ้านเลขที่ ${escapeHtml(p.houseNo)}</p>
+              <p class="text-xs text-slate-500 mt-0.5">📅 ${escapeHtml(p.inspectionDate || '-')} • 🗺️ ${p.floors.length} ชั้น / ${totalZones} โซน</p>
+
+              <!-- Stats Badges -->
+              <div class="grid grid-cols-3 gap-2 mt-4">
+                <div class="bg-slate-50 rounded-2xl p-2.5 text-center border border-slate-100">
+                  <div class="text-[11px] text-slate-500">ทั้งหมด</div>
+                  <div class="text-lg font-extrabold text-slate-900">${total}</div>
+                </div>
+                <div class="bg-rose-50 rounded-2xl p-2.5 text-center border border-rose-100">
+                  <div class="text-[11px] text-rose-600">เร่งด่วน</div>
+                  <div class="text-lg font-extrabold text-rose-600">${urgent}</div>
+                </div>
+                <div class="bg-emerald-50 rounded-2xl p-2.5 text-center border border-emerald-100">
+                  <div class="text-[11px] text-emerald-700">แก้ไขแล้ว</div>
+                  <div class="text-lg font-extrabold text-emerald-700">${fixed}</div>
+                </div>
+              </div>
+
+              <!-- Progress Bar -->
+              <div class="mt-3">
+                <div class="flex justify-between text-[11px] font-semibold text-slate-500 mb-1">
+                  <span>ความคืบหน้าการแก้ไข</span>
+                  <span>${pct}%</span>
+                </div>
+                <div class="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                  <div class="h-full bg-emerald-500 rounded-full transition-all" style="width:${pct}%"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-4 pt-3.5 border-t border-slate-100 flex items-center gap-2">
+              <button type="button" onclick="openProject('${p.id}')" class="flex-1 py-2.5 rounded-2xl brand-bg hover:opacity-95 text-white text-sm font-bold shadow-sm transition">
+                🎨 เปิดสตูดิโอแปลน & Defect →
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    /*************************************************************************
+     * 7. PROJECT WORKSPACE SHELL (3 TABS)
+     *************************************************************************/
+    function switchProjectTab(tab) {
+      appState.activeTab = tab;
+      appState.placingDraftId = null;
+      appState.isZoneSetupMode = false;
+      renderApp();
+    }
+
+    function renderProjectWorkspaceHtml(proj) {
+      const total = proj.defects.length;
+      const tabs = [
+        { id: 'studio', label: '🎨 สตูดิโอแปลนบ้าน & AI' },
+        { id: 'list', label: `📋 รายการ Defect (${total})` },
+        { id: 'export', label: '📄 ส่งออกรายงาน (PDF / Word / Excel)' }
+      ];
+
+      let bodyHtml = '';
+      if (appState.activeTab === 'studio') bodyHtml = renderStudioTabHtml(proj);
+      else if (appState.activeTab === 'list') bodyHtml = renderDefectListTabHtml(proj);
+      else if (appState.activeTab === 'export') bodyHtml = renderExportTabHtml(proj);
+
+      return `
+        ${renderGlobalHeader(true)}
+
+        <!-- Active Project Banner + 3 Tabs -->
+        <section class="bg-white rounded-3xl shadow-sm border border-slate-200 p-4 sm:p-5 mb-5">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <h2 class="text-base sm:text-xl font-extrabold text-slate-900">${escapeHtml(proj.name)}</h2>
+                <span class="text-xs px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold">บ้านเลขที่ ${escapeHtml(proj.houseNo)}</span>
+              </div>
+              <p class="text-xs text-slate-500 mt-1">📍 ${escapeHtml(proj.address)} • 📅 ${escapeHtml(proj.inspectionDate)}</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" onclick="openCreateProjectModal('${proj.id}')" class="text-xs px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold">✏️ แก้ไขข้อมูลแฟ้ม</button>
+              <button type="button" onclick="backupSingleProjectJson('${proj.id}')" class="text-xs px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold">📦 สำรอง JSON แฟ้มนี้</button>
+              <button type="button" onclick="saveAllToLocalStorage(true)" class="text-xs px-3.5 py-1.5 rounded-xl brand-bg text-white font-semibold shadow-sm">💾 บันทึก</button>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap gap-2 mt-4">
+            ${tabs.map(t => `
+              <button type="button" onclick="switchProjectTab('${t.id}')" class="px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition ${appState.activeTab === t.id ? 'brand-bg text-white shadow-sm' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}">
+                ${t.label}
+              </button>
+            `).join('')}
+          </div>
+        </section>
+
+        ${bodyHtml}
+      `;
+    }
+
+    /*************************************************************************
+     * 8. TAB 1: INTERACTIVE FLOOR PLAN STUDIO + MARKUP CANVAS & AI
+     *************************************************************************/
+    function selectFloor(floorId) {
+      appState.activeFloorId = floorId;
+      appState.selectedZoneId = null;
+      renderApp();
+    }
+
+    function addNewFloor() {
+      const proj = getActiveProject();
+      if (!proj) return;
+      const nextNum = proj.floors.length + 1;
+      const newId = 'fl_' + Date.now();
+      proj.floors.push({
+        id: newId,
+        name: `ชั้น ${nextNum}`,
+        subtitle: '1 โซน',
+        imageUrl: null,
+        svgPreset: nextNum % 2 === 1 ? 0 : 1,
+        zones: [
+          { id: 'z_' + Date.now(), name: `โซนหลัก ชั้น ${nextNum}`, x: 10, y: 10, w: 80, h: 80, bg: '#dbeafe', border: '#2563eb' }
+        ]
+      });
+      appState.activeFloorId = newId;
+      saveAllToLocalStorage(false);
+      showToast(`เพิ่มแปลน "ชั้น ${nextNum}" เรียบร้อยแล้ว`, 'success');
+      renderApp();
+    }
+
+    function confirmDeleteActiveFloor() {
+      const proj = getActiveProject();
+      const fl = getActiveFloor(proj);
+      if (!proj || !fl) return;
+      if (proj.floors.length <= 1) {
+        showToast('ต้องมีอย่างน้อย 1 ชั้นแปลนในโครงการ', 'warning');
+        return;
+      }
+      const floorDefectsCount = proj.defects.filter(d => d.floorId === fl.id).length;
+      openConfirmModal({
+        title: `🗑️ ลบแปลน "${fl.name}"`,
+        message: `ยืนยันการลบ "${fl.name}" หรือไม่? ${floorDefectsCount > 0 ? `(มีรายการ Defect ${floorDefectsCount} ข้อในชั้นนี้ที่จะถูกลบไปด้วย)` : ''}`,
+        confirmText: 'ลบชั้นนี้',
+        confirmStyle: 'danger',
+        onConfirm: () => {
+          proj.floors = proj.floors.filter(f => f.id !== fl.id);
+          proj.defects = proj.defects.filter(d => d.floorId !== fl.id);
+          appState.activeFloorId = proj.floors[0].id;
+          saveAllToLocalStorage(false);
+          showToast(`ลบ "${fl.name}" เรียบร้อยแล้ว`, 'info');
+          renderApp();
+        }
+      });
+    }
+
+    async function handleFloorImageFile(file) {
+      if (!file || !file.type.startsWith('image/')) {
+        showToast('กรุณาเลือกไฟล์รูปภาพ (JPG, PNG, WEBP)', 'warning');
+        return;
+      }
+      const proj = getActiveProject();
+      const fl = getActiveFloor(proj);
+      if (!fl) return;
+      try {
+        const compressed = await compressImageFile(file, 1400, 0.8);
+        fl.imageUrl = compressed;
+        saveAllToLocalStorage(false);
+        showToast(`อัปโหลดรูปแปลน "${fl.name}" เรียบร้อยแล้ว`, 'success');
+        renderApp();
+      } catch (e) {
+        showToast('ไม่สามารถโหลดรูปแปลนได้', 'danger');
+      }
+    }
+
+    function onFloorDrop(e) {
+      e.preventDefault();
+      const stage = document.getElementById('floorStage');
+      if (stage) stage.classList.remove('floor-drop-active');
+      const file = e.dataTransfer?.files?.[0];
+      if (file) handleFloorImageFile(file);
+    }
+
+    function toggleZoneSetupMode() {
+      appState.isZoneSetupMode = !appState.isZoneSetupMode;
+      appState.placingDraftId = null;
+      if (appState.isZoneSetupMode) appState.showZoneOverlays = true;
+      appState.selectedZoneId = null;
+      renderApp();
+    }
+
+    function toggleShowZones() {
+      appState.showZoneOverlays = !appState.showZoneOverlays;
+      renderApp();
+    }
+
+    function addZoneToActiveFloor() {
+      const proj = getActiveProject();
+      const fl = getActiveFloor(proj);
+      if (!fl) return;
+      const preset = ZONE_COLOR_PRESETS[fl.zones.length % ZONE_COLOR_PRESETS.length];
+      const newZone = {
+        id: 'z_' + Date.now(),
+        name: `โซนใหม่ ${fl.zones.length + 1}`,
+        x: 20, y: 20, w: 35, h: 25,
+        bg: preset.bg, border: preset.border
+      };
+      fl.zones.push(newZone);
+      appState.selectedZoneId = newZone.id;
+      appState.isZoneSetupMode = true;
+      appState.showZoneOverlays = true;
+      saveAllToLocalStorage(false);
+      renderApp();
+    }
+
+    function openEditZoneModal(zoneId) {
+      const proj = getActiveProject();
+      const fl = getActiveFloor(proj);
+      const z = fl?.zones.find(x => x.id === zoneId);
+      if (!z) return;
+      openModal(`
+        <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+          <h3 class="font-bold text-base">✏️ แก้ไขโซนบนแปลน (${escapeHtml(fl.name)})</h3>
+          <button type="button" onclick="closeModal()" class="text-slate-300 hover:text-white text-xl leading-none">&times;</button>
+        </div>
+        <div class="p-6 space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">ชื่อโซน</label>
+            <input id="ezName" type="text" value="${escapeHtml(z.name)}" class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5">สีกรอบโซน</label>
+            <div class="flex flex-wrap gap-2">
+              ${ZONE_COLOR_PRESETS.map((p, idx) => `
+                <button type="button" onclick="applyZoneColorPreset('${z.id}', ${idx})" class="px-3 py-1.5 rounded-xl text-xs font-bold border-2 transition" style="background:${p.bg}; border-color:${p.border}; color:${p.border};">
+                  ${p.label}
+                </button>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-between">
+          <button type="button" onclick="deleteZoneFromActiveFloor('${z.id}')" class="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold">🗑️ ลบโซนนี้</button>
+          <div class="flex gap-2">
+            <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl bg-white border border-slate-300 text-slate-700 text-sm font-semibold">ปิด</button>
+            <button type="button" onclick="saveZoneNameEdit('${z.id}')" class="px-5 py-2 rounded-xl brand-bg text-white text-sm font-semibold">บันทึก</button>
+          </div>
+        </div>
+      `, 'max-w-md');
+    }
+
+    function applyZoneColorPreset(zoneId, presetIdx) {
+      const proj = getActiveProject();
+      const fl = getActiveFloor(proj);
+      const z = fl?.zones.find(x => x.id === zoneId);
+      const p = ZONE_COLOR_PRESETS[presetIdx];
+      if (!z || !p) return;
+      z.bg = p.bg;
+      z.border = p.border;
+      saveAllToLocalStorage(false);
+      renderApp();
+      showToast('เปลี่ยนสีโซนแล้ว', 'success');
+    }
+
+    function saveZoneNameEdit(zoneId) {
+      const proj = getActiveProject();
+      const fl = getActiveFloor(proj);
+      const z = fl?.zones.find(x => x.id === zoneId);
+      const newName = (document.getElementById('ezName')?.value || '').trim();
+      if (!z || !newName) return;
+      const oldName = z.name;
+      z.name = newName;
+      proj.defects.forEach(d => {
+        if (d.floorId === fl.id && d.zone === oldName) d.zone = newName;
+      });
+      saveAllToLocalStorage(false);
+      closeModal();
+      renderApp();
+    }
+
+    function deleteZoneFromActiveFloor(zoneId) {
+      const proj = getActiveProject();
+      const fl = getActiveFloor(proj);
+      if (!fl) return;
+      fl.zones = fl.zones.filter(z => z.id !== zoneId);
+      appState.selectedZoneId = null;
+      saveAllToLocalStorage(false);
+      closeModal();
+      showToast('ลบโซนเรียบร้อยแล้ว', 'info');
+      renderApp();
+    }
+
+    function findZoneAtPoint(floor, xPct, yPct) {
+      if (!floor || !Array.isArray(floor.zones)) return null;
+      return floor.zones.find(z => xPct >= z.x && xPct <= (z.x + z.w) && yPct >= z.y && yPct <= (z.y + z.h)) || null;
+    }
+
+    function getPinColorClass(d) {
+      if (d.status === 'แก้ไขแล้ว') return 'bg-emerald-600 border-white';
+      if (d.severity === 'เร่งด่วน') return 'bg-rose-600 border-white';
+      if (d.severity === 'เล็กน้อย') return 'bg-blue-600 border-white';
+      return 'bg-amber-500 border-white';
+    }
+
+    function renderStudioTabHtml(proj) {
+      const fl = getActiveFloor(proj);
+      const floorDefects = fl ? proj.defects.filter(d => d.floorId === fl.id) : [];
+      const isPlacing = Boolean(appState.placingDraftId);
+
+      return `
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          <!-- LEFT COLUMN (7/12): Interactive Floor Plan Studio -->
+          <div class="lg:col-span-7 bg-white rounded-3xl shadow-sm border border-slate-200 p-4 sm:p-5">
+            <!-- Floor Switcher & Tools -->
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <div class="flex flex-wrap items-center gap-1.5">
+                ${proj.floors.map(f => {
+                  const cnt = proj.defects.filter(d => d.floorId === f.id).length;
+                  const active = fl && f.id === fl.id;
+                  return `
+                    <button type="button" onclick="selectFloor('${f.id}')" class="px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition ${active ? 'brand-bg text-white shadow-sm' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}">
+                      ${escapeHtml(f.name)} <span class="opacity-80 text-[11px]">(${cnt})</span>
+                    </button>
+                  `;
+                }).join('')}
+                <button type="button" onclick="addNewFloor()" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200">+ เพิ่มชั้น</button>
+                ${proj.floors.length > 1 ? `<button type="button" onclick="confirmDeleteActiveFloor()" class="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-600" title="ลบชั้นปัจจุบัน">🗑️ ลบชั้น</button>` : ''}
+              </div>
+            </div>
+
+            <!-- Action Controls -->
+            <div class="flex flex-wrap items-center gap-2 mb-3 pb-3 border-b border-slate-100">
+              <label class="text-xs px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold cursor-pointer transition flex items-center gap-1.5">
+                📤 อัปโหลดรูปแปลนชั้นนี้
+                <input type="file" accept="image/*" class="hidden" onchange="if(this.files[0]) handleFloorImageFile(this.files[0]); this.value='';" />
+              </label>
+              <button type="button" onclick="toggleZoneSetupMode()" class="text-xs px-3 py-1.5 rounded-xl font-semibold transition flex items-center gap-1.5 ${appState.isZoneSetupMode ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 hover:bg-slate-200 text-slate-800'}">
+                ⚙️ ${appState.isZoneSetupMode ? 'เสร็จสิ้นตั้งค่าโซน' : 'ตั้งค่าโซน'}
+              </button>
+              <button type="button" onclick="toggleShowZones()" class="text-xs px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold transition">
+                👁️ ${appState.showZoneOverlays ? 'ซ่อนกรอบโซน' : 'แสดงกรอบโซน'}
+              </button>
+              ${appState.isZoneSetupMode ? `
+                <button type="button" onclick="addZoneToActiveFloor()" class="text-xs px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm">
+                  + เพิ่มโซนใหม่
+                </button>
+              ` : ''}
+            </div>
+
+            <!-- Banner for Placing Mode or Zone Setup Mode -->
+            ${isPlacing ? `
+              <div class="mb-3 p-3 rounded-2xl bg-blue-50 border-2 border-blue-400 flex items-center justify-between gap-2 animate-pulse">
+                <span class="text-xs sm:text-sm font-bold text-blue-900">📍 โหมดปักหมุดกำลังทำงาน: คลิกบนตำแหน่งที่ต้องการบนแปลน "${escapeHtml(fl?.name || '')}"</span>
+                <button type="button" onclick="cancelPinPlacement()" class="text-xs px-3 py-1 rounded-xl bg-white border border-blue-300 text-blue-800 font-bold">ยกเลิก</button>
+              </div>
+            ` : ''}
+
+            ${appState.isZoneSetupMode ? `
+              <div class="mb-3 p-3 rounded-2xl bg-indigo-50 border border-indigo-200 text-xs text-indigo-900 flex flex-wrap items-center justify-between gap-2">
+                <span>⚙️ <strong>โหมดตั้งค่าโซน:</strong> ลากกล่องเพื่อย้าย • ลากมุมขวาล่าง (↘) เพื่อย่อขยาย • ดับเบิลคลิกหรือกดปุ่ม ✏️ เพื่อแก้ไขชื่อ/สี/ลบโซน</span>
+              </div>
+            ` : ''}
+
+            <!-- Floorplan Interactive Stage -->
+            <div
+              id="floorStage"
+              class="relative w-full aspect-[4/3] rounded-2xl overflow-hidden border-2 border-slate-200 bg-slate-50 select-none ${appState.isZoneSetupMode ? 'zone-setup-active' : ''} ${isPlacing ? 'cursor-crosshair ring-4 ring-blue-200' : ''}"
+              onclick="handleFloorStageClick(event)"
+              ondragover="event.preventDefault(); this.classList.add('floor-drop-active');"
+              ondragleave="this.classList.remove('floor-drop-active');"
+              ondrop="onFloorDrop(event)"
+            >
+              ${fl?.imageUrl
+                ? `<img src="${fl.imageUrl}" alt="${escapeHtml(fl.name)}" class="w-full h-full object-contain pointer-events-none select-none bg-white" />`
+                : getArchitecturalFloorSvg(fl?.svgPreset ?? 0)
+              }
+
+              <!-- Zone Overlays Layer -->
+              ${appState.showZoneOverlays && fl ? fl.zones.map(z => `
+                <div
+                  data-zone-id="${z.id}"
+                  onpointerdown="startZoneDrag(event, '${z.id}', 'move')"
+                  ondblclick="event.stopPropagation(); if(appState.isZoneSetupMode) openEditZoneModal('${z.id}')"
+                  style="left:${z.x}%; top:${z.y}%; width:${z.w}%; height:${z.h}%; background:${z.bg}88; border:2px dashed ${z.border};"
+                  class="zone-box absolute rounded-xl pointer-events-none ${appState.selectedZoneId === z.id ? 'zone-box-selected' : ''}"
+                >
+                  <div class="inline-flex items-center gap-1 px-2 py-0.5 m-1 rounded-lg text-[10px] sm:text-[11px] font-bold shadow-xs max-w-[92%] truncate" style="background:${z.border}; color:#ffffff;">
+                    <span class="truncate">${escapeHtml(z.name)}</span>
+                    ${appState.isZoneSetupMode ? `<button type="button" onclick="event.stopPropagation(); openEditZoneModal('${z.id}')" class="ml-1 px-1 bg-white/25 hover:bg-white/40 rounded text-[10px]">✏️</button>` : ''}
+                  </div>
+                  ${appState.isZoneSetupMode ? `<div class="zone-resize-handle" onpointerdown="event.stopPropagation(); startZoneDrag(event, '${z.id}', 'resize')">↘</div>` : ''}
+                </div>
+              `).join('') : ''}
+
+              <!-- Defect Pins Layer -->
+              ${!appState.isZoneSetupMode ? floorDefects.map(d => `
+                <button
+                  type="button"
+                  data-defect-id="${d.id}"
+                  onpointerdown="startPinDrag(event, '${d.id}')"
+                  onclick="event.stopPropagation(); handlePinClick('${d.id}')"
+                  style="left:${d.x}%; top:${d.y}%; transform:translate(-50%,-50%);"
+                  title="#${d.number} ${escapeHtml(d.title)} (${escapeHtml(d.status)})"
+                  class="pin-marker absolute z-20 w-7 h-7 sm:w-8 sm:h-8 rounded-full text-white text-[11px] sm:text-xs font-extrabold border-2 shadow-md flex items-center justify-center ${getPinColorClass(d)}"
+                >
+                  ${d.number}
+                </button>
+              `).join('') : ''}
+            </div>
+
+            <!-- Legend -->
+            <div class="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+              <div class="flex flex-wrap items-center gap-3">
+                <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-rose-600 inline-block"></span> เร่งด่วน</span>
+                <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-amber-500 inline-block"></span> ปานกลาง</span>
+                <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-blue-600 inline-block"></span> เล็กน้อย</span>
+                <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-emerald-600 inline-block"></span> แก้ไขแล้ว</span>
+              </div>
+              <span>💡 ลากหมุดเพื่อย้ายตำแหน่ง • คลิกหมุดเพื่อดู/แนบรูป Before-After</span>
+            </div>
+          </div>
+
+          <!-- RIGHT COLUMN (5/12): Photo Markup Canvas & AI Defect Analyzer -->
+          <div class="lg:col-span-5 space-y-4">
+            <!-- Markup Canvas Card -->
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-4 sm:p-5">
+              <div class="flex items-center justify-between gap-2 mb-3">
+                <h3 class="font-extrabold text-slate-900 text-sm sm:text-base">📸 กระดานมาร์ครูปภาพ & AI วิเคราะห์</h3>
+                <label class="text-xs px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold cursor-pointer shadow-xs">
+                  📤 อัปโหลดรูปหน้างาน
+                  <input type="file" accept="image/*" class="hidden" onchange="handleMarkupPhotoUpload(event)" />
+                </label>
+              </div>
+
+              <!-- Drawing Tools -->
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5 bg-slate-50 p-2 rounded-2xl border border-slate-200">
+                <div class="flex items-center gap-1">
+                  <button type="button" onclick="setMarkupTool('circle')" class="px-2.5 py-1 rounded-xl text-xs font-bold transition ${appState.markup.tool === 'circle' ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 border border-slate-200'}">⭕ วงกลม</button>
+                  <button type="button" onclick="setMarkupTool('arrow')" class="px-2.5 py-1 rounded-xl text-xs font-bold transition ${appState.markup.tool === 'arrow' ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 border border-slate-200'}">↗️ ลูกศร</button>
+                  <button type="button" onclick="setMarkupTool('rect')" class="px-2.5 py-1 rounded-xl text-xs font-bold transition ${appState.markup.tool === 'rect' ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 border border-slate-200'}">⬜ สี่เหลี่ยม</button>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <input type="color" value="${appState.markup.color}" onchange="appState.markup.color=this.value" class="w-7 h-7 rounded-lg border border-slate-300 cursor-pointer p-0.5" title="สีเส้นมาร์ค" />
+                  <button type="button" onclick="undoMarkupShape()" class="px-2 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-xs font-semibold" title="ย้อนกลับ">↩️</button>
+                  <button type="button" onclick="clearMarkupShapes()" class="px-2 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-xs font-semibold" title="ล้างเส้น">🧹</button>
+                  ${appState.markup.imageSrc ? `<button type="button" onclick="clearMarkupImage()" class="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-semibold" title="ลบรูป">🗑️</button>` : ''}
+                </div>
+              </div>
+
+              <!-- Canvas Container -->
+              <div id="markupCanvasWrap" class="relative w-full aspect-[4/3] rounded-2xl bg-slate-100 border-2 border-dashed border-slate-300 overflow-hidden flex items-center justify-center">
+                <canvas id="markupCanvas" class="w-full h-full block cursor-crosshair ${appState.markup.imageSrc ? '' : 'hidden'}"></canvas>
+                ${!appState.markup.imageSrc ? `
+                  <label class="flex flex-col items-center justify-center text-center p-6 cursor-pointer w-full h-full hover:bg-slate-200/40 transition">
+                    <span class="text-3xl mb-1.5">📷</span>
+                    <span class="text-xs sm:text-sm font-bold text-slate-700">คลิกเพื่ออัปโหลดภาพถ่ายหน้างาน</span>
+                    <span class="text-[11px] text-slate-500 mt-0.5">วาดวงกลม/ลูกศรชี้จุดบกพร่อง แล้วส่งให้ AI วิเคราะห์ได้ทันที</span>
+                    <input type="file" accept="image/*" class="hidden" onchange="handleMarkupPhotoUpload(event)" />
+                  </label>
+                ` : ''}
+              </div>
+
+              <!-- Prompt & AI Analyze Button -->
+              <div class="mt-3 space-y-2.5">
+                <textarea id="aiPromptInput" rows="2" oninput="appState.aiPrompt=this.value" placeholder="หมายเหตุเพิ่มเติมให้ AI (ไม่บังคับ) เช่น บริเวณผนังห้องนอน 2, พบรอยร้าวหลังฝนตก..." class="w-full px-3 py-2 text-xs sm:text-sm rounded-2xl border border-slate-300 outline-none focus:ring-2 focus:ring-indigo-500">${escapeHtml(appState.aiPrompt)}</textarea>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button type="button" onclick="analyzeMarkupWithAI()" ${appState.isAnalyzing ? 'disabled' : ''} class="py-2.5 px-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs sm:text-sm font-bold shadow-sm transition flex items-center justify-center gap-1.5">
+                    ${appState.isAnalyzing ? '⏳ กำลังวิเคราะห์...' : '✨ วิเคราะห์ภาพด้วย AI'}
+                  </button>
+                  <button type="button" onclick="createBlankDraft()" class="py-2.5 px-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs sm:text-sm font-bold transition">
+                    + สร้างรายการเปล่า (พิมพ์เอง)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Draft Cards Queue -->
+            <div id="draftCardsContainer" class="space-y-3">
+              ${renderDraftCardsHtml()}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderDraftCardsHtml() {
+      if (appState.drafts.length === 0) {
+        return `
+          <div class="bg-white/70 rounded-3xl border border-dashed border-slate-300 p-5 text-center text-xs text-slate-400">
+            รายการ Defect ที่สร้างจาก AI หรือพิมพ์เองจะปรากฏที่นี่ เพื่อกดปักหมุดลงแปลนชั้นปัจจุบัน
+          </div>
+        `;
+      }
+
+      return appState.drafts.map(dr => {
+        const isPlacingThis = appState.placingDraftId === dr.id;
+        return `
+          <div class="bg-white rounded-3xl shadow-sm border-2 p-4 space-y-3 ${isPlacingThis ? 'border-blue-500 ring-2 ring-blue-100' : 'border-slate-200'}">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs font-extrabold px-2.5 py-1 rounded-full ${dr.fromAI ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-700'}">
+                ${dr.fromAI ? '✨ ผลวิเคราะห์จาก AI' : '📝 รายการใหม่ (Draft)'}
+              </span>
+              <button type="button" onclick="removeDraft('${dr.id}')" class="text-xs text-rose-500 hover:bg-rose-50 px-2 py-1 rounded-lg font-semibold">✕ ลบการ์ด</button>
+            </div>
+
+            ${dr.photoDataUrl ? `
+              <div class="relative rounded-xl overflow-hidden border border-slate-200 h-28 bg-slate-100">
+                <img src="${dr.photoDataUrl}" onclick="openLightbox('${dr.photoDataUrl}', 'ภาพหน้างาน (จะบันทึกเป็นรูปก่อนแก้ไข Before)')" class="w-full h-full object-cover cursor-zoom-in" />
+                <span class="absolute bottom-1.5 left-1.5 text-[10px] font-bold px-2 py-0.5 rounded bg-black/65 text-white">แนบเป็นรูปก่อนแก้ไข (Before) อัตโนมัติ</span>
+              </div>
+            ` : ''}
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div class="sm:col-span-2">
+                <label class="block text-[11px] font-bold text-slate-600 mb-1">หัวข้อ Defect</label>
+                <input type="text" value="${escapeHtml(dr.title)}" oninput="updateDraftField('${dr.id}', 'title', this.value)" placeholder="ระบุปัญหาที่พบ..." class="w-full px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-600 mb-1">ความรุนแรง</label>
+                <select onchange="updateDraftField('${dr.id}', 'severity', this.value)" class="w-full px-2.5 py-1.5 text-xs sm:text-sm rounded-xl border border-slate-300 bg-white">
+                  <option value="เร่งด่วน" ${dr.severity === 'เร่งด่วน' ? 'selected' : ''}>เร่งด่วน</option>
+                  <option value="ปานกลาง" ${dr.severity === 'ปานกลาง' ? 'selected' : ''}>ปานกลาง</option>
+                  <option value="เล็กน้อย" ${dr.severity === 'เล็กน้อย' ? 'selected' : ''}>เล็กน้อย</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Engineering Cause (Removable / Restorable) -->
+            ${!dr.hideCause ? `
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <label class="text-[11px] font-bold text-slate-600">สาเหตุทางวิศวกรรม</label>
+                  <button type="button" onclick="toggleDraftOptionalField('${dr.id}', 'hideCause', true)" class="text-[11px] text-rose-500 hover:underline font-semibold">✕ ลบออก</button>
+                </div>
+                <textarea rows="2" oninput="updateDraftField('${dr.id}', 'cause', this.value)" placeholder="ระบุสาเหตุ..." class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500">${escapeHtml(dr.cause)}</textarea>
+              </div>
+            ` : `
+              <button type="button" onclick="toggleDraftOptionalField('${dr.id}', 'hideCause', false)" class="text-[11px] text-blue-600 hover:underline font-semibold">+ เพิ่มช่องสาเหตุทางวิศวกรรม</button>
+            `}
+
+            <!-- Solution (Removable / Restorable) -->
+            ${!dr.hideSolution ? `
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <label class="text-[11px] font-bold text-slate-600">วิธีแก้ไข</label>
+                  <button type="button" onclick="toggleDraftOptionalField('${dr.id}', 'hideSolution', true)" class="text-[11px] text-rose-500 hover:underline font-semibold">✕ ลบออก</button>
+                </div>
+                <textarea rows="2" oninput="updateDraftField('${dr.id}', 'solution', this.value)" placeholder="ระบุวิธีแก้ไข..." class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500">${escapeHtml(dr.solution)}</textarea>
+              </div>
+            ` : `
+              <button type="button" onclick="toggleDraftOptionalField('${dr.id}', 'hideSolution', false)" class="text-[11px] text-blue-600 hover:underline font-semibold ml-2">+ เพิ่มช่องวิธีแก้ไข</button>
+            `}
+
+            <!-- Single Pin Placement Button -->
+            <button type="button" onclick="startPinPlacement('${dr.id}')" class="w-full py-2.5 rounded-2xl font-bold text-xs sm:text-sm shadow-sm transition ${isPlacingThis ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'brand-bg hover:opacity-95 text-white'}">
+              ${isPlacingThis ? '👆 คลิกบนแปลนฝั่งซ้ายเพื่อวางหมุด...' : '📍 ปักหมุดข้อนี้ลงแปลน'}
+            </button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    /*************************************************************************
+     * 9. FLOORPLAN INTERACTIONS (PIN PLACEMENT, PIN DRAG, ZONE MOVE/RESIZE)
+     *************************************************************************/
+    function startPinPlacement(draftId) {
+      appState.isZoneSetupMode = false;
+      appState.placingDraftId = appState.placingDraftId === draftId ? null : draftId;
+      renderApp();
+      if (appState.placingDraftId) {
+        showToast('คลิกตำแหน่งที่ต้องการบนแปลนชั้นปัจจุบันเพื่อปักหมุด', 'info');
+      }
+    }
+
+    function cancelPinPlacement() {
+      appState.placingDraftId = null;
+      renderApp();
+    }
+
+    function handleFloorStageClick(event) {
+      if (!appState.placingDraftId || appState.isZoneSetupMode) return;
+      const proj = getActiveProject();
+      const fl = getActiveFloor(proj);
+      const draft = appState.drafts.find(d => d.id === appState.placingDraftId);
+      if (!proj || !fl || !draft) return;
+
+      const stage = document.getElementById('floorStage');
+      const rect = stage.getBoundingClientRect();
+      const xPct = Math.max(2, Math.min(98, +(((event.clientX - rect.left) / rect.width) * 100).toFixed(2)));
+      const yPct = Math.max(2, Math.min(98, +(((event.clientY - rect.top) / rect.height) * 100).toFixed(2)));
+
+      const matchedZone = findZoneAtPoint(fl, xPct, yPct);
+      const nextNum = proj.defects.length > 0 ? Math.max(...proj.defects.map(d => d.number || 0)) + 1 : 1;
+
+      const newDefect = {
+        id: 'def_' + Date.now(),
+        number: nextNum,
+        floorId: fl.id, // Always stays on activeFloorId!
+        zone: matchedZone ? matchedZone.name : (fl.zones[0]?.name || fl.name),
+        x: xPct,
+        y: yPct,
+        title: (draft.title || '').trim() || `รายการ Defect ข้อที่ ${nextNum}`,
+        cause: draft.hideCause ? '' : (draft.cause || ''),
+        solution: draft.hideSolution ? '' : (draft.solution || ''),
+        hideCause: Boolean(draft.hideCause),
+        hideSolution: Boolean(draft.hideSolution),
+        severity: normalizeSeverity(draft.severity),
+        status: 'รอแก้ไข',
+        beforeImg: draft.photoDataUrl || null,
+        afterImg: null,
+        createdAt: new Date().toISOString().split('T')[0]
+      };
+
+      proj.defects.push(newDefect);
+      appState.drafts = appState.drafts.filter(d => d.id !== draft.id);
+      appState.placingDraftId = null;
+      saveAllToLocalStorage(false);
+      showToast(`ปักหมุดข้อที่ #${nextNum} ลงบน "${fl.name}" เรียบร้อยแล้ว`, 'success');
+      renderApp();
+    }
+
+    function startPinDrag(event, defectId) {
+      if (appState.isZoneSetupMode || appState.placingDraftId) return;
+      event.stopPropagation();
+      appState.draggingDefectId = defectId;
+      appState.pinDragMoved = false;
+      appState.pinDragStartX = event.clientX;
+      appState.pinDragStartY = event.clientY;
+    }
+
+    function handlePinClick(defectId) {
+      if (appState.pinDragMoved) {
+        appState.pinDragMoved = false;
+        return;
+      }
+      openDefectEditModal(defectId);
+    }
+
+    function startZoneDrag(event, zoneId, mode) {
+      if (!appState.isZoneSetupMode) return;
+      event.stopPropagation();
+      const proj = getActiveProject();
+      const fl = getActiveFloor(proj);
+      const z = fl?.zones.find(item => item.id === zoneId);
+      if (!z) return;
+      appState.selectedZoneId = zoneId;
+      appState.zoneInteraction = {
+        zoneId,
+        mode,
+        startX: event.clientX,
+        startY: event.clientY,
+        origX: z.x,
+        origY: z.y,
+        origW: z.w,
+        origH: z.h
+      };
+    }
+
+    window.addEventListener('pointermove', (event) => {
+      const stage = document.getElementById('floorStage');
+      if (!stage) return;
+
+      // Pin Dragging
+      if (appState.draggingDefectId) {
+        const dx = Math.abs(event.clientX - appState.pinDragStartX);
+        const dy = Math.abs(event.clientY - appState.pinDragStartY);
+        if (dx > 4 || dy > 4) appState.pinDragMoved = true;
+        if (!appState.pinDragMoved) return;
+
+        const rect = stage.getBoundingClientRect();
+        const xPct = Math.max(2, Math.min(98, +(((event.clientX - rect.left) / rect.width) * 100).toFixed(2)));
+        const yPct = Math.max(2, Math.min(98, +(((event.clientY - rect.top) / rect.height) * 100).toFixed(2)));
+
+        const proj = getActiveProject();
+        const d = proj?.defects.find(item => item.id === appState.draggingDefectId);
+        if (d) {
+          d.x = xPct;
+          d.y = yPct;
+          const pinEl = stage.querySelector(`[data-defect-id="${d.id}"]`);
+          if (pinEl) {
+            pinEl.style.left = xPct + '%';
+            pinEl.style.top = yPct + '%';
+          }
+        }
+        return;
+      }
+
+      // Zone Move / Resize
+      if (appState.zoneInteraction) {
+        const zi = appState.zoneInteraction;
+        const rect = stage.getBoundingClientRect();
+        const dxPct = ((event.clientX - zi.startX) / rect.width) * 100;
+        const dyPct = ((event.clientY - zi.startY) / rect.height) * 100;
+
+        const proj = getActiveProject();
+        const fl = getActiveFloor(proj);
+        const z = fl?.zones.find(item => item.id === zi.zoneId);
+        if (!z) return;
+
+        if (zi.mode === 'move') {
+          z.x = Math.max(0, Math.min(100 - z.w, +(zi.origX + dxPct).toFixed(1)));
+          z.y = Math.max(0, Math.min(100 - z.h, +(zi.origY + dyPct).toFixed(1)));
+        } else if (zi.mode === 'resize') {
+          z.w = Math.max(10, Math.min(100 - z.x, +(zi.origW + dxPct).toFixed(1)));
+          z.h = Math.max(8, Math.min(100 - z.y, +(zi.origH + dyPct).toFixed(1)));
+        }
+
+        const boxEl = stage.querySelector(`[data-zone-id="${z.id}"]`);
+        if (boxEl) {
+          boxEl.style.left = z.x + '%';
+          boxEl.style.top = z.y + '%';
+          boxEl.style.width = z.w + '%';
+          boxEl.style.height = z.h + '%';
+        }
+      }
+    });
+
+    window.addEventListener('pointerup', () => {
+      if (appState.draggingDefectId) {
+        if (appState.pinDragMoved) {
+          const proj = getActiveProject();
+          const fl = getActiveFloor(proj);
+          const d = proj?.defects.find(item => item.id === appState.draggingDefectId);
+          if (d && fl) {
+            const matched = findZoneAtPoint(fl, d.x, d.y);
+            if (matched) d.zone = matched.name;
+          }
+          saveAllToLocalStorage(false);
+          showToast('ย้ายตำแหน่งหมุดเรียบร้อยแล้ว', 'success');
+        }
+        appState.draggingDefectId = null;
+      }
+
+      if (appState.zoneInteraction) {
+        appState.zoneInteraction = null;
+        saveAllToLocalStorage(false);
+      }
+    });
+
+    /*************************************************************************
+     * 10. MARKUP CANVAS & GEMINI AI DEFECT ANALYZER
+     *************************************************************************/
+    async function handleMarkupPhotoUpload(event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        const compressed = await compressImageFile(file, 960, 0.8);
+        appState.markup.imageSrc = compressed;
+        appState.markup.fileName = file.name;
+        appState.markup.shapes = [];
+        loadedMarkupImageObj = new Image();
+        loadedMarkupImageObj.onload = () => {
+          renderApp();
+        };
+        loadedMarkupImageObj.src = compressed;
+      } catch (e) {
+        showToast('ไม่สามารถอ่านไฟล์รูปภาพได้', 'danger');
+      }
+      event.target.value = '';
+    }
+
+    function setMarkupTool(tool) {
+      appState.markup.tool = tool;
+      renderApp();
+    }
+
+    function undoMarkupShape() {
+      appState.markup.shapes.pop();
+      redrawMarkupCanvas();
+    }
+
+    function clearMarkupShapes() {
+      appState.markup.shapes = [];
+      redrawMarkupCanvas();
+    }
+
+    function clearMarkupImage() {
+      appState.markup.imageSrc = null;
+      appState.markup.shapes = [];
+      loadedMarkupImageObj = null;
+      renderApp();
+    }
+
+    function bindMarkupCanvasEvents() {
+      const canvas = document.getElementById('markupCanvas');
+      const wrap = document.getElementById('markupCanvasWrap');
+      if (!canvas || !wrap || !appState.markup.imageSrc) return;
+
+      canvas.width = wrap.clientWidth || 480;
+      canvas.height = wrap.clientHeight || 360;
+
+      if (!loadedMarkupImageObj || loadedMarkupImageObj.src !== appState.markup.imageSrc) {
+        loadedMarkupImageObj = new Image();
+        loadedMarkupImageObj.onload = () => redrawMarkupCanvas();
+        loadedMarkupImageObj.src = appState.markup.imageSrc;
+      } else {
+        redrawMarkupCanvas();
+      }
+
+      const getPos = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        return {
+          x: ((e.clientX - rect.left) / rect.width) * canvas.width,
+          y: ((e.clientY - rect.top) / rect.height) * canvas.height
+        };
+      };
+
+      canvas.onpointerdown = (e) => {
+        canvas.setPointerCapture(e.pointerId);
+        const pos = getPos(e);
+        appState.markup.isDrawing = true;
+        appState.markup.currentShape = {
+          tool: appState.markup.tool,
+          color: appState.markup.color,
+          lineWidth: appState.markup.lineWidth,
+          x1: pos.x / canvas.width,
+          y1: pos.y / canvas.height,
+          x2: pos.x / canvas.width,
+          y2: pos.y / canvas.height
+        };
+      };
+
+      canvas.onpointermove = (e) => {
+        if (!appState.markup.isDrawing || !appState.markup.currentShape) return;
+        const pos = getPos(e);
+        appState.markup.currentShape.x2 = pos.x / canvas.width;
+        appState.markup.currentShape.y2 = pos.y / canvas.height;
+        redrawMarkupCanvas();
+      };
+
+      canvas.onpointerup = () => {
+        if (!appState.markup.isDrawing || !appState.markup.currentShape) return;
+        const s = appState.markup.currentShape;
+        if (Math.hypot(s.x2 - s.x1, s.y2 - s.y1) > 0.015) {
+          appState.markup.shapes.push(s);
+        }
+        appState.markup.isDrawing = false;
+        appState.markup.currentShape = null;
+        redrawMarkupCanvas();
+      };
+    }
+
+    function drawShapeOnCtx(ctx, s, w, h) {
+      const x1 = s.x1 * w, y1 = s.y1 * h, x2 = s.x2 * w, y2 = s.y2 * h;
+      ctx.save();
+      ctx.strokeStyle = s.color || '#ef4444';
+      ctx.fillStyle = s.color || '#ef4444';
+      ctx.lineWidth = s.lineWidth || 3.5;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      if (s.tool === 'circle') {
+        const cx = (x1 + x2) / 2;
+        const cy = (y1 + y2) / 2;
+        const rx = Math.abs(x2 - x1) / 2;
+        const ry = Math.abs(y2 - y1) / 2;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, Math.max(4, rx), Math.max(4, ry), 0, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (s.tool === 'rect') {
+        ctx.strokeRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1));
+      } else if (s.tool === 'arrow') {
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        const angle = Math.atan2(y2 - y1, x2 - x1);
+        const headLen = 14;
+        ctx.beginPath();
+        ctx.moveTo(x2, y2);
+        ctx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6), y2 - headLen * Math.sin(angle - Math.PI / 6));
+        ctx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6), y2 - headLen * Math.sin(angle + Math.PI / 6));
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    function redrawMarkupCanvas() {
+      const canvas = document.getElementById('markupCanvas');
+      if (!canvas || !loadedMarkupImageObj || !loadedMarkupImageObj.complete) return;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, w, h);
+
+      // Fit image preserving aspect ratio
+      const imgRatio = loadedMarkupImageObj.width / loadedMarkupImageObj.height;
+      const canRatio = w / h;
+      let dw = w, dh = h, dx = 0, dy = 0;
+      if (imgRatio > canRatio) {
+        dh = w / imgRatio;
+        dy = (h - dh) / 2;
+      } else {
+        dw = h * imgRatio;
+        dx = (w - dw) / 2;
+      }
+      ctx.drawImage(loadedMarkupImageObj, dx, dy, dw, dh);
+
+      appState.markup.shapes.forEach(s => drawShapeOnCtx(ctx, s, w, h));
+      if (appState.markup.currentShape) drawShapeOnCtx(ctx, appState.markup.currentShape, w, h);
+    }
+
+    function exportMarkedPhotoDataUrl() {
+      if (!appState.markup.imageSrc) return null;
+      const canvas = document.getElementById('markupCanvas');
+      if (canvas && canvas.width > 0 && appState.markup.shapes.length > 0) {
+        try { return canvas.toDataURL('image/jpeg', 0.8); } catch (e) {}
+      }
+      return appState.markup.imageSrc;
+    }
+
+    function createBlankDraft() {
+      const photo = exportMarkedPhotoDataUrl();
+      appState.drafts.unshift({
+        id: 'dr_' + Date.now(),
+        fromAI: false,
+        title: '',
+        severity: 'ปานกลาง',
+        cause: '',
+        solution: '',
+        hideCause: false,
+        hideSolution: false,
+        photoDataUrl: photo
+      });
+      renderApp();
+    }
+
+    function removeDraft(draftId) {
+      appState.drafts = appState.drafts.filter(d => d.id !== draftId);
+      if (appState.placingDraftId === draftId) appState.placingDraftId = null;
+      renderApp();
+    }
+
+    function updateDraftField(draftId, field, value) {
+      const dr = appState.drafts.find(d => d.id === draftId);
+      if (dr) dr[field] = value;
+    }
+
+    function toggleDraftOptionalField(draftId, field, flag) {
+      const dr = appState.drafts.find(d => d.id === draftId);
+      if (!dr) return;
+      dr[field] = flag;
+      const box = document.getElementById('draftCardsContainer');
+      if (box) box.innerHTML = renderDraftCardsHtml();
+    }
+
+    /**
+     * แปลงผลลัพธ์ JSON จาก Gemini AI อย่างปลอดภัย
+     * รองรับทั้ง JSON ปกติ, ล้าง Markdown fence, แก้ไข newline ในข้อความ
+     * และดึงค่าแต่ละฟิลด์สำรองกรณีข้อความถูกตัดกลางประโยคหรือมีเครื่องหมายคำพูดซ้อน
+     */
+    function parseAiDefectJson(rawText) {
+      if (!rawText || typeof rawText !== 'string') {
+        throw new Error('AI ไม่ได้ส่งข้อความผลลัพธ์กลับมา');
+      }
+
+      // 1. ลบเครื่องหมาย ```json ... ``` ที่อาจติดมา
+      let cleaned = rawText
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+
+      // ลองแปลง JSON ตรงๆ ก่อน
+      try {
+        return JSON.parse(cleaned);
+      } catch (_) {}
+
+      // 2. ดึงเฉพาะส่วนที่อยู่ในปีกกา { ... } และจัดรูป newline/control chars
+      const firstBrace = cleaned.indexOf('{');
+      const lastBrace = cleaned.lastIndexOf('}');
+      if (firstBrace !== -1) {
+        let candidate = lastBrace > firstBrace
+          ? cleaned.slice(firstBrace, lastBrace + 1)
+          : cleaned.slice(firstBrace);
+
+        // แทนที่การขึ้นบรรทัดใหม่ดิบๆ ด้วยช่องว่างเพื่อไม่ให้เกิด Unterminated string
+        const sanitized = candidate.replace(/[\u0000-\u001F]+/g, ' ');
+        try {
+          return JSON.parse(sanitized);
+        } catch (_) {}
+      }
+
+      // 3. Fallback: ดึงค่าทีละฟิลด์ด้วย Regex กรณี JSON ถูกตัดกลางคันหรือมี " ซ้อนภายในข้อความภาษาไทย
+      const extractField = (key, nextKeys) => {
+        const nextPattern = nextKeys.length > 0
+          ? `(?="\\s*,\\s*"(?:${nextKeys.join('|')})"\\s*:|"\\s*\\}|$)`
+          : `(?="\\s*\\}|$)`;
+        const re = new RegExp(`"${key}"\\s*:\\s*"([\\s\\S]*?)${nextPattern}`, 'i');
+        const m = cleaned.match(re);
+        if (!m) return '';
+        return m[1]
+          .replace(/\\n/g, ' ')
+          .replace(/\\"/g, '"')
+          .replace(/"\s*$/, '')
+          .trim();
+      };
+
+      const fallbackObj = {
+        title: extractField('title', ['severity', 'cause', 'solution']),
+        severity: extractField('severity', ['cause', 'solution', 'title']),
+        cause: extractField('cause', ['solution', 'severity', 'title']),
+        solution: extractField('solution', ['title', 'severity', 'cause'])
+      };
+
+      if (fallbackObj.title || fallbackObj.cause || fallbackObj.solution) {
+        return fallbackObj;
+      }
+
+      throw new Error('ไม่สามารถแปลงผลลัพธ์จาก AI เป็น JSON ได้ กรุณาลองกดวิเคราะห์ใหม่อีกครั้ง');
+    }
+
+    async function analyzeMarkupWithAI() {
+      const apiKey = (appState.brand.geminiApiKey || '').trim();
+      if (!apiKey) {
+        showToast('กรุณาตั้งค่า Gemini API Key ก่อนใช้งาน AI วิเคราะห์ภาพ', 'warning');
+        openApiKeyModal('ยังไม่ได้ตั้งค่า Gemini API Key กรุณากรอกคีย์ด้านล่าง หรือกด "อ่านขั้นตอนการรับ API Key" เพื่อขอคีย์ฟรี');
+        return;
+      }
+
+      const photoDataUrl = exportMarkedPhotoDataUrl();
+      if (!photoDataUrl) {
+        showToast('กรุณาอัปโหลดรูปภาพหน้างานก่อนกดวิเคราะห์ด้วย AI', 'warning');
+        return;
+      }
+
+      appState.isAnalyzing = true;
+      renderApp();
+
+      const model = appState.brand.geminiModel || 'gemini-2.5-flash';
+      const base64Data = photoDataUrl.split(',')[1];
+      const userNote = (appState.aiPrompt || '').trim();
+
+      const systemPrompt = `คุณคือวิศวกรโยธาผู้เชี่ยวชาญการตรวจรับบ้าน (Home Inspector) วิเคราะห์ภาพถ่ายหน้างานนี้ (หากมีวงกลม/ลูกศรหรือกรอบสีแดงให้โฟกัสที่จุดนั้นเป็นหลัก) ${userNote ? `ข้อมูลเพิ่มเติมจากผู้ตรวจ: "${userNote}"` : ''}
+ตอบกลับเป็น JSON Object ภาษาไทยที่กระชับ ชัดเจน ไม่ใช้เครื่องหมายคำพูดซ้อนในเนื้อหา ตามโครงสร้าง:
+- title: ชื่อรายการ Defect สั้นกระชับชัดเจน
+- severity: เลือก 1 ค่าจาก "เร่งด่วน", "ปานกลาง", "เล็กน้อย"
+- cause: สาเหตุทางวิศวกรรมที่ทำให้เกิดปัญหานี้ (1-2 ประโยค)
+- solution: วิธีแก้ไขที่ถูกต้องตามมาตรฐานงานช่าง (1-2 ประโยค)`;
+
+      try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { text: systemPrompt },
+                { inline_data: { mime_type: 'image/jpeg', data: base64Data } }
+              ]
+            }],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: 'OBJECT',
+                properties: {
+                  title: { type: 'STRING' },
+                  severity: { type: 'STRING', enum: ['เร่งด่วน', 'ปานกลาง', 'เล็กน้อย'] },
+                  cause: { type: 'STRING' },
+                  solution: { type: 'STRING' }
+                },
+                required: ['title', 'severity', 'cause', 'solution']
+              },
+              temperature: 0.2,
+              maxOutputTokens: 2048
+            }
+          })
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const errMsg = data?.error?.message || `HTTP ${res.status}`;
+          const isKeyError = res.status === 400 || res.status === 403 || /API_KEY_INVALID|API key not valid/i.test(errMsg);
+          appState.isAnalyzing = false;
+          renderApp();
+          if (isKeyError) {
+            showToast('API Key ไม่ถูกต้องหรือหมดอายุ กรุณาตรวจสอบและตั้งค่าใหม่', 'danger');
+            openApiKeyModal(`เกิดข้อผิดพลาด (HTTP ${res.status}): API Key ไม่ถูกต้อง กรุณาตรวจสอบรหัสคีย์แล้วบันทึกใหม่อีกครั้ง`);
+            return;
+          }
+          throw new Error(errMsg);
+        }
+
+        // รวมข้อความจากทุก part ที่ไม่ใช่ thought block
+        const parts = data?.candidates?.[0]?.content?.parts || [];
+        const rawText = parts
+          .filter(p => !p.thought && typeof p.text === 'string')
+          .map(p => p.text)
+          .join('\n')
+          .trim();
+
+        const parsed = parseAiDefectJson(rawText);
+
+        appState.drafts.unshift({
+          id: 'dr_' + Date.now(),
+          fromAI: true,
+          title: parsed.title || 'จุดบกพร่องที่ตรวจพบ',
+          severity: normalizeSeverity(parsed.severity),
+          cause: parsed.cause || '',
+          solution: parsed.solution || '',
+          hideCause: false,
+          hideSolution: false,
+          photoDataUrl
+        });
+
+        appState.isAnalyzing = false;
+        showToast('AI วิเคราะห์ภาพเสร็จสิ้น! กด "📍 ปักหมุดข้อนี้ลงแปลน" เพื่อบันทึกได้เลย', 'success');
+        renderApp();
+      } catch (err) {
+        appState.isAnalyzing = false;
+        renderApp();
+        showToast('วิเคราะห์ภาพไม่สำเร็จ: ' + err.message, 'danger');
+      }
+    }
+
+    /*************************************************************************
+     * 11. TAB 2: DEFECT LIST & BEFORE/AFTER PHOTOS + EDIT MODAL
+     *************************************************************************/
+    function getSeverityBadgeCls(sev) {
+      if (sev === 'เร่งด่วน') return 'bg-rose-600 text-white';
+      if (sev === 'เล็กน้อย') return 'bg-blue-600 text-white';
+      return 'bg-amber-500 text-white';
+    }
+
+    function getStatusBadgeCls(st) {
+      if (st === 'แก้ไขแล้ว') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      if (st === 'กำลังแก้ไข') return 'bg-amber-50 text-amber-700 border-amber-200';
+      return 'bg-rose-50 text-rose-700 border-rose-200';
+    }
+
+    function renderDefectListTabHtml(proj) {
+      const allZones = Array.from(new Set(proj.defects.map(d => d.zone).filter(Boolean)));
+      return `
+        <section class="bg-white rounded-3xl shadow-sm border border-slate-200 p-4 sm:p-5 mb-4">
+          <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div class="flex flex-wrap items-center gap-2 flex-1">
+              <input id="listSearchInput" type="text" value="${escapeHtml(appState.listSearch)}" oninput="onListFilterChange('listSearch', this.value)" placeholder="🔍 ค้นหาข้อที่, หัวข้อ, โซน, วิธีแก้ไข..." class="px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 bg-white w-full sm:w-60 outline-none focus:ring-2 focus:ring-blue-500" />
+              <select onchange="onListFilterChange('listFloorFilter', this.value)" class="px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 bg-white">
+                <option value="all" ${appState.listFloorFilter === 'all' ? 'selected' : ''}>ทุกชั้น</option>
+                ${proj.floors.map(f => `<option value="${f.id}" ${appState.listFloorFilter === f.id ? 'selected' : ''}>${escapeHtml(f.name)}</option>`).join('')}
+              </select>
+              <select onchange="onListFilterChange('listZoneFilter', this.value)" class="px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 bg-white max-w-[200px]">
+                <option value="all" ${appState.listZoneFilter === 'all' ? 'selected' : ''}>ทุกโซน</option>
+                ${allZones.map(z => `<option value="${escapeHtml(z)}" ${appState.listZoneFilter === z ? 'selected' : ''}>${escapeHtml(z)}</option>`).join('')}
+              </select>
+              <select onchange="onListFilterChange('listSeverityFilter', this.value)" class="px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 bg-white">
+                <option value="all" ${appState.listSeverityFilter === 'all' ? 'selected' : ''}>ทุกความรุนแรง</option>
+                <option value="เร่งด่วน" ${appState.listSeverityFilter === 'เร่งด่วน' ? 'selected' : ''}>เร่งด่วน</option>
+                <option value="ปานกลาง" ${appState.listSeverityFilter === 'ปานกลาง' ? 'selected' : ''}>ปานกลาง</option>
+                <option value="เล็กน้อย" ${appState.listSeverityFilter === 'เล็กน้อย' ? 'selected' : ''}>เล็กน้อย</option>
+              </select>
+              <select onchange="onListFilterChange('listStatusFilter', this.value)" class="px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 bg-white">
+                <option value="all" ${appState.listStatusFilter === 'all' ? 'selected' : ''}>ทุกสถานะ</option>
+                <option value="รอแก้ไข" ${appState.listStatusFilter === 'รอแก้ไข' ? 'selected' : ''}>รอแก้ไข</option>
+                <option value="กำลังแก้ไข" ${appState.listStatusFilter === 'กำลังแก้ไข' ? 'selected' : ''}>กำลังแก้ไข</option>
+                <option value="แก้ไขแล้ว" ${appState.listStatusFilter === 'แก้ไขแล้ว' ? 'selected' : ''}>แก้ไขแล้ว</option>
+              </select>
+            </div>
+            <button type="button" onclick="openDefectEditModal(null)" class="px-4 py-2.5 rounded-2xl brand-bg hover:opacity-95 text-white text-xs sm:text-sm font-bold shadow-sm whitespace-nowrap">
+              + เพิ่มรายการ Defect
+            </button>
+          </div>
+        </section>
+
+        <section id="defectCardsGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          ${renderDefectCardsInner(proj)}
+        </section>
+      `;
+    }
+
+    function onListFilterChange(key, value) {
+      appState[key] = value;
+      const proj = getActiveProject();
+      const grid = document.getElementById('defectCardsGrid');
+      if (proj && grid) grid.innerHTML = renderDefectCardsInner(proj);
+    }
+
+    function getFloorNameById(proj, floorId) {
+      return proj.floors.find(f => f.id === floorId)?.name || 'ชั้น 1';
+    }
+
+    function renderDefectCardsInner(proj) {
+      const q = (appState.listSearch || '').trim().toLowerCase();
+      const filtered = proj.defects
+        .filter(d => {
+          if (appState.listFloorFilter !== 'all' && d.floorId !== appState.listFloorFilter) return false;
+          if (appState.listZoneFilter !== 'all' && d.zone !== appState.listZoneFilter) return false;
+          if (appState.listSeverityFilter !== 'all' && d.severity !== appState.listSeverityFilter) return false;
+          if (appState.listStatusFilter !== 'all' && d.status !== appState.listStatusFilter) return false;
+          if (q) {
+            const hay = `#${d.number} ${d.title} ${d.zone} ${d.cause} ${d.solution}`.toLowerCase();
+            if (!hay.includes(q)) return false;
+          }
+          return true;
+        })
+        .sort((a, b) => (a.number || 0) - (b.number || 0));
+
+      if (filtered.length === 0) {
+        return `
+          <div class="col-span-full bg-white rounded-3xl border border-dashed border-slate-300 p-12 text-center text-slate-400">
+            <div class="text-4xl mb-2">📋</div>
+            <p class="text-sm font-semibold">ไม่พบรายการ Defect ตามเงื่อนไขที่เลือก</p>
+          </div>
+        `;
+      }
+
+      return filtered.map(d => {
+        const floorName = getFloorNameById(proj, d.floorId);
+        return `
+          <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col justify-between hover:border-blue-300 transition">
+            <div>
+              <div class="flex items-start justify-between gap-2 mb-2.5">
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <span class="text-xs font-extrabold px-2.5 py-0.5 rounded-lg bg-slate-900 text-white">#${d.number}</span>
+                  <span class="text-xs font-bold px-2.5 py-0.5 rounded-lg ${getSeverityBadgeCls(d.severity)}">${escapeHtml(d.severity)}</span>
+                  <button type="button" onclick="quickCycleDefectStatus('${d.id}')" title="คลิกเพื่อสลับสถานะ" class="text-xs font-bold px-2.5 py-0.5 rounded-lg border transition ${getStatusBadgeCls(d.status)}">
+                    ${escapeHtml(d.status)}
+                  </button>
+                </div>
+                <div class="flex items-center gap-1 shrink-0">
+                  <button type="button" onclick="openDefectEditModal('${d.id}')" class="text-xs px-2.5 py-1 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold">✏️ แก้ไข / รูปภาพ</button>
+                  <button type="button" onclick="confirmDeleteDefect('${d.id}')" class="text-xs px-2 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600">🗑️</button>
+                </div>
+              </div>
+
+              <h4 class="font-extrabold text-slate-900 text-sm sm:text-base leading-snug">${escapeHtml(d.title)}</h4>
+              <p class="text-xs text-slate-500 mt-1">🗺️ ${escapeHtml(floorName)} • 📍 ${escapeHtml(d.zone)}</p>
+
+              ${(!d.hideCause && d.cause) ? `
+                <p class="text-xs text-slate-600 mt-2"><strong class="text-slate-800">สาเหตุ:</strong> ${escapeHtml(d.cause)}</p>
+              ` : ''}
+              ${(!d.hideSolution && d.solution) ? `
+                <p class="text-xs text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-xl px-2.5 py-1.5 mt-2">
+                  <strong>วิธีแก้ไข:</strong> ${escapeHtml(d.solution)}
+                </p>
+              ` : ''}
+            </div>
+
+            <!-- Side-by-Side Before / After Photo Comparison -->
+            <div class="grid grid-cols-2 gap-2.5 mt-4 pt-3.5 border-t border-slate-100">
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-[11px] font-bold text-rose-600">ก่อนแก้ไข (Before)</span>
+                  ${d.beforeImg ? `<button type="button" onclick="openDefectEditModal('${d.id}')" class="text-[10px] text-slate-400 hover:text-blue-600">เปลี่ยน</button>` : ''}
+                </div>
+                ${d.beforeImg
+                  ? `<img src="${d.beforeImg}" onclick="openLightbox('${d.beforeImg}', '#${d.number} ${escapeHtml(d.title).replace(/'/g, '')} — ก่อนแก้ไข (Before)')" class="w-full h-32 object-cover rounded-2xl border border-slate-200 cursor-zoom-in hover:opacity-90 transition" />`
+                  : `<label class="w-full h-32 rounded-2xl border-2 border-dashed border-rose-200 bg-rose-50/30 hover:bg-rose-50 text-xs text-rose-500 font-semibold flex flex-col items-center justify-center cursor-pointer transition">
+                      <span>📷 + เพิ่มรูปก่อนแก้ไข</span>
+                      <input type="file" accept="image/*" class="hidden" onchange="quickUploadDefectPhoto(event, '${d.id}', 'beforeImg')" />
+                    </label>`
+                }
+              </div>
+
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-[11px] font-bold text-emerald-700">หลังแก้ไข (After)</span>
+                  ${d.afterImg ? `<button type="button" onclick="openDefectEditModal('${d.id}')" class="text-[10px] text-slate-400 hover:text-blue-600">เปลี่ยน</button>` : ''}
+                </div>
+                ${d.afterImg
+                  ? `<img src="${d.afterImg}" onclick="openLightbox('${d.afterImg}', '#${d.number} ${escapeHtml(d.title).replace(/'/g, '')} — หลังแก้ไข (After)')" class="w-full h-32 object-cover rounded-2xl border border-slate-200 cursor-zoom-in hover:opacity-90 transition" />`
+                  : `<label class="w-full h-32 rounded-2xl border-2 border-dashed border-emerald-200 bg-emerald-50/30 hover:bg-emerald-50 text-xs text-emerald-600 font-semibold flex flex-col items-center justify-center cursor-pointer transition">
+                      <span>✅ + เพิ่มรูปหลังแก้ไข</span>
+                      <input type="file" accept="image/*" class="hidden" onchange="quickUploadDefectPhoto(event, '${d.id}', 'afterImg')" />
+                    </label>`
+                }
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function quickUploadDefectPhoto(event, defectId, field) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const proj = getActiveProject();
+      const d = proj?.defects.find(x => x.id === defectId);
+      if (!d) return;
+      try {
+        d[field] = await compressImageFile(file, 960, 0.75);
+        saveAllToLocalStorage(false);
+        showToast(field === 'beforeImg' ? 'แนบรูปก่อนแก้ไข (Before) เรียบร้อยแล้ว' : 'แนบรูปหลังแก้ไข (After) เรียบร้อยแล้ว', 'success');
+        const grid = document.getElementById('defectCardsGrid');
+        if (grid) grid.innerHTML = renderDefectCardsInner(proj);
+      } catch (e) {
+        showToast('ไม่สามารถอัปโหลดรูปภาพได้', 'danger');
+      }
+      event.target.value = '';
+    }
+
+    function quickCycleDefectStatus(defectId) {
+      const proj = getActiveProject();
+      const d = proj?.defects.find(x => x.id === defectId);
+      if (!d) return;
+      const order = ['รอแก้ไข', 'กำลังแก้ไข', 'แก้ไขแล้ว'];
+      const nextIdx = (order.indexOf(d.status) + 1) % order.length;
+      d.status = order[nextIdx];
+      saveAllToLocalStorage(false);
+      const grid = document.getElementById('defectCardsGrid');
+      if (grid) grid.innerHTML = renderDefectCardsInner(proj);
+      showToast(`เปลี่ยนสถานะข้อ #${d.number} เป็น "${d.status}"`, 'info');
+    }
+
+    function confirmDeleteDefect(defectId) {
+      const proj = getActiveProject();
+      const d = proj?.defects.find(x => x.id === defectId);
+      if (!d) return;
+      openConfirmModal({
+        title: `🗑️ ลบรายการ Defect ข้อที่ #${d.number}`,
+        message: `ยืนยันการลบรายการ "${d.title}" ออกจากโครงการนี้หรือไม่?`,
+        confirmText: 'ลบรายการ',
+        confirmStyle: 'danger',
+        onConfirm: () => {
+          proj.defects = proj.defects.filter(x => x.id !== defectId);
+          saveAllToLocalStorage(false);
+          closeModal();
+          showToast('ลบรายการ Defect เรียบร้อยแล้ว', 'info');
+          renderApp();
+        }
+      });
+    }
+
+    function openDefectEditModal(defectId = null) {
+      const proj = getActiveProject();
+      if (!proj) return;
+      const d = defectId ? proj.defects.find(x => x.id === defectId) : null;
+      const defaultFloor = d ? d.floorId : (getActiveFloor(proj)?.id || proj.floors[0]?.id);
+      const floorObj = proj.floors.find(f => f.id === defaultFloor) || proj.floors[0];
+      const defaultZone = d ? d.zone : (floorObj?.zones[0]?.name || '');
+
+      tempModalBeforeImg = d?.beforeImg || null;
+      tempModalAfterImg = d?.afterImg || null;
+
+      openModal(`
+        <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+          <h3 class="font-bold text-base">${d ? `✏️ แก้ไข Defect ข้อที่ #${d.number}` : '➕ เพิ่มรายการ Defect ใหม่'}</h3>
+          <button type="button" onclick="closeModal()" class="text-slate-300 hover:text-white text-xl leading-none">&times;</button>
+        </div>
+        <div class="p-6 space-y-4 overflow-y-auto">
+          <input type="hidden" id="dmId" value="${escapeHtml(d?.id || '')}" />
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">หัวข้อรายการ Defect *</label>
+            <input id="dmTitle" type="text" value="${escapeHtml(d?.title || '')}" placeholder="ระบุปัญหาที่ตรวจพบ..." class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">ชั้นแปลน</label>
+              <select id="dmFloor" onchange="syncModalZoneOptions()" class="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 bg-white">
+                ${proj.floors.map(f => `<option value="${f.id}" ${f.id === defaultFloor ? 'selected' : ''}>${escapeHtml(f.name)}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">โซน / ตำแหน่ง</label>
+              <input id="dmZone" list="dmZoneList" type="text" value="${escapeHtml(defaultZone)}" class="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500" />
+              <datalist id="dmZoneList">
+                ${(floorObj?.zones || []).map(z => `<option value="${escapeHtml(z.name)}"></option>`).join('')}
+              </datalist>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">ระดับความรุนแรง</label>
+              <select id="dmSeverity" class="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 bg-white">
+                <option value="เร่งด่วน" ${(d?.severity || 'ปานกลาง') === 'เร่งด่วน' ? 'selected' : ''}>เร่งด่วน</option>
+                <option value="ปานกลาง" ${(d?.severity || 'ปานกลาง') === 'ปานกลาง' ? 'selected' : ''}>ปานกลาง</option>
+                <option value="เล็กน้อย" ${(d?.severity || 'ปานกลาง') === 'เล็กน้อย' ? 'selected' : ''}>เล็กน้อย</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">สถานะการแก้ไข</label>
+              <select id="dmStatus" class="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 bg-white">
+                <option value="รอแก้ไข" ${(d?.status || 'รอแก้ไข') === 'รอแก้ไข' ? 'selected' : ''}>รอแก้ไข</option>
+                <option value="กำลังแก้ไข" ${d?.status === 'กำลังแก้ไข' ? 'selected' : ''}>กำลังแก้ไข</option>
+                <option value="แก้ไขแล้ว" ${d?.status === 'แก้ไขแล้ว' ? 'selected' : ''}>แก้ไขแล้ว</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">สาเหตุทางวิศวกรรม</label>
+            <textarea id="dmCause" rows="2" class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500">${escapeHtml(d?.cause || '')}</textarea>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">วิธีแก้ไข</label>
+            <textarea id="dmSolution" rows="2" class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500">${escapeHtml(d?.solution || '')}</textarea>
+          </div>
+
+          <!-- Before / After Photo Comparison Section -->
+          <div class="pt-3 border-t border-slate-200">
+            <div class="flex items-center justify-between mb-2.5">
+              <h4 class="text-sm font-extrabold text-slate-900">📸 รูปภาพเปรียบเทียบ ก่อนแก้ไข (Before) / หลังแก้ไข (After)</h4>
+              <span class="text-[11px] text-slate-400">คลิกที่รูปเพื่อขยายเต็มจอ</span>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <!-- Before Box -->
+              <div class="p-3 rounded-2xl border border-rose-200 bg-rose-50/30">
+                <div class="flex items-center justify-between gap-2 mb-2">
+                  <span class="text-xs font-bold px-2 py-0.5 rounded-lg bg-rose-100 text-rose-700">ก่อนแก้ไข (Before)</span>
+                  <div class="flex gap-1.5">
+                    <label class="text-xs px-2.5 py-1 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 font-semibold cursor-pointer">
+                      อัปโหลด/เปลี่ยน
+                      <input type="file" accept="image/*" class="hidden" onchange="handleModalPhotoUpload(event, 'before')" />
+                    </label>
+                    <button type="button" id="dmBtnDelBefore" onclick="clearModalTempPhoto('before')" class="${tempModalBeforeImg ? '' : 'hidden'} text-xs px-2 py-1 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-700 font-semibold">ลบ</button>
+                  </div>
+                </div>
+                <div class="h-44 rounded-xl bg-slate-100 border border-dashed border-slate-300 overflow-hidden flex items-center justify-center">
+                  <span id="dmBeforeEmpty" class="${tempModalBeforeImg ? 'hidden' : ''} text-xs text-slate-400">ยังไม่มีรูปก่อนแก้ไข</span>
+                  <img id="dmBeforeImg" src="${tempModalBeforeImg || ''}" onclick="openLightbox(this.src, 'ก่อนแก้ไข (Before)')" class="${tempModalBeforeImg ? '' : 'hidden'} w-full h-full object-cover cursor-zoom-in" />
+                </div>
+              </div>
+
+              <!-- After Box -->
+              <div class="p-3 rounded-2xl border border-emerald-200 bg-emerald-50/30">
+                <div class="flex items-center justify-between gap-2 mb-2">
+                  <span class="text-xs font-bold px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-700">หลังแก้ไข (After)</span>
+                  <div class="flex gap-1.5">
+                    <label class="text-xs px-2.5 py-1 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 font-semibold cursor-pointer">
+                      อัปโหลด/เปลี่ยน
+                      <input type="file" accept="image/*" class="hidden" onchange="handleModalPhotoUpload(event, 'after')" />
+                    </label>
+                    <button type="button" id="dmBtnDelAfter" onclick="clearModalTempPhoto('after')" class="${tempModalAfterImg ? '' : 'hidden'} text-xs px-2 py-1 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-700 font-semibold">ลบ</button>
+                  </div>
+                </div>
+                <div class="h-44 rounded-xl bg-slate-100 border border-dashed border-slate-300 overflow-hidden flex items-center justify-center">
+                  <span id="dmAfterEmpty" class="${tempModalAfterImg ? 'hidden' : ''} text-xs text-slate-400">ยังไม่มีรูปหลังแก้ไข</span>
+                  <img id="dmAfterImg" src="${tempModalAfterImg || ''}" onclick="openLightbox(this.src, 'หลังแก้ไข (After)')" class="${tempModalAfterImg ? '' : 'hidden'} w-full h-full object-cover cursor-zoom-in" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2">
+          <div>
+            ${d ? `<button type="button" onclick="confirmDeleteDefect('${d.id}')" class="text-xs px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold">🗑️ ลบข้อนี้</button>` : ''}
+          </div>
+          <div class="flex gap-2">
+            <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-sm font-semibold">ยกเลิก</button>
+            <button type="button" onclick="saveDefectEditModal()" class="px-5 py-2 rounded-xl brand-bg text-white text-sm font-semibold shadow-sm">💾 บันทึกรายการ</button>
+          </div>
+        </div>
+      `, 'max-w-3xl');
+    }
+
+    function syncModalZoneOptions() {
+      const proj = getActiveProject();
+      const flId = document.getElementById('dmFloor')?.value;
+      const fl = proj?.floors.find(f => f.id === flId);
+      const list = document.getElementById('dmZoneList');
+      if (list && fl) {
+        list.innerHTML = fl.zones.map(z => `<option value="${escapeHtml(z.name)}"></option>`).join('');
+      }
+    }
+
+    async function handleModalPhotoUpload(event, side) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        const compressed = await compressImageFile(file, 960, 0.75);
+        if (side === 'before') {
+          tempModalBeforeImg = compressed;
+          document.getElementById('dmBeforeImg').src = compressed;
+          document.getElementById('dmBeforeImg').classList.remove('hidden');
+          document.getElementById('dmBeforeEmpty').classList.add('hidden');
+          document.getElementById('dmBtnDelBefore').classList.remove('hidden');
+        } else {
+          tempModalAfterImg = compressed;
+          document.getElementById('dmAfterImg').src = compressed;
+          document.getElementById('dmAfterImg').classList.remove('hidden');
+          document.getElementById('dmAfterEmpty').classList.add('hidden');
+          document.getElementById('dmBtnDelAfter').classList.remove('hidden');
+        }
+      } catch (e) {
+        showToast('ไม่สามารถอ่านไฟล์รูปภาพได้', 'danger');
+      }
+      event.target.value = '';
+    }
+
+    function clearModalTempPhoto(side) {
+      if (side === 'before') {
+        tempModalBeforeImg = null;
+        document.getElementById('dmBeforeImg').src = '';
+        document.getElementById('dmBeforeImg').classList.add('hidden');
+        document.getElementById('dmBeforeEmpty').classList.remove('hidden');
+        document.getElementById('dmBtnDelBefore').classList.add('hidden');
+      } else {
+        tempModalAfterImg = null;
+        document.getElementById('dmAfterImg').src = '';
+        document.getElementById('dmAfterImg').classList.add('hidden');
+        document.getElementById('dmAfterEmpty').classList.remove('hidden');
+        document.getElementById('dmBtnDelAfter').classList.add('hidden');
+      }
+    }
+
+    function saveDefectEditModal() {
+      const proj = getActiveProject();
+      if (!proj) return;
+      const id = document.getElementById('dmId')?.value || '';
+      const title = (document.getElementById('dmTitle')?.value || '').trim();
+      if (!title) {
+        showToast('กรุณากรอกหัวข้อรายการ Defect', 'warning');
+        return;
+      }
+      const floorId = document.getElementById('dmFloor')?.value || proj.floors[0]?.id;
+      const zone = (document.getElementById('dmZone')?.value || '').trim() || 'ไม่ระบุโซน';
+      const severity = normalizeSeverity(document.getElementById('dmSeverity')?.value);
+      const status = document.getElementById('dmStatus')?.value || 'รอแก้ไข';
+      const cause = (document.getElementById('dmCause')?.value || '').trim();
+      const solution = (document.getElementById('dmSolution')?.value || '').trim();
+
+      if (id) {
+        const d = proj.defects.find(x => x.id === id);
+        if (d) {
+          d.title = title;
+          d.floorId = floorId;
+          d.zone = zone;
+          d.severity = severity;
+          d.status = status;
+          d.cause = cause;
+          d.solution = solution;
+          d.hideCause = !cause;
+          d.hideSolution = !solution;
+          d.beforeImg = tempModalBeforeImg;
+          d.afterImg = tempModalAfterImg;
+        }
+      } else {
+        const nextNum = proj.defects.length > 0 ? Math.max(...proj.defects.map(x => x.number || 0)) + 1 : 1;
+        proj.defects.push({
+          id: 'def_' + Date.now(),
+          number: nextNum,
+          floorId,
+          zone,
+          x: 50,
+          y: 50,
+          title,
+          cause,
+          solution,
+          hideCause: !cause,
+          hideSolution: !solution,
+          severity,
+          status,
+          beforeImg: tempModalBeforeImg,
+          afterImg: tempModalAfterImg,
+          createdAt: new Date().toISOString().split('T')[0]
+        });
+      }
+
+      saveAllToLocalStorage(false);
+      closeModal();
+      showToast('บันทึกรายการ Defect และรูปภาพเรียบร้อยแล้ว', 'success');
+      renderApp();
+    }
+
+    /*************************************************************************
+     * 12. TAB 3: EXPORT REPORTS (PDF / WORD / EXCEL)
+     *************************************************************************/
+    function renderExportTabHtml(proj) {
+      const total = proj.defects.length;
+      const urgent = proj.defects.filter(d => d.severity === 'เร่งด่วน').length;
+      const fixed = proj.defects.filter(d => d.status === 'แก้ไขแล้ว').length;
+      const withBefore = proj.defects.filter(d => d.beforeImg).length;
+      const withAfter = proj.defects.filter(d => d.afterImg).length;
+
+      return `
+        <section class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6">
+          <div class="mb-6">
+            <h3 class="text-lg sm:text-xl font-extrabold text-slate-900">📄 ส่งออกรายงานตรวจรับบ้านครบ 3 รูปแบบ</h3>
+            <p class="text-xs sm:text-sm text-slate-500 mt-1">
+              สรุปข้อมูลโครงการ: ทั้งหมด <strong>${total}</strong> ข้อ • เร่งด่วน <strong>${urgent}</strong> ข้อ • แก้ไขแล้ว <strong>${fixed}</strong> ข้อ • แนบรูปก่อนแก้ไข <strong>${withBefore}</strong> รูป • หลังแก้ไข <strong>${withAfter}</strong> รูป
+            </p>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- PDF Export -->
+            <div class="rounded-3xl border border-rose-200 bg-rose-50/40 p-5 flex flex-col justify-between">
+              <div>
+                <div class="w-12 h-12 rounded-2xl bg-rose-600 text-white flex items-center justify-center text-2xl shadow-sm mb-3">📕</div>
+                <h4 class="font-extrabold text-slate-900 text-base">รายงาน PDF (.pdf)</h4>
+                <p class="text-xs text-slate-600 mt-1.5 leading-relaxed mb-5">
+                  จัดหน้าขนาด A4 สะอาดตา แสดงหัวกระดาษ White-Label โลโก้บริษัท ข้อมูลผู้ตรวจ สรุปสถิติ แปลนบ้านพร้อมหมุด และตาราง Defect พร้อมคอลัมน์รูปก่อนแก้ไข (Before) และหลังแก้ไข (After) คู่กัน
+                </p>
+              </div>
+              <button type="button" onclick="exportProjectPDF()" class="w-full py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold shadow-sm transition">
+                🖨️ พิมพ์ / บันทึกเป็น PDF
+              </button>
+            </div>
+
+            <!-- Word Export -->
+            <div class="rounded-3xl border border-blue-200 bg-blue-50/40 p-5 flex flex-col justify-between">
+              <div>
+                <div class="w-12 h-12 rounded-2xl bg-blue-700 text-white flex items-center justify-center text-2xl shadow-sm mb-3">📘</div>
+                <h4 class="font-extrabold text-slate-900 text-base">รายงาน Word (.doc)</h4>
+                <p class="text-xs text-slate-600 mt-1.5 leading-relaxed mb-5">
+                  ดาวน์โหลดไฟล์ Microsoft Word ที่เปิดแก้ไขข้อความและลายเซ็นเพิ่มเติมได้ ฝังหัวเอกสาร White-Label ตาราง Defect และรูปภาพ Before / After ครบถ้วน
+                </p>
+              </div>
+              <button type="button" onclick="exportProjectWord()" class="w-full py-2.5 rounded-2xl bg-blue-700 hover:bg-blue-800 text-white text-sm font-bold shadow-sm transition">
+                📥 ดาวน์โหลดไฟล์ Word (.doc)
+              </button>
+            </div>
+
+            <!-- Excel Export -->
+            <div class="rounded-3xl border border-emerald-200 bg-emerald-50/40 p-5 flex flex-col justify-between">
+              <div>
+                <div class="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center text-2xl shadow-sm mb-3">📗</div>
+                <h4 class="font-extrabold text-slate-900 text-base">รายงาน Excel (.xlsx)</h4>
+                <p class="text-xs text-slate-600 mt-1.5 leading-relaxed mb-5">
+                  ส่งออกตารางสรุปข้อมูลด้วย SheetJS (รองรับ CSV สำรองอัตโนมัติ) ครบทุกคอลัมน์ ข้อที่, ชั้น, โซน, รายการ Defect, สาเหตุ, วิธีแก้ไข, ความรุนแรง, สถานะ และสถานะรูปภาพ
+                </p>
+              </div>
+              <button type="button" onclick="exportProjectExcel()" class="w-full py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow-sm transition">
+                📊 ดาวน์โหลดไฟล์ Excel (.xlsx)
+              </button>
+            </div>
+          </div>
+        </section>
+      `;
+    }
+
+    function buildPrintableReportHtml(proj, forWord = false) {
+      const b = appState.brand;
+      const sorted = [...proj.defects].sort((a, b2) => (a.number || 0) - (b2.number || 0));
+      const total = sorted.length;
+      const urgent = sorted.filter(d => d.severity === 'เร่งด่วน').length;
+      const pending = sorted.filter(d => d.status !== 'แก้ไขแล้ว').length;
+      const fixed = sorted.filter(d => d.status === 'แก้ไขแล้ว').length;
+
+      const floorPlansSection = !forWord ? `
+        <div style="margin-bottom:20px;">
+          <h3 style="font-size:15px; font-weight:700; color:${b.accentColor}; border-bottom:2px solid ${b.accentColor}; padding-bottom:4px; margin-bottom:10px;">ผังแปลนตำแหน่ง Defect</h3>
+          <div style="display:grid; grid-template-columns: repeat(${proj.floors.length > 1 ? 2 : 1}, 1fr); gap:12px;">
+            ${proj.floors.map(fl => {
+              const flPins = sorted.filter(d => d.floorId === fl.id);
+              return `
+                <div class="print-break-inside-avoid" style="border:1px solid #cbd5e1; border-radius:8px; padding:8px; background:#fff;">
+                  <div style="font-size:12px; font-weight:700; margin-bottom:6px;">${escapeHtml(fl.name)} (${flPins.length} จุด)</div>
+                  <div style="position:relative; width:100%; aspect-ratio:4/3; border:1px solid #e2e8f0; overflow:hidden; background:#f8fafc;">
+                    ${fl.imageUrl ? `<img src="${fl.imageUrl}" style="width:100%; height:100%; object-fit:contain;" />` : getArchitecturalFloorSvg(fl.svgPreset ?? 0)}
+                    ${flPins.map(p => {
+                      const bg = p.status === 'แก้ไขแล้ว' ? '#059669' : (p.severity === 'เร่งด่วน' ? '#e11d48' : (p.severity === 'เล็กน้อย' ? '#2563eb' : '#f59e0b'));
+                      return `<div style="position:absolute; left:${p.x}%; top:${p.y}%; transform:translate(-50%,-50%); width:18px; height:18px; border-radius:999px; background:${bg}; color:#fff; font-size:9px; font-weight:800; display:flex; align-items:center; justify-content:center; border:1.5px solid #fff;">${p.number}</div>`;
+                    }).join('')}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      ` : '';
+
+      const tableRows = sorted.map(d => {
+        const flName = getFloorNameById(proj, d.floorId);
+        return `
+          <tr class="print-break-inside-avoid">
+            <td style="border:1px solid #cbd5e1; padding:6px; text-align:center; vertical-align:top; font-weight:700;">${d.number}</td>
+            <td style="border:1px solid #cbd5e1; padding:6px; vertical-align:top;">
+              <div style="font-weight:700; color:#0f172a;">${escapeHtml(d.title)}</div>
+              <div style="font-size:11px; color:#475569; margin-top:2px;">${escapeHtml(flName)} | ${escapeHtml(d.zone)}</div>
+              ${(!d.hideCause && d.cause) ? `<div style="font-size:11px; margin-top:4px;"><strong>สาเหตุ:</strong> ${escapeHtml(d.cause)}</div>` : ''}
+              ${(!d.hideSolution && d.solution) ? `<div style="font-size:11px; margin-top:3px; color:#065f46;"><strong>วิธีแก้ไข:</strong> ${escapeHtml(d.solution)}</div>` : ''}
+            </td>
+            <td style="border:1px solid #cbd5e1; padding:6px; text-align:center; vertical-align:top; font-size:11px;">
+              <div><strong>${escapeHtml(d.severity)}</strong></div>
+              <div style="margin-top:4px;">${escapeHtml(d.status)}</div>
+            </td>
+            <td style="border:1px solid #cbd5e1; padding:6px; text-align:center; vertical-align:top;">
+              ${d.beforeImg ? `<img src="${d.beforeImg}" width="135" style="max-width:135px; max-height:105px; object-fit:cover; border-radius:4px;" />` : '<span style="color:#94a3b8; font-size:10px;">ไม่มีรูป</span>'}
+            </td>
+            <td style="border:1px solid #cbd5e1; padding:6px; text-align:center; vertical-align:top;">
+              ${d.afterImg ? `<img src="${d.afterImg}" width="135" style="max-width:135px; max-height:105px; object-fit:cover; border-radius:4px;" />` : '<span style="color:#94a3b8; font-size:10px;">ยังไม่แนบรูป</span>'}
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      return `
+        <div style="font-family:'Sarabun', Tahoma, sans-serif; color:#0f172a; line-height:1.45;">
+          <!-- Header -->
+          <table style="width:100%; border-collapse:collapse; border-bottom:3px solid ${b.accentColor}; padding-bottom:10px; margin-bottom:14px;">
+            <tr>
+              <td style="width:74px; vertical-align:middle; padding-bottom:10px;">
+                ${b.customLogoDataUrl ? `<img src="${b.customLogoDataUrl}" width="64" height="64" style="object-fit:contain;" />` : `<div style="width:64px; height:64px;">${forWord ? '' : DEFAULT_GEAR_LOGO_SVG}</div>`}
+              </td>
+              <td style="vertical-align:middle; padding-left:10px; padding-bottom:10px;">
+                <div style="font-size:20px; font-weight:800; color:${b.accentColor};">${escapeHtml(b.companyName)}</div>
+                <div style="font-size:12px; color:#334155;">${escapeHtml(b.tagline)}</div>
+                <div style="font-size:11px; color:#475569;">ผู้ตรวจสอบ: <strong>${escapeHtml(b.inspectorName)}</strong> (${escapeHtml(b.licenseNo)}) | ${escapeHtml(b.contactInfo)}</div>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Project Metadata -->
+          <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:14px; background:#f8fafc;">
+            <tr>
+              <td style="border:1px solid #e2e8f0; padding:6px 8px;"><strong>โครงการ:</strong> ${escapeHtml(proj.name)}</td>
+              <td style="border:1px solid #e2e8f0; padding:6px 8px;"><strong>บ้านเลขที่:</strong> ${escapeHtml(proj.houseNo)}</td>
+            </tr>
+            <tr>
+              <td style="border:1px solid #e2e8f0; padding:6px 8px;"><strong>ที่อยู่:</strong> ${escapeHtml(proj.address)}</td>
+              <td style="border:1px solid #e2e8f0; padding:6px 8px;"><strong>วันที่ตรวจ:</strong> ${escapeHtml(proj.inspectionDate)}</td>
+            </tr>
+          </table>
+
+          <!-- Summary Stats -->
+          <div style="font-size:12px; margin-bottom:14px; padding:8px 10px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px;">
+            <strong>สรุปผลการตรวจสอบ:</strong>
+            รายการทั้งหมด <strong>${total}</strong> ข้อ &nbsp;|&nbsp;
+            ระดับเร่งด่วน <strong style="color:#dc2626;">${urgent}</strong> ข้อ &nbsp;|&nbsp;
+            รอ/กำลังแก้ไข <strong style="color:#d97706;">${pending}</strong> ข้อ &nbsp;|&nbsp;
+            แก้ไขแล้ว <strong style="color:#059669;">${fixed}</strong> ข้อ
+          </div>
+
+          ${floorPlansSection}
+
+          <!-- Defect Table -->
+          <h3 style="font-size:15px; font-weight:700; color:${b.accentColor}; border-bottom:2px solid ${b.accentColor}; padding-bottom:4px; margin-bottom:10px;">รายละเอียดรายการตรวจสอบ (Defect List)</h3>
+          <table style="width:100%; border-collapse:collapse; font-size:12px;">
+            <thead>
+              <tr style="background:#f1f5f9;">
+                <th style="border:1px solid #cbd5e1; padding:6px; width:40px;">ข้อ</th>
+                <th style="border:1px solid #cbd5e1; padding:6px;">รายการ Defect / สาเหตุ / วิธีแก้ไข</th>
+                <th style="border:1px solid #cbd5e1; padding:6px; width:85px;">ระดับ / สถานะ</th>
+                <th style="border:1px solid #cbd5e1; padding:6px; width:145px;">ก่อนแก้ไข (Before)</th>
+                <th style="border:1px solid #cbd5e1; padding:6px; width:145px;">หลังแก้ไข (After)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows || '<tr><td colspan="5" style="border:1px solid #cbd5e1; padding:16px; text-align:center;">ไม่มีรายการ Defect</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function exportProjectPDF() {
+      const proj = getActiveProject();
+      if (!proj) return;
+      const printArea = document.getElementById('printArea');
+      if (!printArea) return;
+      printArea.innerHTML = buildPrintableReportHtml(proj, false);
+      showToast('กำลังเปิดหน้าต่างพิมพ์ / บันทึกเป็น PDF...', 'info');
+      setTimeout(() => window.print(), 250);
+    }
+
+    function exportProjectWord() {
+      const proj = getActiveProject();
+      if (!proj) return;
+      const html = `
+        <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+        <head><meta charset='utf-8'><title>${escapeHtml(proj.name)}</title></head>
+        <body>${buildPrintableReportHtml(proj, true)}</body></html>`;
+      const blob = new Blob(['\ufeff', html], { type: 'application/msword;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const safeSlug = (proj.houseNo || 'Report').replace(/[^a-zA-Z0-9ก-๙_-]/g, '_');
+      a.download = `Inspection_Report_${safeSlug}.doc`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast('ดาวน์โหลดรายงาน Word (.doc) เรียบร้อยแล้ว', 'success');
+    }
+
+    function exportProjectExcel() {
+      const proj = getActiveProject();
+      if (!proj) return;
+      const sorted = [...proj.defects].sort((a, b) => (a.number || 0) - (b.number || 0));
+      const rows = sorted.map(d => ({
+        'ข้อที่': d.number,
+        'ชั้น': getFloorNameById(proj, d.floorId),
+        'โซน': d.zone,
+        'รายการ Defect': d.title,
+        'สาเหตุทางวิศวกรรม': d.hideCause ? '' : (d.cause || ''),
+        'วิธีแก้ไข': d.hideSolution ? '' : (d.solution || ''),
+        'ความรุนแรง': d.severity,
+        'สถานะ': d.status,
+        'รูปก่อนแก้ไข (Before)': d.beforeImg ? 'มีรูปภาพ' : 'ไม่มี',
+        'รูปหลังแก้ไข (After)': d.afterImg ? 'มีรูปภาพ' : 'ไม่มี'
+      }));
+
+      const safeSlug = (proj.houseNo || 'Report').replace(/[^a-zA-Z0-9ก-๙_-]/g, '_');
+      if (typeof XLSX !== 'undefined') {
+        try {
+          const ws = XLSX.utils.json_to_sheet(rows);
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, 'Defect List');
+          XLSX.writeFile(wb, `Inspection_Report_${safeSlug}.xlsx`);
+          showToast('ดาวน์โหลดรายงาน Excel (.xlsx) เรียบร้อยแล้ว', 'success');
+          return;
+        } catch (err) {
+          console.warn('XLSX export error, falling back to CSV:', err);
+        }
+      }
+
+      // Graceful CSV Fallback (UTF-8 BOM)
+      const headers = Object.keys(rows[0] || { 'ข้อที่': '' });
+      const csvLines = [
+        headers.join(','),
+        ...rows.map(r => headers.map(h => `"${String(r[h] ?? '').replace(/"/g, '""')}"`).join(','))
+      ];
+      const blob = new Blob(['\ufeff' + csvLines.join('\n')], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Inspection_Report_${safeSlug}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast('ดาวน์โหลดรายงานเป็นไฟล์ CSV สำรองเรียบร้อยแล้ว', 'info');
+    }
+
+    /*************************************************************************
+     * 13. MAIN RENDER LOOP & INITIALIZATION
+     *************************************************************************/
+    function renderApp() {
+      const root = document.getElementById('appRoot');
+      if (!root) return;
+      applyBrandTheme();
+
+      const activeProj = getActiveProject();
+      if (!activeProj) {
+        root.innerHTML = renderProjectHubHtml();
+      } else {
+        root.innerHTML = renderProjectWorkspaceHtml(activeProj);
+        if (appState.activeTab === 'studio') {
+          requestAnimationFrame(() => bindMarkupCanvasEvents());
+        }
+      }
+    }
+
+    window.addEventListener('resize', () => {
+      if (appState.activeProjectId && appState.activeTab === 'studio' && appState.markup.imageSrc) {
+        bindMarkupCanvasEvents();
+      }
+    });
+
+    window.onload = function () {
+      applyBrandTheme();
+      renderApp();
+    };
+  </script>
+</body>
+</html>

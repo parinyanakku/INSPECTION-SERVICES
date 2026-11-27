@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.210",
+  "latest": "v1.0.211",
   "releases": [
+    {
+      "version": "v1.0.211",
+      "build": 211,
+      "storageSchema": 2,
+      "date": "2026-11-27T14:46:34.536Z",
+      "notes": "Keep desktop and phone Drive workspaces in sync",
+      "commit": "ad6aa8313a99e031541a431d1194297161e7be2a"
+    },
     {
       "version": "v1.0.210",
       "build": 210,
