@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.211",
+  "latest": "v1.0.212",
   "releases": [
+    {
+      "version": "v1.0.212",
+      "build": 212,
+      "storageSchema": 2,
+      "date": "2026-11-27T15:11:47.835Z",
+      "notes": "Single-action Drive load, skip unchanged revisions and retry incomplete byte ranges",
+      "commit": "4d416e30abb596f080e1cadce432072d82d4d69b"
+    },
     {
       "version": "v1.0.211",
       "build": 211,
