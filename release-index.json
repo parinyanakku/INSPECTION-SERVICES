@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.77",
+  "latest": "v1.0.78",
   "releases": [
+    {
+      "version": "v1.0.78",
+      "build": 78,
+      "storageSchema": 2,
+      "date": "2026-11-27T02:13:10.210Z",
+      "notes": "Group fullscreen markup toolbar and enable moving and resizing editable text with undo and redo",
+      "commit": "5d07f3f2cea6ee95e83d88b2c6ff0cc313e67837"
+    },
     {
       "version": "v1.0.77",
       "build": 77,
