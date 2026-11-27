@@ -151,6 +151,7 @@ export const BrandSettingsModal: React.FC<BrandSettingsModalProps> = ({
               <input
                 type="text"
                 value={form.subtitle}
+                placeholder={lang==='en'?'Not set':'ยังไม่ระบุ'}
                 onChange={(e) => setForm({ ...form, subtitle: e.target.value })}
                 className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -234,7 +235,7 @@ export const BrandSettingsModal: React.FC<BrandSettingsModalProps> = ({
               onSave({
                 ...form,
                 companyName: form.companyName.trim() || DEFAULT_BRAND.companyName,
-                subtitle: form.subtitle.trim() || DEFAULT_BRAND.subtitle,
+                subtitle: form.subtitle.trim(),
                 inspectorName: form.inspectorName.trim(),
                 licenseNo: form.licenseNo.trim(),
               })
