@@ -101,3 +101,17 @@ test('fast string scan retains escapes and Unicode across ranges',async()=>{
  const result=await streamOriginal(response,signal);
  assert.deepEqual({...result.records},records);assert.equal(await hashWorkspaceRecords(result.records),hash);
 });
+
+test('staged ranges survive a second read without downloading previously received bytes',async()=>{
+ const size=block+17,source=new Uint8Array(size);source[0]=22;source[block]=99;
+ const stored=new Map(),calls=[];
+ const cache={get:async at=>stored.get(at),put:async(at,bytes)=>{stored.set(at,bytes);}};
+ const request=async range=>{const [,start,end]=/^bytes=(\d+)-(\d+)$/.exec(range).map(Number);calls.push(start);return new Response(source.slice(start,end+1),{status:206});};
+ const first=await downloadDriveRevision(size,request,signal,cache);
+ const reader=first.body.getReader();await reader.read();await reader.cancel();
+ assert.deepEqual(calls,[0]);
+ const next=await downloadDriveRevision(size,request,signal,cache);
+ assert.deepEqual(new Uint8Array(await next.arrayBuffer()),source);assert.deepEqual(calls,[0,block]);
+ const complete=await downloadDriveRevision(size,async()=>{throw Error('must not request network');},signal,cache);
+ assert.deepEqual(new Uint8Array(await complete.arrayBuffer()),source);
+});
