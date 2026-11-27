@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.113",
+  "latest": "v1.0.114",
   "releases": [
+    {
+      "version": "v1.0.114",
+      "build": 114,
+      "storageSchema": 2,
+      "date": "2026-11-27T06:22:30.768Z",
+      "notes": "Remove miniature report table previews from layout selector",
+      "commit": "13a4c8cb438ec863fe2019061c5273ef5ec9bdec"
+    },
     {
       "version": "v1.0.113",
       "build": 113,
