@@ -9,6 +9,9 @@ import {
   Eraser,
   Maximize2,
   Minus,
+  Plus,
+  Hand,
+  ZoomIn,
   Pen,
   RotateCcw,
   RotateCw,
@@ -213,6 +216,10 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   const rootRef=useRef<HTMLDivElement>(null);
   const fullscreenRootRef=useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [photoZoom,setPhotoZoom]=useState(100);
+  const [photoPan,setPhotoPan]=useState(false);
+  const viewRef=useRef({zoom:1,x:.5,y:.5});
+  const panDrag=useRef<{id:number;x:number;y:number;cx:number;cy:number}|null>(null);
 
   // Inline text input popup at image-normalized coordinates [0..1]
   const [pendingTextPos, setPendingTextPos] = useState<{ x: number; y: number } | null>(null);
@@ -241,6 +248,21 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   isFullscreenRef.current = isFullscreen;
   pendingTextPosRef.current = pendingTextPos;
 
+  // Preview-only transform; export continues to use the original image coordinates.
+  const photoRect=useCallback((canvas:HTMLCanvasElement)=>{
+    const img=loadedImageRef.current;
+    if(!img||!img.naturalWidth)return null;
+    const size=orientedSize(img.naturalWidth,img.naturalHeight,rotationRef.current);
+    const base=getImageDrawRect(size.w,size.h,canvas.width,canvas.height);
+    const v=viewRef.current,zoom=v.zoom;
+    const dw=base.dw*zoom,dh=base.dh*zoom;
+    const clampCenter=(c:number,viewport:number,extent:number)=>{
+      const half=Math.min(.5,viewport/(2*Math.max(1,extent)));
+      return Math.max(half,Math.min(1-half,c));
+    };
+    const cx=clampCenter(v.x,canvas.width,dw),cy=clampCenter(v.y,canvas.height,dh);
+    return {base,dw,dh,dx:canvas.width/2-cx*dw,dy:canvas.height/2-cy*dh,cx,cy,zoom};
+  },[]);
   const paintCanvas = useCallback((canvas: HTMLCanvasElement | null) => {
     const img = loadedImageRef.current;
     if (!canvas || !img || !img.complete) return;
@@ -257,9 +279,11 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
 
     const rotation = rotationRef.current;
     const size = orientedSize(img.naturalWidth, img.naturalHeight, rotation);
-    const { dx, dy, dw, dh } = getImageDrawRect(size.w, size.h, w, h);
+    const view=photoRect(canvas);if(!view)return;
+    const {dw,dh}=view.base;
     ctx.save();
-    ctx.translate(dx, dy);
+    ctx.translate(view.dx,view.dy);
+    ctx.scale(view.zoom,view.zoom);
     withQuarterTurn(ctx, dw, dh, rotation, (iw, ih) => ctx.drawImage(img, 0, 0, iw, ih));
     shapesRef.current.forEach((shape,index)=>drawOrientedShape(ctx,textDrag.current?.index===index?textDrag.current.preview:shape,dw,dh,rotation));
     const index=selectedTextRef.current;
@@ -273,7 +297,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     }
     if (currentShapeRef.current) drawOrientedShape(ctx, currentShapeRef.current, dw, dh, rotation);
     ctx.restore();
-  }, []);
+  }, [photoRect]);
 
   const drawActiveCanvases = useCallback(() => {
     paintCanvas(canvasRef.current);
@@ -282,6 +306,21 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     }
   }, [paintCanvas]);
 
+  const changePhotoZoom=(percent:number,canvas?:HTMLCanvasElement|null,anchor?:{x:number;y:number})=>{
+    if(isDrawingRef.current||textDrag.current||panDrag.current||pendingTextPosRef.current)return;
+    const target=canvas||(isFullscreenRef.current?fullscreenCanvasRef.current:canvasRef.current);
+    const old=target?photoRect(target):null;
+    const zoom=Math.max(1,Math.min(6,percent/100));
+    let x=old?.cx??viewRef.current.x,y=old?.cy??viewRef.current.y;
+    if(old&&anchor&&target){
+      const nx=(anchor.x-old.dx)/Math.max(1,old.dw),ny=(anchor.y-old.dy)/Math.max(1,old.dh);
+      x=nx-(anchor.x-target.width/2)/Math.max(1,old.base.dw*zoom);
+      y=ny-(anchor.y-target.height/2)/Math.max(1,old.base.dh*zoom);
+    }
+    viewRef.current={zoom,x:zoom===1?.5:Math.max(0,Math.min(1,x)),y:zoom===1?.5:Math.max(0,Math.min(1,y))};
+    if(target){const fitted=photoRect(target);if(fitted){viewRef.current.x=fitted.cx;viewRef.current.y=fitted.cy;}}
+    setPhotoZoom(Math.round(zoom*100));drawActiveCanvases();
+  };
   const selectText=(index:number|null)=>{selectedTextRef.current=index;setSelectedText(index);drawActiveCanvases();};
   const remember = () => {
     redoRef.current=[];
@@ -322,7 +361,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     setShapes(next.shapes);editingTextRef.current=null;setPendingTextPos(null);setPendingTextValue('');
     drawActiveCanvases();
   };
-  const chooseTool=(next:MarkupTool)=>{setTool(next);editingTextRef.current=null;setPendingTextPos(null);if(next!=='text')selectText(null);};
+  const chooseTool=(next:MarkupTool)=>{setPhotoPan(false);setTool(next);editingTextRef.current=null;setPendingTextPos(null);if(next!=='text')selectText(null);};
   const resizeSelected=(factor:number)=>{
     const i=selectedTextRef.current;if(i===null||textDrag.current)return;
     const sh=shapesRef.current[i];if(sh?.tool!=='text')return;
@@ -343,6 +382,8 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       return;
     }
     if(e.shiftKey||e.repeat||pendingTextPosRef.current||isDrawingRef.current||textDrag.current)return;
+    if(key==='h'){e.preventDefault();e.stopPropagation();setPhotoPan(v=>!v);return;}
+    if(key==='+'||key==='='||key==='-'||key==='0'){e.preventDefault();e.stopPropagation();changePhotoZoom(key==='0'?100:photoZoom+(key==='-'?-25:25));return;}
     const shortcuts:Record<string,MarkupTool>={p:'pen',c:'circle',a:'arrow',r:'rect',t:'text',l:'line'};
     const next=shortcuts[key];
     if(next){e.preventDefault();e.stopPropagation();chooseTool(next);}
@@ -391,6 +432,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   // Load image ONLY when imageSrc actually changes; guard all state resets
   useEffect(() => {
     shapesRef.current = [];
+    viewRef.current={zoom:1,x:.5,y:.5};setPhotoZoom(100);setPhotoPan(false);panDrag.current=null;
     textDrag.current=null;editingTextRef.current=null;selectedTextRef.current=null;setSelectedText(null);
     rotationRef.current = 0;
     undoRef.current = [];
@@ -447,6 +489,21 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       observer?.disconnect();
     };
   }, [isFullscreen, syncDimensions]);
+
+  // Non-passive wheel listener: fullscreen wheel zooms, inline requires Ctrl
+  // so ordinary page scrolling is not captured by the editor.
+  useEffect(()=>{
+    const inline=canvasRef.current,full=fullscreenCanvasRef.current;
+    const wheel=(e:WheelEvent)=>{
+      const canvas=e.currentTarget as HTMLCanvasElement;
+      if(!imageSrcRef.current||(!isFullscreenRef.current&&!e.ctrlKey&&!e.metaKey))return;
+      e.preventDefault();
+      const rect=canvas.getBoundingClientRect();
+      changePhotoZoom(viewRef.current.zoom*100*(e.deltaY<0?1.15:1/1.15),canvas,{x:(e.clientX-rect.left)*canvas.width/Math.max(1,rect.width),y:(e.clientY-rect.top)*canvas.height/Math.max(1,rect.height)});
+    };
+    inline?.addEventListener('wheel',wheel,{passive:false});full?.addEventListener('wheel',wheel,{passive:false});
+    return()=>{inline?.removeEventListener('wheel',wheel);full?.removeEventListener('wheel',wheel);};
+  },[isFullscreen,imageSrc,drawActiveCanvases]);
 
   // Resize listener (registered once, pure DOM/canvas operation)
   useEffect(() => {
@@ -542,7 +599,8 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       };
     }
     const size = orientedSize(img.naturalWidth, img.naturalHeight, rotationRef.current);
-    const { dx, dy, dw, dh } = getImageDrawRect(size.w, size.h, canvas.width, canvas.height);
+    const view=photoRect(canvas)!;
+    const {dx,dy,dw,dh}=view;
     return {
       nx: Math.max(0, Math.min(1, (px - dx) / Math.max(1, dw))),
       ny: Math.max(0, Math.min(1, (py - dy) / Math.max(1, dh))),
@@ -567,6 +625,10 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = e.currentTarget;
     if(e.button!==0||!e.isPrimary||!canvas||!loadedImageRef.current?.naturalWidth)return;
+    if(photoPan){
+      const v=photoRect(canvas);if(!v)return;
+      canvas.setPointerCapture(e.pointerId);panDrag.current={id:e.pointerId,x:e.clientX,y:e.clientY,cx:v.cx,cy:v.cy};return;
+    }
     const { nx, ny } = getPos(e, canvas);
 
     // Existing labels are selectable even when another drawing tool is active.
@@ -621,6 +683,8 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     shape.y2=Math.max(0,Math.min(1,shape.y1+len*uy/h));
   };
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const pan=panDrag.current;
+    if(pan&&pan.id===e.pointerId){const canvas=e.currentTarget,v=photoRect(canvas),rect=canvas.getBoundingClientRect();if(v){viewRef.current.x=pan.cx-(e.clientX-pan.x)*canvas.width/Math.max(1,rect.width)/Math.max(1,v.dw);viewRef.current.y=pan.cy-(e.clientY-pan.y)*canvas.height/Math.max(1,rect.height)/Math.max(1,v.dh);const next=photoRect(canvas);if(next){viewRef.current.x=next.cx;viewRef.current.y=next.cy;}paintCanvas(canvas);}return;}
     const drag=textDrag.current;
     if(drag&&drag.id===e.pointerId){
       const {nx,ny}=getPos(e,e.currentTarget),g=textGeometry(e.currentTarget,drag.original,nx,ny);
@@ -654,6 +718,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   };
 
   const handlePointerUp = (e:React.PointerEvent<HTMLCanvasElement>) => {
+    if(panDrag.current?.id===e.pointerId){panDrag.current=null;drawActiveCanvases();return;}
     const drag=textDrag.current;
     if(drag&&drag.id===e.pointerId){
       textDrag.current=null;
@@ -675,7 +740,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     const hasMovement =
       s.tool === 'pen'
         ? (s.points?.length || 0) > 1
-        : Math.hypot(s.x2 - s.x1, s.y2 - s.y1) > 0.012;
+        : Math.hypot(s.x2 - s.x1, s.y2 - s.y1) > 0.012/viewRef.current.zoom;
     if (hasMovement) {
       remember();
       const next = [...shapesRef.current, s];
@@ -686,7 +751,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     }
   };
 
-  const cancelStroke=()=>{textDrag.current=null;touchText.current=null;isDrawingRef.current=false;currentShapeRef.current=null;drawActiveCanvases();};
+  const cancelStroke=()=>{panDrag.current=null;textDrag.current=null;touchText.current=null;isDrawingRef.current=false;currentShapeRef.current=null;drawActiveCanvases();};
   const commitTextAnnotation = () => {
     const clean = pendingTextValue.trim();
     if (!pendingTextPos || !clean) {
@@ -729,7 +794,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   };
 
   const closeFullscreen = () => {
-    textDrag.current=null;
+    panDrag.current=null;textDrag.current=null;
     isDrawingRef.current = false;
     currentShapeRef.current = null;
     editingTextRef.current=null;setPendingTextPos(null);
@@ -748,7 +813,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       };
     }
     const size = orientedSize(img.naturalWidth, img.naturalHeight, rotationRef.current);
-    const { dx, dy, dw, dh } = getImageDrawRect(size.w, size.h, canvas.width, canvas.height);
+    const {dx,dy,dw,dh}=photoRect(canvas)!;
     const leftPct = ((dx + pos.x * dw) / canvas.width) * 100;
     const topPct = ((dy + pos.y * dh) / canvas.height) * 100;
     return {
@@ -780,6 +845,10 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     {label:tr('ทำซ้ำ','Redo'),shortcut:'Ctrl+Y',run:redoEdit,disabled:!redoRef.current.length},
     {label:tr('แก้ข้อความที่เลือก','Edit selected text'),run:()=>{const i=selectedTextRef.current;if(i!==null)editExistingText(i,isFullscreen?fullscreenCanvasRef.current:canvasRef.current);},disabled:selectedText===null},
     ...tools.map(item=>({label:item.label,shortcut:({pen:'P',circle:'C',arrow:'A',line:'L',rect:'R',text:'T'} as Record<MarkupTool,string>)[item.id],run:()=>{chooseTool(item.id);}})),
+    {label:tr('ซูมเข้า','Zoom in'),run:()=>changePhotoZoom(photoZoom+25)},
+    {label:tr('ซูมออก','Zoom out'),run:()=>changePhotoZoom(photoZoom-25)},
+    {label:tr('พอดีจอ','Fit image'),shortcut:'0',run:()=>changePhotoZoom(100)},
+    {label:photoPan?tr('กลับไปวาด','Return to drawing'):tr('เลื่อนรูป','Pan image'),shortcut:'H',run:()=>setPhotoPan(v=>!v)},
     {label:tr('หมุนซ้าย 90°','Rotate left 90°'),run:()=>rotatePhoto(-1)},
     {label:tr('หมุนขวา 90°','Rotate right 90°'),run:()=>rotatePhoto(1)},
     {label:isFullscreen?tr('ออกจากเต็มหน้าจอ','Exit fullscreen'):tr('เต็มหน้าจอ','Fullscreen'),run:isFullscreen?closeFullscreen:openFullscreen},
@@ -791,6 +860,15 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     <button type="button" onClick={()=>resizeSelected(1/1.15)} className="rounded border px-2 py-1" aria-label={tr('ย่อข้อความ','Decrease text size')}>−</button>
     <span className="tabular-nums">{Math.round((shapes[selectedText].textScale??1)*100)}%</span>
     <button type="button" onClick={()=>resizeSelected(1.15)} className="rounded border px-2 py-1" aria-label={tr('ขยายข้อความ','Increase text size')}>+</button>
+  </div>;
+  const zoomControls=(dark=false)=>imageSrc&&<div className={'flex flex-wrap items-center justify-center gap-1.5 rounded-lg border px-2 py-1 text-xs '+(dark?'border-slate-700 text-slate-200':'border-slate-200 text-slate-700')}>
+    <ZoomIn className="w-4 h-4"/><span className="font-semibold">{tr('ซูมรูป','Photo zoom')}</span>
+    <button type="button" onClick={()=>changePhotoZoom(photoZoom-25)} disabled={photoZoom<=100} aria-label={tr('ซูมออก','Zoom out')} className="rounded border p-1 disabled:opacity-40"><Minus className="w-3.5 h-3.5"/></button>
+    <input type="range" min={100} max={600} step={1} value={photoZoom} onChange={e=>changePhotoZoom(+e.target.value)} aria-label={tr('ซูมรูป','Photo zoom')} className="w-20 accent-blue-500"/>
+    <button type="button" onClick={()=>changePhotoZoom(photoZoom+25)} disabled={photoZoom>=600} aria-label={tr('ซูมเข้า','Zoom in')} className="rounded border p-1 disabled:opacity-40"><Plus className="w-3.5 h-3.5"/></button>
+    <span className="tabular-nums min-w-10">{photoZoom}%</span>
+    <button type="button" onClick={()=>changePhotoZoom(100)} className="rounded border px-2 py-1 font-semibold">{tr('พอดีจอ','Fit')}</button>
+    <button type="button" aria-pressed={photoPan} onClick={()=>{if(!pendingTextPosRef.current)setPhotoPan(v=>!v);}} className={'inline-flex items-center gap-1 rounded border px-2 py-1 font-semibold '+(photoPan?'bg-blue-600 text-white border-blue-600':'')}><Hand className="w-3.5 h-3.5"/>{tr('เลื่อนรูป','Pan')}</button>
   </div>;
   const textHint=tr('คลิกพื้นที่ว่างเพื่อเพิ่มข้อความ • คลิกข้อความเดิมเพื่อแก้คำ • ลากเพื่อย้าย • ลากมุมหรือกด −/+ เพื่อปรับขนาด','Click empty space to add text · Click existing text to edit · Drag to move · Drag corner or use −/+ to resize');
   const inlinePopupCoords =
@@ -903,7 +981,8 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
         </div>
       </div>
 
-      {tool === 'text' && imageSrc && !isFullscreen && (
+      {zoomControls()}
+      {tool === 'text' && imageSrc && !isFullscreen && !photoPan && (
         <div className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-1.5">
           {textHint}
         </div>
@@ -924,9 +1003,9 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
           onPointerUp={handlePointerUp}
           onPointerCancel={cancelStroke}
           onLostPointerCapture={cancelStroke}
-          onDoubleClick={()=>{if(!pendingTextPosRef.current&&selectedTextRef.current===null)openFullscreen();}}
+          onDoubleClick={()=>{if(!photoPan&&!pendingTextPosRef.current&&selectedTextRef.current===null)openFullscreen();}}
           className={`w-full h-full block touch-none ${
-            tool === 'text' ? 'cursor-text' : 'cursor-crosshair'
+            photoPan ? 'cursor-grab active:cursor-grabbing' : tool === 'text' ? 'cursor-text' : 'cursor-crosshair'
           } ${imageSrc ? '' : 'hidden'}`}
         />
 
@@ -1096,7 +1175,8 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
               </div>
             </div>
 
-            {tool === 'text' && (
+            <div className="shrink-0 bg-slate-900 flex justify-center px-2 py-1">{zoomControls(true)}</div>
+            {tool === 'text' && !photoPan && (
               <div className="bg-blue-950/90 border-b border-blue-800/70 text-blue-200 text-xs font-semibold px-4 py-1.5 text-center shrink-0">
                 {textHint}
               </div>
@@ -1117,7 +1197,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
                   onPointerCancel={cancelStroke}
           onLostPointerCapture={cancelStroke}
                   className={`w-full h-full block touch-none ${
-                    tool === 'text' ? 'cursor-text' : 'cursor-crosshair'
+                    photoPan ? 'cursor-grab active:cursor-grabbing' : tool === 'text' ? 'cursor-text' : 'cursor-crosshair'
                   }`}
                 />
 
@@ -1162,7 +1242,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
 
             {/* Bottom Keyboard / Gesture Hint */}
             <div className="py-1.5 px-4 bg-slate-900/90 border-t border-slate-800 text-center text-[11px] text-slate-400 shrink-0">
-              {t.fullscreenHint}
+              {t.fullscreenHint} · {tr('หมุนลูกกลิ้งเพื่อซูม · H เลื่อนรูป · 0 พอดีจอ','Mouse wheel zoom · H pan · 0 fit')}
             </div>
           </div>,
           document.body
