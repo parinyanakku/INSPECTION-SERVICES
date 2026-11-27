@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.164",
+  "latest": "v1.0.165",
   "releases": [
+    {
+      "version": "v1.0.165",
+      "build": 165,
+      "storageSchema": 2,
+      "date": "2026-11-27T08:11:42.032Z",
+      "notes": "Use visible full-backup JSON for latest Drive sync, explicit publish and load with confirmed counts and timestamps",
+      "commit": "1ab2e031ef19c1735e4fc0871bb7f7f14e1ce866"
+    },
     {
       "version": "v1.0.164",
       "build": 164,
