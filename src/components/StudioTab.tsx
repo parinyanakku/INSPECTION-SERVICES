@@ -20,7 +20,7 @@ import type {
   FloorZone,
   ProjectFile,
 } from '../types/inspection';
-import { ZONE_COLOR_PRESETS } from '../data/defaultData';
+import { ZONE_COLOR_PRESETS, orderProjectDefects } from '../data/defaultData';
 import { UI_TEXT, translateDefectStatus, translateSeverity } from '../i18n/translations';
 import {
   analyzeDefectWithGeminiClient,
@@ -479,6 +479,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
       createdAt: new Date().toISOString().split('T')[0],
     };
 
+    const assignedNumber=orderProjectDefects({...project,defects:[...project.defects,newDefect]}).defects.find(d=>d.id===newDefect.id)?.number??nextNum;
     onUpdateProject((prev) => ({
       ...prev,
       defects: [...prev.defects, newDefect],
@@ -492,8 +493,8 @@ export const StudioTab: React.FC<StudioTabProps> = ({
     setMarkupImageSrc(remainingDrafts[0]?.photoDataUrl ?? null);
     onNotify(
       lang === 'en'
-        ? `Pinned defect #${nextNum} · ${activeFloor.name} · ${matchedZone?.name||activeFloor.name}`
-        : `ปักหมุดข้อที่ #${nextNum} · ${activeFloor.name} · ${matchedZone?.name||activeFloor.name} เรียบร้อยแล้ว`,
+        ? `Pinned defect #${assignedNumber} · ${activeFloor.name} · ${matchedZone?.name||activeFloor.name}`
+        : `ปักหมุดข้อที่ #${assignedNumber} · ${activeFloor.name} · ${matchedZone?.name||activeFloor.name} เรียบร้อยแล้ว`,
       'success'
     );
   };
