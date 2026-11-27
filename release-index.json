@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.96",
+  "latest": "v1.0.97",
   "releases": [
+    {
+      "version": "v1.0.97",
+      "build": 97,
+      "storageSchema": 2,
+      "date": "2026-11-27T05:02:15.276Z",
+      "notes": "Fix dark theme contrast on translucent defect solution and report preview cards",
+      "commit": "6d5715c50392738c551a74b70052cb0cc9216cae"
+    },
     {
       "version": "v1.0.96",
       "build": 96,
