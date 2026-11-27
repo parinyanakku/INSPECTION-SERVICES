@@ -27,7 +27,8 @@ function getImageData(img:HTMLImageElement):{base64:string;extension:'png'|'jpeg
  try{const ctx=canvas.getContext('2d');if(!ctx)throw Error('Image conversion unavailable');ctx.drawImage(img,0,0);return {base64:canvas.toDataURL('image/png'),extension:'png'};}
  finally{canvas.width=0;canvas.height=0;}
 }
-export async function appendPrintableExcelReport(workbook:ExcelJS.Workbook,pages:Page[],lang:'th'|'en'){
+export async function appendPrintableExcelReport(workbook:ExcelJS.Workbook,pages:Page[],lang:'th'|'en',signal?:AbortSignal){
+ signal?.throwIfAborted();
  if(!pages.length)throw Error('No report pages');
  const iframe=document.createElement('iframe');
  configureReportFrame(iframe);
@@ -41,6 +42,7 @@ export async function appendPrintableExcelReport(workbook:ExcelJS.Workbook,pages
  const pageCounts=new Map<string,number>();
  for(const page of pages){const key=groupKey(page);pageCounts.set(key,(pageCounts.get(key)||0)+1);}
  for(let pi=0;pi<pages.length;pi++){
+ signal?.throwIfAborted();
  const page=pages[pi],landscape=page.orientation==='landscape';
  doc.body.innerHTML=page.html;
  const root=doc.querySelector<HTMLElement>('.report-page');
