@@ -1,6 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {flushSync} from 'react-dom';
 import type {AppLanguage} from '../types/inspection';
+import {retryDriveRead} from '../utils/driveRetry.mjs';
 import {streamOriginal} from '../utils/driveStreamOriginal';
 import {withDriveDownload} from '../utils/driveDownload';
 import {applyMobileRecords} from '../utils/driveMobileCopy';
@@ -40,8 +41,20 @@ function hash(records:Records){
 }
 function equalRecords(a:Records,b:Records){const keys=Object.keys(a);return keys.length===Object.keys(b).length&&keys.every(k=>a[k]===b[k]);}
 async function api(token:string,url:string,init:RequestInit={}){
- const result=await fetch(url,{...init,headers:{...init.headers,Authorization:'Bearer '+token},cache:'no-store'});
- if(!result.ok){let reason='';try{const detail=await result.json();reason=detail.error?.errors?.[0]?.reason||detail.error?.message||'';}catch{}throw Error('Google Drive HTTP '+result.status+(reason?' · '+reason.slice(0,180):''));}
+ const request=()=>fetch(url,{...init,headers:{...init.headers,Authorization:'Bearer '+token},cache:'no-store'});
+ const read=(init.method||'GET').toUpperCase()==='GET';
+ const wait=(ms:number)=>new Promise<void>((resolve,reject)=>{
+  const signal=init.signal;if(signal?.aborted){reject(Error('CANCELLED'));return;}
+  const abort=()=>{clearTimeout(timer);signal?.removeEventListener('abort',abort);reject(Error('CANCELLED'));};
+  const timer=setTimeout(()=>{signal?.removeEventListener('abort',abort);resolve();},ms+Math.random()*250);
+  signal?.addEventListener('abort',abort,{once:true});
+ });
+ const result=read?await retryDriveRead(request,wait,init.signal):await request();
+ if(!result.ok){
+  let reason='';try{const detail=await result.json();reason=detail.error?.errors?.[0]?.reason||detail.error?.message||'';}catch{}
+  const endpoint=new URL(url),stage=endpoint.searchParams.get('alt')==='media'?'download':endpoint.pathname.endsWith('/files')?'list':endpoint.pathname.endsWith('/about')?'account':'file metadata';
+  throw Error('Google Drive HTTP '+result.status+(reason?' · '+reason.slice(0,180):'')+' · '+stage+(read&&[429,500,502,503,504].includes(result.status)?' · retried 4 times':''));
+ }
  return result;
 }
 const PROJECTS='tis_wl_projects_v10',BRAND='tis_wl_brand_v10',REPORT='tis_report_book_v1_';
@@ -285,6 +298,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   if(!active.current||operation.current!==op)return;
   if(op.signal.aborted){cancelled(op);return;}
   const message=e instanceof Error?e.message:String(e);
+  if(/Google Drive HTTP (429|500|502|503|504)\b/.test(message)){setMsg(tr('Drive ตอบกลับผิดพลาดชั่วคราว ระบบลองอ่านใหม่แล้ว ข้อมูลเดิมไม่ถูกลบ · ','Drive request failed; reads were retried. Existing backups are not deleted · ')+message);return;}
   if(message==='CONFLICT'){autoHold.current=true;setMsg(tr('พบข้อมูลคนละชุดหรือแก้ไขทั้งสองเครื่อง ระบบหยุดซิงค์เพื่อไม่เขียนทับ กรุณาสำรอง JSON และติดต่อผู้ดูแล','Different or concurrent changes detected. Sync stopped to prevent overwriting. Export JSON and contact support.'));}
   else{if(message.includes('401')){live=null;setToken('');}setMsg(tr('ดำเนินการไม่สำเร็จ: ','Operation failed: ')+message);}
  }
@@ -428,6 +442,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
    const localCount=counts(records).projects;
    const empty=localCount===0&&!Object.keys(records).some(k=>k.startsWith('tis_report_book_v1_'));
    let marker:Marker|null=null;try{marker=JSON.parse(workspaceStorage.getItem(MARK)||'null');}catch{}
+   setMsg(tr('กำลังค้นหา JSON ล่าสุดบน Drive…','Finding latest JSON on Drive…'));
    const remote=await files(token,userId,op.signal,downloadOnly);check(op);setCheckedAt(new Date().toISOString());
    if(remote){setCloud(cloudInfo(remote));}else setCloud(null);
    async function finish(confirmed:Records,message:string){
