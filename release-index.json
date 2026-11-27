@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.155",
+  "latest": "v1.0.160",
   "releases": [
+    {
+      "version": "v1.0.160",
+      "build": 160,
+      "storageSchema": 2,
+      "date": "2026-11-27T07:47:17.609Z",
+      "notes": "Document release checklist for keeping buyer guidance current",
+      "commit": "5f41795aa636a4cc1c65fde363229b09f354caba"
+    },
     {
       "version": "v1.0.155",
       "build": 155,
