@@ -528,7 +528,8 @@ function estimateDefectRowHeight(
   showCauseDetails: boolean,
   showSolutionDetails: boolean,
   causePrefix: string,
-  solutionPrefix: string
+  solutionPrefix: string,
+  beforeOnly = false
 ): number {
   const zoneLabel = (d.zone || flName || '').trim();
   const cleanTitle = stripZonePrefixFromTitle(d.title, zoneLabel);
@@ -548,17 +549,18 @@ function estimateDefectRowHeight(
     normSolution !== normTitle &&
     (!showCause || normSolution !== normCause);
 
-  let textHeight = 36 + Math.max(0,Math.ceil(zoneLabel.length / 42)-1)*18; // Include wrapped zone labels
-  textHeight += Math.max(1, Math.ceil(cleanTitle.length / 43)) * 18;
+  const capacity=beforeOnly?1.42:1;
+  let textHeight = 36 + Math.max(0,Math.ceil(zoneLabel.length / (42*capacity))-1)*18; // Include wrapped zone labels
+  textHeight += Math.max(1, Math.ceil(cleanTitle.length / (43*capacity))) * 18;
   if (showCause) {
-    textHeight += 4 + Math.max(1, Math.ceil((causePrefix.length + 1 + cleanCause.length) / 46)) * 17;
+    textHeight += 4 + Math.max(1, Math.ceil((causePrefix.length + 1 + cleanCause.length) / (46*capacity))) * 17;
   }
   if (showSolution) {
     textHeight +=
-      4 + Math.max(1, Math.ceil((solutionPrefix.length + 1 + cleanSolution.length) / 46)) * 17;
+      4 + Math.max(1, Math.ceil((solutionPrefix.length + 1 + cleanSolution.length) / (46*capacity))) * 17;
   }
 
-  const rowTextTotal = textHeight + 66; // padding, spacing and two-row status grid
+  const rowTextTotal = textHeight + 77; // padding, spacing and two-row status grid
   const rowImageTotal = 116 + 30; // landscape photo box + vertical padding/border
   return Math.max(rowImageTotal, rowTextTotal);
 }
@@ -753,13 +755,14 @@ export function buildSharedReportPages(
         t2ColFinding: 'สิ่งที่พบ',
         statTotal: 'ทั้งหมด',
         statUrgent: 'เร่งด่วน',
-        statPending: 'รอแก้ไข/กำลังแก้ไข',
+        statPending: 'รอแก้ไข/แก้ไขไม่เรียบร้อย',
         statFixed: 'แก้ไขแล้ว',
         itemsUnit: 'ข้อ',
         projectLabel: 'โครงการ',
       };
 
   const perPage = 3;
+  const beforeOnly=custom.defectTableMode==='before_only';
   const defectChunks: DefectItem[][] = [];
   if (filteredDefects.length === 0) {
     defectChunks.push([]);
@@ -776,7 +779,8 @@ export function buildSharedReportPages(
         custom.showCauseDetails,
         custom.showSolutionDetails,
         L.causePrefix,
-        L.solutionPrefix
+        L.solutionPrefix,
+        beforeOnly
       );
       const budget = getPageBudget(defectChunks.length);
       if (
@@ -1252,13 +1256,13 @@ export function buildSharedReportPages(
       const heading = chunkIdx === 0 ? L.sec3Title : L.sec3Cont;
       const caption = chunkIdx === 0 ? L.t1Caption : L.t1CaptionCont;
       const available=chunkIdx===0?540:565;
-      const estimated=chunk.reduce((sum,d)=>sum+estimateDefectRowHeight(d,getFloorNameById(proj,d.floorId),custom.showCauseDetails,custom.showSolutionDetails,L.causePrefix,L.solutionPrefix),0);
+      const estimated=chunk.reduce((sum,d)=>sum+estimateDefectRowHeight(d,getFloorNameById(proj,d.floorId),custom.showCauseDetails,custom.showSolutionDetails,L.causePrefix,L.solutionPrefix,beforeOnly),0);
       // Expand photo rows into unused page area without forcing extra rows or cutting off long notes.
       const photoBoxH=chunk.length>=3?Math.min(132,116+Math.max(0,Math.floor((available-estimated-12)/chunk.length))):Math.min(160,116+Math.max(0,Math.floor((available-estimated-12)/Math.max(1,chunk.length))));
 
       const rowsHtml =
         chunk.length === 0
-          ? `<tr><td colspan="5" style="border:1px solid #cbd5e1; padding:24px; text-align:center; color:#64748b;">${L.emptyDefects}</td></tr>`
+          ? `<tr><td colspan="${beforeOnly?4:5}" style="border:1px solid #cbd5e1; padding:24px; text-align:center; color:#64748b;">${L.emptyDefects}</td></tr>`
           : chunk.map((d,idx)=>{
                 const rowBg = idx % 2 === 1 ? '#f8fafc' : '#ffffff';
                 const flName = getFloorNameById(proj,d.floorId);
@@ -1293,11 +1297,11 @@ export function buildSharedReportPages(
                   ? `<div style="width:100%; height:${photoBoxH}px; background:#f8fafc; border:1px solid #e2e8f0; display:flex; align-items:center; justify-content:center; overflow:hidden;"><img data-pdf-photo="true" src="${src}" style="max-width:calc(100% - 6px); max-height:${photoBoxH-8}px; width:auto; height:auto; object-fit:contain; display:block; margin:0 auto;" /></div>`
                   : `<div style="height:${photoBoxH}px; border:1px dashed #cbd5e1; background:#f8fafc; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:12px; line-height:1.5; padding:4px; text-align:center;">${escapeHtml(label)}</div>`;
                 const states=[
-                  {value:'แก้ไขแล้ว',label:isEn?'Fixed':'แก้ไขแล้ว',color:'#059669',bg:'#ecfdf5'},
-                  {value:'กำลังแก้ไข',label:isEn?'In progress':'กำลังแก้ไข',color:'#d97706',bg:'#fffbeb'},
-                  {value:'รอแก้ไข',label:isEn?'Pending':'รอแก้ไข',color:'#dc2626',bg:'#fef2f2'},
+                  {value:'แก้ไขแล้ว',label:isEn?'Fixed':'แก้ไขแล้ว'},
+                  {value:'กำลังแก้ไข',label:isEn?'Repaired but<br />incomplete':'แก้แล้วแต่<br />ยังไม่เรียบร้อย'},
+                  {value:'รอแก้ไข',label:isEn?'Pending':'รอแก้ไข'},
                 ];
-                const statusGrid=`<table style="width:100%; table-layout:fixed; border-collapse:collapse; margin-top:6px; margin-bottom:2px;"><colgroup><col style="width:33.33%"/><col style="width:33.33%"/><col style="width:33.34%"/></colgroup><tbody><tr>${states.map(st=>`<td data-pdf-center-text="true" style="border:1px solid #cbd5e1; background:#f1f5f9; text-align:center; vertical-align:middle; padding:2px 1px 4px; font-size:10px; line-height:1.4; font-weight:700; color:#334155;">${escapeHtml(st.label)}</td>`).join('')}</tr><tr>${states.map(st=>`<td data-pdf-center-text="true" style="border:1px solid #cbd5e1; background:${d.status===st.value?st.bg:'#ffffff'}; text-align:center; vertical-align:middle; height:25px; padding:2px 1px 5px; font-size:15px; line-height:1.4; font-weight:700; color:${d.status===st.value?st.color:'#94a3b8'};">${d.status===st.value?'☑':'☐'}</td>`).join('')}</tr></tbody></table>`;
+                const statusGrid=`<table data-report-status="true" style="width:100%; table-layout:fixed; border-collapse:collapse; margin-top:6px; margin-bottom:2px; background:#ffffff;"><colgroup><col style="width:27%"/><col style="width:46%"/><col style="width:27%"/></colgroup><tbody><tr>${states.map(st=>`<td data-pdf-center-text="true" style="border:1px solid #cbd5e1; background:#ffffff; text-align:center; vertical-align:middle; padding:2px 1px 3px; font-size:11px; line-height:1.2; font-weight:700; color:#000000;">${st.label}</td>`).join('')}</tr><tr>${states.map(st=>`<td data-pdf-center-text="true" style="border:1px solid #cbd5e1; background:#ffffff; text-align:center; vertical-align:middle; height:22px; padding:1px; font-size:15px; line-height:1.2; font-weight:700; color:#000000;">${d.status===st.value?'☑':'☐'}</td>`).join('')}</tr></tbody></table>`;
                 return `<tr style="break-inside:avoid; page-break-inside:avoid; background:${rowBg};">
                   <td style="${cell} text-align:center; font-weight:800; font-size:14px;">${escapeHtml(d.number)}</td>
                   <td style="${cell} text-align:center;">
@@ -1305,7 +1309,7 @@ export function buildSharedReportPages(
                     <div data-pdf-center-text="true" style="font-size:10.5px; line-height:1.4; font-weight:700; margin-top:3px; padding-bottom:2px;">${escapeHtml(flName)} · #${escapeHtml(d.number)}</div>
                   </td>
                   <td style="${cell} text-align:center;">${photo(beforeSrc,L.noImg)}</td>
-                  <td style="${cell} text-align:center;">${photo(afterSrc,isEn?'Awaiting after photo':'รอรูปหลังแก้ไข')}</td>
+                  ${beforeOnly?'':`<td style="${cell} text-align:center;">${photo(afterSrc,isEn?'Awaiting after photo':'รอรูปหลังแก้ไข')}</td>`}
                   <td style="${cell} vertical-align:top; text-align:left; padding:6px 8px 8px; line-height:1.4; overflow-wrap:break-word; word-break:normal;">
                       <div style="font-weight:800; font-size:13.1px; color:${accentHex}; line-height:1.4; margin-bottom:2px;">
                         ${escapeHtml(zoneLabel)}
@@ -1345,15 +1349,11 @@ export function buildSharedReportPages(
 
         <table style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:12.5px; height:auto;">
           <colgroup>
-            <col style="width:5%;" />
-            <col style="width:17%;" />
-            <col style="width:24%;" />
-            <col style="width:24%;" />
-            <col style="width:30%;" />
+            ${(beforeOnly?[5,18,33,44]:[5,17,24,24,30]).map(w=>`<col style="width:${w}%;" />`).join('')}
           </colgroup>
           <thead>
             <tr>
-              ${[L.colSeq,isEn?'Plan location':'ตำแหน่งหมุด',isEn?'Before':'ก่อนแก้ไข',isEn?'After':'หลังแก้ไข',isEn?'Details / status':'รายละเอียด / สถานะ'].map((label,index)=>`<th data-pdf-center-text="true" style="border:1px solid #cbd5e1; height:38px; padding:4px 4px 7px; text-align:center; vertical-align:middle; color:#ffffff; background:${accentHex}; font-size:14px; font-weight:700; line-height:1.4; overflow-wrap:break-word;">${escapeHtml(label)}</th>`).join('')}
+              ${[L.colSeq,isEn?'Plan location':'ตำแหน่งหมุด',isEn?'Before':'ก่อนแก้ไข',...(beforeOnly?[]:[isEn?'After':'หลังแก้ไข']),isEn?'Details / status':'รายละเอียด / สถานะ'].map((label,index)=>`<th data-pdf-center-text="true" style="border:1px solid #cbd5e1; height:38px; padding:4px 4px 7px; text-align:center; vertical-align:middle; color:#ffffff; background:${accentHex}; font-size:14px; font-weight:700; line-height:1.4; overflow-wrap:break-word;">${escapeHtml(label)}</th>`).join('')}
             </tr>
           </thead>
           <tbody>
