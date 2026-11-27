@@ -14,6 +14,7 @@ import {
   Trash2,
   Type as TypeIcon,
   Undo2,
+  Redo2,
   Upload,
 } from 'lucide-react';
 import type { AppLanguage, MarkupShape, MarkupTool } from '../types/inspection';
@@ -199,6 +200,9 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   const [shapes, setShapes] = useState<OrientedShape[]>([]);
   const rotationRef = useRef(0);
   const undoRef = useRef<Array<{ rotation: number; shapes: OrientedShape[] }>>([]);
+  const redoRef = useRef<Array<{ rotation: number; shapes: OrientedShape[] }>>([]);
+  const rootRef=useRef<HTMLDivElement>(null);
+  const fullscreenRootRef=useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Inline text input popup at image-normalized coordinates [0..1]
@@ -256,6 +260,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   }, [paintCanvas]);
 
   const remember = () => {
+    redoRef.current=[];
     undoRef.current.push({ rotation: rotationRef.current, shapes: shapesRef.current });
     if (undoRef.current.length > 100) undoRef.current.shift();
   };
@@ -273,6 +278,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     if (isDrawingRef.current) return;
     const last = undoRef.current.pop();
     if (!last) return;
+    redoRef.current.push({rotation:rotationRef.current,shapes:shapesRef.current});
     rotationRef.current = last.rotation;
     shapesRef.current = last.shapes;
     setShapes(last.shapes);
@@ -280,6 +286,33 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     setPendingTextValue('');
     drawActiveCanvases();
   };
+  const redoEdit=()=>{
+    if(isDrawingRef.current)return;
+    const next=redoRef.current.pop();if(!next)return;
+    undoRef.current.push({rotation:rotationRef.current,shapes:shapesRef.current});
+    if(undoRef.current.length>100)undoRef.current.shift();
+    rotationRef.current=next.rotation;shapesRef.current=next.shapes;
+    setShapes(next.shapes);setPendingTextPos(null);setPendingTextValue('');
+    drawActiveCanvases();
+  };
+  const focusEditor=(e:React.PointerEvent<HTMLDivElement>)=>{
+    if((e.target as Element).closest('input,textarea,select,button,a,[contenteditable="true"]'))return;
+    e.currentTarget.focus({preventScroll:true});
+  };
+  const editorKeys=(e:React.KeyboardEvent<HTMLDivElement>)=>{
+    if(e.defaultPrevented||e.nativeEvent.isComposing||e.altKey||!imageSrcRef.current)return;
+    if((e.target as Element).closest('input,textarea,select,[contenteditable="true"]'))return;
+    const key=e.key.toLowerCase();
+    if(e.ctrlKey||e.metaKey){
+      if(key==='z'||key==='y'){e.preventDefault();e.stopPropagation();if(key==='y'||e.shiftKey)redoEdit();else undoEdit();}
+      return;
+    }
+    if(e.shiftKey||e.repeat||pendingTextPosRef.current||isDrawingRef.current)return;
+    const shortcuts:Record<string,MarkupTool>={p:'pen',c:'circle',a:'arrow',r:'rect',t:'text'};
+    const next=shortcuts[key];
+    if(next){e.preventDefault();e.stopPropagation();setTool(next);}
+  };
+  useEffect(()=>{if(isFullscreen)fullscreenRootRef.current?.focus({preventScroll:true});},[isFullscreen]);
   const clearMarks = () => {
     if (isDrawingRef.current) return;
     if (shapesRef.current.length) {
@@ -324,6 +357,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     shapesRef.current = [];
     rotationRef.current = 0;
     undoRef.current = [];
+    redoRef.current = [];
     loadedImageRef.current = null;
     currentShapeRef.current = null;
     isDrawingRef.current = false;
@@ -624,7 +658,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       : null;
 
   return (
-    <div className="space-y-2.5">
+    <div ref={rootRef} tabIndex={0} onPointerDownCapture={focusEditor} onKeyDown={editorKeys} className="space-y-2.5 outline-none">
       {/* Inline Drawing Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
         <div className="flex flex-wrap items-center gap-1">
@@ -683,10 +717,11 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
             type="button"
             onClick={undoEdit}
             className="p-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer"
-            title={t.undoTooltip}
+            title={t.undoTooltip+" (Ctrl+Z / Cmd+Z)"}
           >
             <Undo2 className="w-3.5 h-3.5" />
           </button>
+          <button type="button" onClick={redoEdit} className="p-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700" title="Redo (Ctrl+Y / Ctrl+Shift+Z)" aria-label={lang==='en'?'Redo':'ทำซ้ำ'}><Redo2 className="w-3.5 h-3.5"/></button>
           <button
             type="button"
             onClick={clearMarks}
@@ -728,6 +763,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
         </div>
       )}
 
+      <p className="text-[10px] text-slate-500 hidden sm:block">{lang==='en'?'Click the editor first · Ctrl+Z Undo · Ctrl+Y Redo · P Pen · C Circle · A Arrow · R Rectangle · T Text':'คลิกกระดานก่อนใช้คีย์ลัด · Ctrl+Z ย้อนกลับ · Ctrl+Y ทำซ้ำ · P ปากกา · C วงกลม · A ลูกศร · R สี่เหลี่ยม · T ข้อความ'}</p>
       {/* Inline Canvas Container */}
       <div
         ref={wrapRef}
@@ -816,8 +852,9 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
         imageSrc &&
         createPortal(
           <div
+            ref={fullscreenRootRef} tabIndex={0} onPointerDownCapture={focusEditor} onKeyDown={editorKeys}
             onClick={(e) => e.stopPropagation()}
-            className="fixed inset-0 z-[70] bg-slate-950/95 flex flex-col select-none"
+            className="outline-none fixed inset-0 z-[70] bg-slate-950/95 flex flex-col select-none"
             role="dialog"
             aria-modal="true"
           >
@@ -886,10 +923,11 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
                   type="button"
                   onClick={undoEdit}
                   className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 cursor-pointer"
-                  title={t.undoTooltip}
+                  title={t.undoTooltip+" (Ctrl+Z / Cmd+Z)"}
                 >
                   <Undo2 className="w-4 h-4" />
                 </button>
+                <button type="button" onClick={redoEdit} className="p-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200" title="Redo (Ctrl+Y / Ctrl+Shift+Z)" aria-label={lang==='en'?'Redo':'ทำซ้ำ'}><Redo2 className="w-4 h-4"/></button>
                 <button
                   type="button"
                   onClick={clearMarks}
