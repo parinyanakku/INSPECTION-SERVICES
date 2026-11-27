@@ -88,8 +88,8 @@ export async function readSyncRecords():Promise<Record<string,string>>{
 export async function restoreSyncRecords(records:Record<string,string>,expected:Record<string,string>,marker:string){
  const connection=db;if(!connection||!await flushWorkspace()||db!==connection)throw Error('Local storage not ready');
  const now=await readSyncRecords();
- const normalized=(r:Record<string,string>)=>JSON.stringify(Object.entries(r).sort(([a],[b])=>a.localeCompare(b)));
- if(normalized(now)!==normalized(expected))throw Error('Local work changed during sync');
+ const nowKeys=Object.keys(now);
+ if(nowKeys.length!==Object.keys(expected).length||nowKeys.some(k=>now[k]!==expected[k]))throw Error('Local work changed during sync');
  const keys=Object.keys(records);
  if(keys.some(k=>!syncKey(k)||typeof records[k]!=='string'))throw Error('Invalid sync records');
  const projects=JSON.parse(records[SYNC_PROJECTS]||'null');
