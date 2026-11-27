@@ -77,3 +77,58 @@ export async function readVisibleWorkspace(token:string,userId:string,signal:Abo
  if(data.format!=='TIS_DRIVE_V1'||data.userId!==userId)throw Error('Backup account mismatch');
  return {records:validateDriveRecords(data.records),date:f.createdTime as string,id:f.id as string};
 }
+
+export type DriveRecoverySource={id:string;name:string;date:string;kind:'workspace'|'project';copy:string};
+export async function listRecoverySources(token:string,userId:string,signal:AbortSignal):Promise<DriveRecoverySource[]>{
+ if(!/^[0-9a-f-]{36}$/i.test(userId))throw Error('Invalid account');
+ const prefixes={workspace:(await sha('workspace')).slice(0,20),project:(await sha('project')).slice(0,20)};
+ const headers={Authorization:'Bearer '+token};const found:DriveRecoverySource[]=[];let page='';
+ do{
+ const q=new URLSearchParams({spaces:'drive',q:"trashed = false and mimeType = 'application/json' and appProperties has { key='tisOwner' and value='"+userId+"' } and (name contains 'Workspace - ' or name contains 'ข้อมูลโครงการ - ')",fields:'nextPageToken,files(id,name,createdTime,appProperties)',orderBy:'createdTime desc',pageSize:'100'});
+ if(page)q.set('pageToken',page);
+ const res=await fetch(API+'?'+q,{headers,signal,cache:'no-store'});
+ if(!res.ok)throw Error('Google Drive HTTP '+res.status);
+ const data=await res.json();
+ for(const f of data.files||[]){
+ const copy=f.appProperties?.tisCopy||'';
+ const kind=copy.startsWith(prefixes.workspace)?'workspace':copy.startsWith(prefixes.project)?'project':null;
+ if(kind&&f.appProperties?.tisOwner===userId&&typeof f.id==='string'&&/^[a-f0-9]{60}$/.test(copy))found.push({id:f.id,name:f.name,date:f.createdTime,kind,copy});
+ }
+ page=data.nextPageToken||'';
+ }while(page&&found.length<200);
+ return found;
+}
+export async function readRecoverySource(token:string,userId:string,source:DriveRecoverySource,signal:AbortSignal):Promise<Records>{
+ const headers={Authorization:'Bearer '+token};
+ const meta=await fetch(API+'/'+encodeURIComponent(source.id)+'?fields=id,appProperties,trashed',{headers,signal,cache:'no-store'});
+ if(!meta.ok)throw Error('Google Drive HTTP '+meta.status);
+ const m=await meta.json();
+ if(m.trashed||m.appProperties?.tisOwner!==userId||m.appProperties?.tisCopy!==source.copy)throw Error('Backup account mismatch');
+ const res=await fetch(API+'/'+encodeURIComponent(source.id)+'?alt=media',{headers,signal,cache:'no-store'});
+ if(!res.ok)throw Error('Google Drive HTTP '+res.status);
+ const raw=await res.text(),prefix=(await sha(source.kind==='workspace'?'workspace':'project')).slice(0,20);
+ if(source.copy!==prefix+(await sha(raw)).slice(0,40))throw Error('Backup integrity check failed');
+ const data=JSON.parse(raw);
+ if(source.kind==='workspace'){
+  if(data.format!=='TIS_DRIVE_V1'||data.userId!==userId)throw Error('Backup account mismatch');
+  return validateDriveRecords(data.records);
+ }
+ return validateDriveRecords({[PROJECTS]:JSON.stringify([data])});
+}
+export function recoveryPreview(local:Records,remote:Records){
+ const l=bundles(local);
+ return projects(remote).map(p=>({id:p.id,name:p.name||p.id,cloudCount:p.defects.length,localCount:l.get(p.id)?.project.defects.length??null,identical:same(l.get(p.id),bundles(remote).get(p.id))}));
+}
+export function restoreSelectedProject(local:Records,remote:Records,id:string,mode:'copy'|'replace'){
+ const source=bundles(remote).get(id);if(!source)throw Error('Project not found');
+ const existing=bundles(local),current=existing.get(id);
+ if(same(current,source))return {records:local,name:source.project.name||id,count:source.project.defects.length};
+ const next={...local};
+ // Copy is the default for an existing project: never silently overwrite.
+ const dest=current&&mode==='copy'?'recovered_'+crypto.randomUUID():id;
+ const p={...source.project,id:dest,...(dest!==id?{name:(source.project.name||id)+' (Drive)'}:{})};
+ const all=projects(local);next[PROJECTS]=JSON.stringify(dest===id&&current?all.map(x=>x.id===id?p:x):[p,...all]);
+ if(source.report!==undefined)next[REPORT+dest]=source.report;
+ else if(dest===id&&current)delete next[REPORT+dest];
+ return {records:next,name:p.name||dest,count:p.defects.length};
+}
