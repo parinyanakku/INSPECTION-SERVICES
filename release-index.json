@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.213",
+  "latest": "v1.0.214",
   "releases": [
+    {
+      "version": "v1.0.214",
+      "build": 214,
+      "storageSchema": 2,
+      "date": "2026-11-27T15:53:59.427Z",
+      "notes": "Reduce restore parsing and retain interruption stage; preserve original project bytes",
+      "commit": "f791ebf9052864f88ad843bed492f19664ca9d5d"
+    },
     {
       "version": "v1.0.213",
       "build": 213,
