@@ -1617,6 +1617,26 @@ function useLargeReportMode(proj:ProjectFile,pages:BuiltReportPage[]):boolean{
   return proj.defects.length>=60||pages.length>=30||pages.reduce((n,p)=>n+p.html.length,0)>45_000_000;
 }
 
+// A shared filename for all report formats. Never substitute today's date.
+export function inspectionDownloadName(proj:ProjectFile,extension:'pdf'|'docx'|'xlsx'|'html',rb?:Pick<ReportBookData,'clientName'|'inspectionDate'>):string{
+  const safe=(v:string)=>v.normalize('NFC').replace(/[<>:"/\\|?*\x00-\x1f\x7f]/g,' ').replace(/\s+/g,' ').replace(/^[ .]+|[ .]+$/g,'');
+  const raw=(rb?.inspectionDate||proj.inspectionDate||'').trim().replace(/[๐-๙]/g,c=>String('๐๑๒๓๔๕๖๗๘๙'.indexOf(c)));
+  const months=['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+  let day=0,month=0,year=0;
+  const thai=raw.match(/(\d{1,2})\s*(มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม)\s*(?:พ\.?\s*ศ\.?\s*)?(\d{4})/);
+  const iso=raw.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:$|T|\s)/);
+  const dmy=raw.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+  if(thai){day=+thai[1];month=months.indexOf(thai[2])+1;year=+thai[3];}
+  else if(iso){year=+iso[1];month=+iso[2];day=+iso[3];}
+  else if(dmy){day=+dmy[1];month=+dmy[2];year=+dmy[3];}
+  if(year>=2400)year-=543;
+  const valid=year>=1900&&month>=1&&month<=12&&day>=1&&day<=new Date(Date.UTC(year,month,0)).getUTCDate();
+  const date=valid?[String(year),String(month).padStart(2,'0'),String(day).padStart(2,'0')].join('-'):(safe(raw).slice(0,40)||'ไม่ระบุวันที่ตรวจ');
+  const names=(rb?.clientName||proj.clientName||'').split(/\r?\n/).map(safe).filter(Boolean).join(' และ ');
+  const name=Array.from(names||safe(proj.houseNo)||'ไม่ระบุชื่อลูกค้า').slice(0,100).join('').trim();
+  return (extension==='html'?'เว็บไซต์ตรวจบ้าน':'รายงานตรวจบ้าน')+'_'+name+'_'+date+'.'+extension;
+}
+
 export async function exportProjectPDF(
   proj: ProjectFile,
   brand: BrandConfig,
@@ -1626,9 +1646,8 @@ export async function exportProjectPDF(
   onProgress?: (done:number,total:number)=>void
 ): Promise<string> {
   signal?.throwIfAborted();
-  const safeSlug = (proj.houseNo || 'Report').replace(/[^a-zA-Z0-9ก-๙_-]/g, '_');
-  const fileName = `Inspection_Report_${safeSlug}.pdf`;
   const rb = reportBookInput || loadReportBookData(proj, lang);
+  const fileName=inspectionDownloadName(proj,'pdf',rb);
   const assets = await prepareSharedReportAssets(proj, brand);
   signal?.throwIfAborted();
   const pages = buildSharedReportPages(proj, brand, lang, assets, rb);
@@ -1801,9 +1820,8 @@ export async function exportProjectWord(
   const rb = reportBookInput || loadReportBookData(proj, lang);
   const assets = await prepareSharedReportAssets(proj, brand);
   const pages = buildSharedReportPages(proj, brand, lang, assets, rb);
-  const safeSlug = (proj.houseNo || 'Report').replace(/[^a-zA-Z0-9ก-๙_-]/g, '_');
   await optimizeExportPages(pages,useLargeReportMode(proj,pages));
-  await downloadNativeWordReport(pages, `Inspection_Report_${safeSlug}.docx`);
+  await downloadNativeWordReport(pages, inspectionDownloadName(proj,'docx',rb));
 }
 
 function estimateRowHeight(texts: Array<{ text: string; colWidth: number }>): number {
@@ -1829,8 +1847,6 @@ export async function exportProjectExcel(
 ): Promise<'xlsx' | 'csv'> {
   const sorted = [...proj.defects].sort((a, b) => (a.number || 0) - (b.number || 0));
   const isEn = lang === 'en';
-  const safeSlug = (proj.houseNo || 'Report').replace(/[^a-zA-Z0-9ก-๙_-]/g, '_');
-
   const total = sorted.length;
   const urgentCount = sorted.filter((d) => d.severity === 'เร่งด่วน').length;
   const pendingCount = sorted.filter((d) => d.status !== 'แก้ไขแล้ว').length;
@@ -2050,7 +2066,7 @@ export async function exportProjectExcel(
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Inspection_Report_${safeSlug}.xlsx`;
+    a.download = inspectionDownloadName(proj,'xlsx',rb);
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
