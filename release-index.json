@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.97",
+  "latest": "v1.0.98",
   "releases": [
+    {
+      "version": "v1.0.98",
+      "build": 98,
+      "storageSchema": 2,
+      "date": "2026-11-27T05:08:32.601Z",
+      "notes": "Increase scrollbar width and contrast across light and dark themes",
+      "commit": "50679a0567e79f58ffb1431d9bd33af7220dda50"
+    },
     {
       "version": "v1.0.97",
       "build": 97,
