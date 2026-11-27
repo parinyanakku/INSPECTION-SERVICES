@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.118",
+  "latest": "v1.0.119",
   "releases": [
+    {
+      "version": "v1.0.119",
+      "build": 119,
+      "storageSchema": 2,
+      "date": "2026-11-27T06:33:34.567Z",
+      "notes": "Name report downloads using owners and actual inspection date",
+      "commit": "e7bb8fa8bb84d7aff6c22d17f07c3aeaa0a92fa5"
+    },
     {
       "version": "v1.0.118",
       "build": 118,
