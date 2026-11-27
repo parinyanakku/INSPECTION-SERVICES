@@ -1,5 +1,5 @@
-import {useEffect,useState} from 'react';
-import {Film,Play,Pause,RotateCcw,ChevronLeft,ChevronRight,X,MousePointer2} from 'lucide-react';
+import {useEffect,useRef,useState} from 'react';
+import {Film,Play,Pause,RotateCcw,ChevronLeft,ChevronRight,X,MousePointer2,Volume2,VolumeX} from 'lucide-react';
 import type {AppLanguage} from '../types/inspection';
 
 type Scene={th:string;en:string;captionTh:string;captionEn:string;controls:[string,string][];focus:number};
@@ -17,15 +17,36 @@ const scenes:Scene[]=[
  {th:'แชร์เว็บไซต์ลูกค้า',en:'Share customer website',captionTh:'สร้างลิงก์เว็บไซต์ลูกค้า กำหนดวันหมดอายุ คัดลอกหรือแชร์ LINE เฉพาะผู้มีสิทธิ์ดู',captionEn:'Create an expiring customer link and share it with authorized recipients.',controls:[['เว็บไซต์ลูกค้า','Customer website'],['สร้างลิงก์เว็บไซต์ลูกค้า','Create customer link'],['คัดลอกลิงก์ / แชร์ LINE','Copy / Share LINE']],focus:1},
  {th:'สำรองข้อมูล',en:'Back up data',captionTh:'กลับคลังแฟ้มโครงการ สำรอง JSON เก็บไว้ในเครื่อง หรือเชื่อม Google Drive เพื่อซิงค์งาน',captionEn:'Return to the project hub, export a JSON backup or connect Google Drive.',controls:[['คลังแฟ้มโครงการ','Project hub'],['สำรองข้อมูล (JSON)','Backup JSON'],['ซิงค์ Google Drive','Google Drive sync']],focus:1},
 ];
-const duration=9;
+const duration=12;
 export function BuyerVideoLessons({lang,onClose,onTour}:{lang:AppLanguage;onClose:()=>void;onTour:()=>void}){
  const [time,setTime]=useState(0),[playing,setPlaying]=useState(false),[speed,setSpeed]=useState(1);
+ const [voices,setVoices]=useState<SpeechSynthesisVoice[]>([]),[muted,setMuted]=useState(false),[fallback,setFallback]=useState(''),[speechError,setSpeechError]=useState(''),[restart,setRestart]=useState(0);
+ const speaking=useRef(false);
+ const synth=typeof window!=='undefined'&&'speechSynthesis' in window?window.speechSynthesis:null;
+ const niwat=voices.find(v=>/niwat/i.test(v.name+' '+v.voiceURI)&&/^th[-_]/i.test(v.lang));
+ const compatible=voices.filter(v=>lang==='en'?/^en[-_]/i.test(v.lang):/^th[-_]/i.test(v.lang));
+ const voice=lang==='en'?(compatible.find(v=>v.voiceURI===fallback)||compatible[0]):(niwat||compatible.find(v=>v.voiceURI===fallback));
+ useEffect(()=>{if(!synth)return;const refresh=()=>setVoices(synth.getVoices());refresh();synth.addEventListener('voiceschanged',refresh);return()=>synth.removeEventListener('voiceschanged',refresh);},[synth]);
  const total=scenes.length*duration,index=Math.min(scenes.length-1,Math.floor(time/duration)),scene=scenes[index],elapsed=Math.min(duration,time-index*duration);
  const tr=(th:string,en:string)=>lang==='en'?en:th;
- useEffect(()=>{if(!playing)return;let last=performance.now(),frame=0;const tick=(now:number)=>{const delta=Math.min(0.2,(now-last)/1000);last=now;setTime(t=>Math.min(total,t+delta*speed));frame=requestAnimationFrame(tick);};frame=requestAnimationFrame(tick);return()=>cancelAnimationFrame(frame);},[playing,speed,total]);
+ // Speech follows the current chapter. Hold at its end until narration finishes.
+ useEffect(()=>{
+  if(!playing||muted||!synth||!voice){speaking.current=false;return;}
+  let disposed=false;
+  const utterance=new SpeechSynthesisUtterance(tr(scene.captionTh,scene.captionEn));
+  utterance.voice=voice;utterance.lang=voice.lang;utterance.rate=speed*.94;utterance.pitch=1;
+  speaking.current=true;setSpeechError('');
+  const ended=()=>{if(!disposed)speaking.current=false;};
+  utterance.onend=ended;
+  utterance.onerror=e=>{if(!disposed){speaking.current=false;if(e.error!=='canceled'&&e.error!=='interrupted')setSpeechError(tr('เล่นเสียงไม่สำเร็จ กรุณาลองอีกครั้ง','Narration unavailable. Try again.'));}};
+  synth.cancel();synth.resume();synth.speak(utterance);
+  const timeout=window.setTimeout(()=>{if(!disposed&&speaking.current){speaking.current=false;synth.cancel();setSpeechError(tr('เสียงบรรยายหมดเวลารอ','Narration timed out'));}},90000);
+  return()=>{disposed=true;window.clearTimeout(timeout);speaking.current=false;synth.cancel();};
+ },[playing,muted,synth,voice?.voiceURI,index,speed,lang,restart]);
+ useEffect(()=>{if(!playing)return;let last=performance.now(),frame=0;const tick=(now:number)=>{const delta=Math.min(0.2,(now-last)/1000);last=now;setTime(t=>{const end=(Math.min(scenes.length-1,Math.floor(t/duration))+1)*duration;return Math.min(total,speaking.current?Math.min(end-.01,t+delta*speed):t+delta*speed);});frame=requestAnimationFrame(tick);};frame=requestAnimationFrame(tick);return()=>cancelAnimationFrame(frame);},[playing,speed,total]);
  useEffect(()=>{if(time>=total)setPlaying(false);},[time,total]);
  useEffect(()=>{const fn=(e:KeyboardEvent)=>{if(e.key==='Escape')onClose();};window.addEventListener('keydown',fn);return()=>window.removeEventListener('keydown',fn);},[onClose]);
- const go=(i:number)=>setTime(Math.max(0,Math.min(scenes.length-1,i))*duration);
+ const go=(i:number)=>{setTime(Math.max(0,Math.min(scenes.length-1,i))*duration);setRestart(v=>v+1);};
  const stamp=(v:number)=>Math.floor(v/60)+':'+String(Math.floor(v%60)).padStart(2,'0');
  const activeControl=scene.focus;
  return <div className="fixed inset-0 z-[9600] bg-slate-950/75 flex items-center justify-center p-2 sm:p-4" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
@@ -41,15 +62,23 @@ export function BuyerVideoLessons({lang,onClose,onTour}:{lang:AppLanguage;onClos
       </div>
       <div className="mt-5 rounded-lg p-3 text-sm leading-relaxed" style={{background:'#020617',color:'#f1f5f9'}}>{tr(scene.captionTh,scene.captionEn)}</div>
      </div>
-     <div className="flex items-center gap-2"><span className="text-xs tabular-nums">{stamp(time)}</span><input type="range" min={0} max={total} step={0.1} value={time} onChange={e=>setTime(Number(e.target.value))} aria-label={tr('ตำแหน่งการเล่น','Playback position')} className="flex-1 min-w-0 accent-sky-400"/><span className="text-xs tabular-nums">{stamp(total)}</span></div>
+     <div className="flex items-center gap-2"><span className="text-xs tabular-nums">{stamp(time)}</span><input type="range" min={0} max={total} step={0.1} value={time} onChange={e=>{const next=Number(e.target.value);setTime(Math.min(total,next));setRestart(v=>v+1);}} aria-label={tr('ตำแหน่งการเล่น','Playback position')} className="flex-1 min-w-0 accent-sky-400"/><span className="text-xs tabular-nums">{stamp(total)}</span></div>
      <div className="flex flex-wrap items-center gap-2">
       <button type="button" onClick={()=>go(index-1)} disabled={index===0} className="p-2 rounded border border-slate-600 disabled:opacity-40" aria-label={tr('บทก่อนหน้า','Previous')}><ChevronLeft size={19}/></button>
       <button type="button" onClick={()=>{if(time>=total)setTime(0);setPlaying(v=>!v);}} className="flex gap-2 items-center bg-blue-600 px-4 py-2 rounded font-semibold">{playing?<Pause size={18}/>:<Play size={18}/>} {playing?tr('หยุดชั่วคราว','Pause'):tr('เล่น','Play')}</button>
       <button type="button" onClick={()=>go(index+1)} disabled={index===scenes.length-1} className="p-2 rounded border border-slate-600 disabled:opacity-40" aria-label={tr('บทถัดไป','Next')}><ChevronRight size={19}/></button>
-      <button type="button" onClick={()=>{setTime(0);setPlaying(false);}} className="p-2 rounded border border-slate-600" aria-label={tr('เริ่มใหม่','Restart')}><RotateCcw size={18}/></button>
+      <button type="button" onClick={()=>{setTime(0);setPlaying(false);setRestart(v=>v+1);}} className="p-2 rounded border border-slate-600" aria-label={tr('เริ่มใหม่','Restart')}><RotateCcw size={18}/></button>
+      <button type="button" aria-pressed={!muted} onClick={()=>setMuted(v=>!v)} className="flex gap-1 items-center rounded border border-slate-600 px-3 py-2 text-xs">{muted?<VolumeX size={17}/>:<Volume2 size={17}/>} {muted?tr('เปิดเสียง','Unmute'):tr('ปิดเสียง','Mute')}</button>
       <label className="ml-auto flex items-center gap-1 text-xs">{tr('ความเร็ว','Speed')}<select value={speed} onChange={e=>setSpeed(Number(e.target.value))} style={{background:'#334155',color:'white'}} className="rounded border border-slate-500 p-1">{[.5,1,1.25,1.5,2].map(n=><option key={n} value={n}>{n}×</option>)}</select></label>
      </div>
-     <p className="text-xs text-slate-300">{tr('บทเรียนเป็นภาพเคลื่อนไหวพร้อมคำบรรยาย ไม่ใช่วิดีโอบันทึกหน้าจอจริง และไม่มีเสียง','Animated demonstration with captions, not an actual screen recording. No audio.')}</p>
+     <div className="rounded-lg border border-slate-600 p-3 space-y-2 text-xs">
+      <p>{tr('เสียงบรรยาย','Narration')}: <strong>{voice?voice.name:lang==='th'?'Niwat (ยังไม่พบในเบราว์เซอร์)':'No available English voice'}</strong></p>
+      {!voice&&<p className="text-amber-200">{tr('ยังไม่พบเสียงที่เลือกในเครื่องนี้ ดูบทเรียนพร้อมคำบรรยายได้ หรือเลือกเสียงสำรองเองด้านล่าง','Selected voice unavailable. Watch with captions or choose a fallback voice below.')}</p>}
+      {!niwat&&lang==='th'&&compatible.length>0&&<label className="flex flex-wrap items-center gap-2">{tr('เลือกเสียงสำรอง (ไม่บังคับ)','Optional fallback voice')}<select value={fallback} onChange={e=>setFallback(e.target.value)} className="max-w-full rounded border border-slate-500 p-1" style={{background:'#334155',color:'white'}}><option value="">{tr('ไม่ใช้เสียงสำรอง','No fallback')}</option>{compatible.map(v=><option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>)}</select></label>}
+      {speechError&&<p role="status" className="text-amber-200">{speechError}</p>}
+      <p className="text-slate-300">{tr('เสียง Niwat ใช้ได้เมื่อระบบเสียงของเบราว์เซอร์รองรับ หยุด/เลื่อน/เปลี่ยนความเร็วจะเริ่มบรรยายบทปัจจุบันใหม่','Niwat requires browser voice support. Resuming, seeking or changing speed restarts the current chapter narration.')}</p>
+     </div>
+     <p className="text-xs text-slate-300">{tr('บทเรียนเป็นภาพเคลื่อนไหวจำลองพร้อมคำบรรยาย ไม่ใช่วิดีโอบันทึกหน้าจอจริง','Animated simulation with captions, not an actual screen recording.')}</p>
      <button type="button" onClick={onTour} className="rounded-lg border border-sky-400 text-sky-200 px-3 py-2 text-sm">{tr('ทดลองทำตามบนโปรแกรมจริง','Try the interactive guided tour')}</button>
     </div>
     <aside aria-label={tr('เลือกบทเรียน','Chapters')} className="space-y-1 max-h-[400px] overflow-y-auto"><h3 className="font-bold text-sm mb-2">{tr('เลือกบทเรียน','Chapters')}</h3>{scenes.map((s,i)=><button type="button" key={i} onClick={()=>go(i)} aria-current={index===i?'step':undefined} className="block text-left w-full rounded-lg px-3 py-2 text-sm" style={{background:index===i?'#1d4ed8':'#1e293b',color:'#f8fafc'}}>{i+1}. {tr(s.th,s.en)}</button>)}</aside>
