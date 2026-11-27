@@ -98,6 +98,11 @@ export const StudioTab: React.FC<StudioTabProps> = ({
   useEffect(()=>{try{workspaceStorage.setItem(viewKey,JSON.stringify({pinSize,zoom:planZoom}));}catch{}},[viewKey,pinSize,planZoom]);
   useEffect(()=>{const vp=planViewport.current;if(vp){vp.scrollLeft=Math.max(0,(vp.scrollWidth-vp.clientWidth)/2);vp.scrollTop=Math.max(0,(vp.scrollHeight-vp.clientHeight)/2);}},[planZoom,activeFloorId,isEditingFloor]);
   const changeZoom=(n:number)=>setPlanZoom(Math.max(50,Math.min(300,n)));
+  type PinPosition={x:number;y:number;zone:string};
+  type PinMove={id:string;floorId:string;before:PinPosition;after:PinPosition};
+  const pinUndo=useRef<PinMove[]>([]),pinRedo=useRef<PinMove[]>([]);
+  const projectRef=useRef(project);projectRef.current=project;
+  useEffect(()=>{pinUndo.current=[];pinRedo.current=[];},[project.id,activeFloorId]);
   // Pin & Zone drag state refs
   const floorStageRef = useRef<HTMLDivElement | null>(null);
   const draggingPinRef = useRef<{
@@ -105,6 +110,9 @@ export const StudioTab: React.FC<StudioTabProps> = ({
     startX: number;
     startY: number;
     moved: boolean;
+    floorId:string;
+    before:PinPosition;
+    last:PinPosition;
   } | null>(null);
   const pinMovedJustNowRef = useRef(false);
   const zoneDragRef = useRef<{
@@ -142,6 +150,25 @@ export const StudioTab: React.FC<StudioTabProps> = ({
   onNotifyRef.current = onNotify;
   onUpdateProjectRef.current = onUpdateProject;
 
+  const handlePlanKeys=(e:React.KeyboardEvent<HTMLDivElement>)=>{
+    if(e.defaultPrevented||e.nativeEvent.isComposing||e.altKey||!(e.ctrlKey||e.metaKey)||draggingPinRef.current||zoneDragRef.current)return;
+    if((e.target as Element).closest('input,textarea,select,[contenteditable="true"]'))return;
+    const key=e.key.toLowerCase();
+    if(key!=='z'&&key!=='y')return;
+    e.preventDefault();e.stopPropagation();
+    const redo=key==='y'||e.shiftKey;
+    const from=redo?pinRedo.current:pinUndo.current,to=redo?pinUndo.current:pinRedo.current;
+    const change=from[from.length-1];if(!change)return;
+    const expected=redo?change.before:change.after;
+    const pos=redo?change.after:change.before;
+    const d=projectRef.current.defects.find(d=>d.id===change.id&&d.floorId===change.floorId);
+    // Never overwrite a pin edited/deleted elsewhere since the recorded move.
+    if(!d||d.x!==expected.x||d.y!==expected.y||d.zone!==expected.zone){from.pop();return;}
+    from.pop();to.push(change);
+    onUpdateProjectRef.current(prev=>({...prev,defects:prev.defects.map(item=>item.id===change.id&&item.floorId===change.floorId?{...item,...pos}:item)}));
+    onNotifyRef.current(langRef.current==='en'?(redo?'Pin move redone':'Pin move undone'):(redo?'ทำซ้ำตำแหน่งหมุดแล้ว':'ย้อนตำแหน่งหมุดแล้ว'),'success');
+  };
+
   // Global pointer move / up for pin dragging and zone move/resize
   useEffect(() => {
     const handlePointerMove = (e: PointerEvent) => {
@@ -165,6 +192,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
           Math.min(98, +(((e.clientY - rect.top) / rect.height) * 100).toFixed(2))
         );
 
+        dp.last={...dp.last,x:xPct,y:yPct};
         onUpdateProjectRef.current(
           (prev) => ({
             ...prev,
@@ -220,7 +248,15 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         draggingPinRef.current = null;
         if (dp.moved) {
           pinMovedJustNowRef.current = true;
-          const currentFlId = activeFloorIdRef.current;
+          const currentFlId = dp.floorId;
+          const floor=projectRef.current.floors.find(f=>f.id===currentFlId)||null;
+          const zone=findZoneAtPoint(floor,dp.last.x,dp.last.y);
+          const after={...dp.last,zone:zone?.name||dp.before.zone};
+          if(after.x!==dp.before.x||after.y!==dp.before.y||after.zone!==dp.before.zone){
+            pinUndo.current.push({id:dp.defectId,floorId:dp.floorId,before:dp.before,after});
+            if(pinUndo.current.length>50)pinUndo.current.shift();
+            pinRedo.current=[];
+          }
           onUpdateProjectRef.current((prev) => {
             const fl = prev.floors.find((f) => f.id === currentFlId) || null;
             return {
@@ -728,6 +764,9 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         <div
           id="floorStage"
           ref={floorStageRef}
+          tabIndex={0}
+          onKeyDown={handlePlanKeys}
+          onPointerDownCapture={e=>{e.currentTarget.focus({preventScroll:true});}}
           onClick={handleFloorStageClick}
           onDragOver={(e) => {
             e.preventDefault();
@@ -855,6 +894,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                     startX: e.clientX,
                     startY: e.clientY,
                     moved: false,
+                    floorId:d.floorId,before:{x:d.x,y:d.y,zone:d.zone},last:{x:d.x,y:d.y,zone:d.zone},
                   };
                 }}
                 onClick={(e) => {
@@ -884,6 +924,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         </div>
         )}
 
+        {!isEditingFloor&&<p className="hidden sm:block text-[10px] text-slate-500 mt-2">{lang==='en'?'Click the plan · Ctrl+Z undo pin move · Ctrl+Y redo':'คลิกแปลน · Ctrl+Z ย้อนตำแหน่งหมุด · Ctrl+Y ทำซ้ำ'}</p>}
         {/* Legend */}
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
           <div className="flex flex-wrap items-center gap-3">
