@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import {EditorContextMenu,useEditorMenu,type MenuAction} from './EditorContextMenu';
 import type { AppLanguage, FloorElement, FloorElementType, FloorPlan, FloorZone } from '../types/inspection';
 import { customFloorDataUrl } from '../utils/customFloorSvg';
 import { compressImageFile } from '../utils/imageUtils';
@@ -145,7 +146,7 @@ export const CustomFloorEditor: React.FC<{
    commit(target.kind==='room'?{...floor,zones:zones.map(z=>z.id===target.id?{...z,...rect}:z)}:{...floor,elements:elements.map(el=>el.id===target.id?{...el,...rect}:el)});
  };
  const down=(e:React.PointerEvent<HTMLDivElement>)=>{
-   if(e.button!==0 || drag.current) return;
+   if(e.button!==0 || !e.isPrimary || drag.current) return;
    e.preventDefault();
    const p=point(e);
    if(tool==='select'){
@@ -163,7 +164,7 @@ export const CustomFloorEditor: React.FC<{
  };
  const rectAt=(d:Drag,p:Point):Rect=>d.original&&d.resizing?{x:d.original.x,y:d.original.y,w:Math.max(.5,Math.min(100-d.original.x,d.original.w+p.x-d.start.x)),h:Math.max(.5,Math.min(100-d.original.y,d.original.h+p.y-d.start.y))}:d.original?{...d.original,x:bound(d.original.x+p.x-d.start.x,100-d.original.w),y:bound(d.original.y+p.y-d.start.y,100-d.original.h)}:drawRect(d.start,p,tool);
  const startResize=(e:React.PointerEvent)=>{
-   if(!selected||!chosen||drag.current||!stage.current)return;
+   if(e.button!==0||!e.isPrimary||!selected||!chosen||drag.current||!stage.current)return;
    e.stopPropagation();e.preventDefault();
    drag.current={start:point(e),pointer:e.pointerId,target:selected,original:chosen,resizing:true};
    stage.current.setPointerCapture(e.pointerId);
@@ -244,6 +245,26 @@ export const CustomFloorEditor: React.FC<{
      if(x!==chosen.x||y!==chosen.y)changeRect(selected,{...chosen,x,y});
    }
  };
+ const context=useEditorMenu(p=>{
+   cancel();
+   const r=stage.current?.getBoundingClientRect();if(!r||!r.width||!r.height)return;
+   const at={x:(p.x-r.left)/r.width*100,y:(p.y-r.top)/r.height*100};
+   const el=[...elements].reverse().find(item=>inside(item,at));
+   const room=[...zones].reverse().find(item=>inside(item,at));
+   setSelected(el?{kind:'element',id:el.id}:room?{kind:'room',id:room.id}:null);
+   setTool('select');
+ });
+ const contextActions:MenuAction[]=[
+   {label:tr('ย้อนกลับ','Undo'),run:undo,shortcut:'Ctrl+Z',disabled:busy||!past.length},
+   {label:tr('ทำซ้ำ','Redo'),run:redo,shortcut:'Ctrl+Y',disabled:busy||!future.length},
+   {label:tr('เพิ่มห้องทันที','Add room'),run:addRoom,disabled:busy},
+   ...tools.map(t=>({label:en?t.en:t.th,run:()=>{setTool(t.id);setSelected(null);cancel();},disabled:busy})),
+   {label:tr('คัดลอกที่เลือก','Duplicate selection'),run:duplicate,shortcut:'Ctrl+D',disabled:busy||!selected},
+   {label:tr('ซูมเข้า','Zoom in'),run:()=>setZoom(v=>Math.min(250,v+25))},
+   {label:tr('ซูมออก','Zoom out'),run:()=>setZoom(v=>Math.max(100,v-25))},
+   {label:tr('พอดีหน้าจอ','Fit view'),run:()=>setZoom(100)},
+   {label:tr('ลบที่เลือก','Delete selection'),run:remove,shortcut:'Delete',danger:true,disabled:busy||!selected},
+ ];
  const box=preview||chosen;
  const button='rounded-lg px-3 py-2.5 text-sm font-semibold border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40';
  return <div tabIndex={0} onKeyDown={editorKeys} onPointerDownCapture={e=>{if(!(e.target as Element).closest('input,textarea,select,button,a,[contenteditable="true"]'))e.currentTarget.focus({preventScroll:true});}} className="space-y-3 outline-none">
@@ -286,7 +307,7 @@ export const CustomFloorEditor: React.FC<{
     </div>
     <div className="flex flex-wrap gap-1.5">{tools.map(t=><button key={t.id} type="button" aria-pressed={tool===t.id} onClick={()=>{setTool(t.id);setSelected(null);cancel();}} className={button+(tool===t.id?' !bg-blue-700 !text-white !border-blue-700':'')}>{en?t.en:t.th}</button>)}</div>
     <p className="text-xs text-slate-600 mt-2">{tr('แตะเพิ่มห้องทันที หรือลากวาดบนแปลน • แตะห้องแล้วลากย้ายได้เลย • ลากจุดมุมเพื่อปรับขนาด • บันทึกอัตโนมัติ','Add a room or draw on the grid. Tap and drag to move; drag the corner handle to resize. Changes save automatically.')}</p>
-    <p className="hidden sm:block text-[10px] text-slate-500">{tr("คลิกแปลนก่อนใช้คีย์ลัด · Ctrl+Z ย้อนกลับ · Ctrl+Y ทำซ้ำ · Ctrl+D คัดลอก · ลูกศรย้าย · Delete ลบที่เลือก · Esc ยกเลิก","Click the plan first · Ctrl+Z Undo · Ctrl+Y Redo · Ctrl+D Duplicate · Arrows Move · Delete selection · Esc Cancel")}</p>
+    <p className="hidden sm:block text-[10px] text-slate-500">{tr("คลิกขวา / แตะค้างเพื่อเปิดเมนู · คลิกแปลนก่อนใช้คีย์ลัด · Ctrl+Z ย้อนกลับ · Ctrl+Y ทำซ้ำ · Ctrl+D คัดลอก · ลูกศรย้าย · Delete ลบที่เลือก · Esc ยกเลิก","Right-click / hold for menu · Click the plan first · Ctrl+Z Undo · Ctrl+Y Redo · Ctrl+D Duplicate · Arrows Move · Delete selection · Esc Cancel")}</p>
     {chosen&&selected&&<div className="flex flex-wrap items-center gap-2 mt-2">
       {selected.kind==='room'&&<input aria-label={tr('ชื่อห้อง','Room name')} className="min-w-0 w-40 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs" value={(chosen as FloorZone).name} onChange={e=>commit({...floor,zones:zones.map(z=>z.id===selected.id?{...z,name:e.target.value}:z)})}/>}
       <button type="button" className={button} onClick={()=>resize(2.5)}>{tr('ขยาย','Enlarge')}</button>
@@ -305,12 +326,13 @@ export const CustomFloorEditor: React.FC<{
    </div>
    <div className="overflow-auto rounded-xl max-h-[75vh]">
    <div ref={stage} className="relative aspect-[4/3] rounded-xl border border-slate-300 overflow-hidden select-none bg-slate-50" style={{width:zoom+'%',touchAction:'none',cursor:tool==='select'?'move':'crosshair'}}
-    onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel} onLostPointerCapture={cancel}>
+    {...context.bind} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel} onLostPointerCapture={cancel}>
      <img alt={tr('ผังแปลนที่สร้างเอง','Custom floor plan')} className="absolute inset-0 w-full h-full pointer-events-none" draggable={false} src={customFloorDataUrl(floor)}/>
      {reference&&opacity>0&&<img src={reference} alt="" draggable={false} className="absolute inset-0 w-full h-full pointer-events-none" style={{opacity:opacity/100,mixBlendMode:'multiply'}}/>}
      {box&&<div className="absolute border-2 border-dashed border-blue-600 bg-blue-400/10 pointer-events-none" style={{left:box.x+'%',top:box.y+'%',width:box.w+'%',height:box.h+'%'}}/>}
      {chosen&&selected&&!preview&&tool==='select'&&<div role="presentation" aria-hidden="true" onPointerDown={startResize} className="absolute w-7 h-7 bg-blue-700 border-2 border-white rounded-full shadow cursor-nwse-resize z-10" style={{left:(chosen.x+chosen.w)+'%',top:(chosen.y+chosen.h)+'%',transform:'translate(-80%,-80%)',touchAction:'none'}}/>}
    </div>
    </div>
+   <EditorContextMenu point={context.point} actions={contextActions} onClose={context.close} closeLabel={tr("ปิดเมนู","Close menu")}/>
  </div>;
 };
