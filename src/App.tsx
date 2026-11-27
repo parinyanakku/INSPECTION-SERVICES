@@ -108,7 +108,7 @@ function loadInitialBrand(isAdmin=false): BrandConfig {
       return clearLegacyBuyerIdentity({
         ...DEFAULT_BRAND,
         companyName: parsed.companyName || DEFAULT_BRAND.companyName,
-        subtitle: parsed.subtitle || DEFAULT_BRAND.subtitle,
+        subtitle: typeof parsed.subtitle==='string'?parsed.subtitle:DEFAULT_BRAND.subtitle,
         tagline: parsed.tagline ?? DEFAULT_BRAND.tagline,
         inspectorName: typeof parsed.inspectorName==='string'?parsed.inspectorName:DEFAULT_BRAND.inspectorName,
         licenseNo: typeof parsed.licenseNo==='string'?parsed.licenseNo:DEFAULT_BRAND.licenseNo,
@@ -120,7 +120,7 @@ function loadInitialBrand(isAdmin=false): BrandConfig {
   } catch {
     // ignore storage errors
   }
-  return { ...DEFAULT_BRAND };
+  return clearLegacyBuyerIdentity({ ...DEFAULT_BRAND },isAdmin);
 }
 
 function loadInitialProjects(): ProjectFile[] {
@@ -1041,7 +1041,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
                     {brand.companyName}
                   </h1>
                   <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">
-                    {brand.subtitle}
+                    {brand.subtitle.trim()||(lang==='en'?'Not set':'ยังไม่ระบุ')}
                   </span>
                 </div>
                 <p className="text-xs sm:text-sm text-slate-600 mt-0.5 flex flex-wrap items-center gap-x-2">
