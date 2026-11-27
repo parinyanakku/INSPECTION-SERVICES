@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.79",
+  "latest": "v1.0.80",
   "releases": [
+    {
+      "version": "v1.0.80",
+      "build": 80,
+      "storageSchema": 2,
+      "date": "2026-11-27T02:29:53.828Z",
+      "notes": "Add straight line markup tool type",
+      "commit": "bdaeae552cf2071ab73ed20bc7cd5130bf732300"
+    },
     {
       "version": "v1.0.79",
       "build": 79,
