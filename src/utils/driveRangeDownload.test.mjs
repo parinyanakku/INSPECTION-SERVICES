@@ -79,3 +79,25 @@ test('wrong offsets, short reads and cancellation fail before restore', async ()
   await assert.rejects(reader.read(),{name:'AbortError'});
   assert.equal(calls,1);
 });
+
+test('a truncated range retries only that offset and preserves every byte', async()=>{
+ const size=block+12,source=new Uint8Array(size);source[0]=11;source[block]=99;source[size-1]=42;
+ const calls=[];let truncated=false;
+ const response=await downloadDriveRevision(size,async range=>{
+  const [,start,end]=/^bytes=(\d+)-(\d+)$/.exec(range).map(Number);calls.push(start);
+  const short=start===block&&!truncated; if(short)truncated=true;
+  return new Response(source.slice(start,short?end:end+1),{status:206,headers:{'Content-Range':`bytes ${start}-${end}/${size}`}});
+ },signal);
+ assert.deepEqual(new Uint8Array(await response.arrayBuffer()),source);
+ assert.deepEqual(calls,[0,block,block]);
+});
+test('fast string scan retains escapes and Unicode across ranges',async()=>{
+ const records={[projectsKey]:JSON.stringify([{id:'a',floors:[],defects:[{photo:'data:image/png;base64,'+'A'.repeat(block),note:'ไทย "quote" \\ slash 📷'}]}]),[reportKey]:'{"title":"รายงาน"}'};
+ const hash=await hashWorkspaceRecords(records);const blob=originalBackupBlob(records,'account-one','2026-11-27',hash);
+ const response=await downloadDriveRevision(blob.size,async range=>{
+  const [,start,end]=/^bytes=(\d+)-(\d+)$/.exec(range).map(Number);
+  return new Response(blob.slice(start,end+1),{status:206});
+ },signal);
+ const result=await streamOriginal(response,signal);
+ assert.deepEqual({...result.records},records);assert.equal(await hashWorkspaceRecords(result.records),hash);
+});

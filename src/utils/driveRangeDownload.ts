@@ -22,17 +22,20 @@ export async function downloadDriveRevision(
   let pending: Response | undefined = first;
   const body = new ReadableStream<Uint8Array>({
     async pull(controller) {
-      const response = pending ?? await fetchRange(offset);
-      pending = undefined;
       const end = Math.min(offset + rangeBytes, size);
-      const contentRange = response.headers.get('Content-Range');
-      if (response.status !== 206 || (contentRange && contentRange !== `bytes ${offset}-${end - 1}/${size}`)) {
-        await response.body?.cancel();
-        throw Error('Invalid Drive download range');
+      let bytes:Uint8Array<ArrayBuffer>;
+      for(let attempt=0;;attempt++){
+        const response=pending??await fetchRange(offset);pending=undefined;
+        const contentRange=response.headers.get('Content-Range');
+        if(response.status!==206||(contentRange&&contentRange!==`bytes ${offset}-${end-1}/${size}`)){
+          await response.body?.cancel();throw Error('Invalid Drive download range');
+        }
+        try{bytes=new Uint8Array(await response.arrayBuffer());}
+        catch(error){signal.throwIfAborted();if(attempt>=2)throw error;continue;}
+        signal.throwIfAborted();
+        if(bytes.length===end-offset)break;
+        if(attempt>=2)throw Error('Incomplete Drive download range');
       }
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      signal.throwIfAborted();
-      if (bytes.length !== end - offset) throw Error('Incomplete Drive download range');
       controller.enqueue(bytes);
       offset = end;
       if (offset === size) controller.close();

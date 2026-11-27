@@ -49,6 +49,12 @@ export async function streamOriginal(response:Response,signal?:AbortSignal,progr
   while(await more()){
    const start=at;
    while(at<buffer.length){
+    if(inString&&!escaped){
+     const quote=buffer.indexOf('"',at),slash=buffer.indexOf('\\',at);
+     const next=quote<0?slash:slash<0?quote:Math.min(quote,slash);
+     if(next<0){at=buffer.length;break;}
+     at=next;
+    }
     const c=buffer[at];
     if(!inString&&started&&!compound&&!quoted&&(c===','||c==='}'||c===']'||/\s/.test(c))){if(at>start)parts.push(buffer.slice(start,at));return parts.join('');}
     at++;started=true;
