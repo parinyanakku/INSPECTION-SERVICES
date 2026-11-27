@@ -13,6 +13,7 @@ import {
   Hand,
   ZoomIn,
   Crop,
+  ImagePlus,
   Pen,
   RotateCcw,
   RotateCw,
@@ -43,7 +44,18 @@ interface MarkupCanvasEditorProps {
 type OrientedShape = MarkupShape & { orientation?: number; textScale?: number };
 type TextDrag={id:number;index:number;startX:number;startY:number;original:OrientedShape;preview:OrientedShape;mode:'move'|'resize';originX:number;originY:number;boxW:number;boxH:number};
 type CropRect={x:number;y:number;w:number;h:number};
-type EditSnapshot={rotation:number;shapes:OrientedShape[];crop:CropRect};
+type PhotoOverlay=CropRect&{id:string;image:HTMLImageElement;turn:number;opacity:number;hidden:boolean};
+type OverlayDrag={id:number;start:PhotoOverlay;preview:PhotoOverlay;nx:number;ny:number;resize:boolean};
+type EditSnapshot={rotation:number;shapes:OrientedShape[];crop:CropRect;overlays:PhotoOverlay[]};
+function paintOverlay(ctx:CanvasRenderingContext2D,o:PhotoOverlay,w:number,h:number){
+ if(o.hidden)return;
+ ctx.save();
+ try{
+  ctx.globalAlpha=o.opacity;
+  ctx.translate(o.x*w,o.y*h);
+  withQuarterTurn(ctx,o.w*w,o.h*h,o.turn,(iw,ih)=>ctx.drawImage(o.image,0,0,iw,ih));
+ }finally{ctx.restore();}
+}
 const FULL_CROP:CropRect={x:0,y:0,w:1,h:1};
 const clamp=(v:number,a:number,b:number)=>Math.max(a,Math.min(b,v));
 function turnCrop(r:CropRect,delta:number):CropRect{
@@ -232,6 +244,17 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   const [cropRatio,setCropRatio]=useState('free');
   const cropGesture=useRef<{id:number;mode:'move'|'resize';x:number;y:number;start:CropRect;ax:number;ay:number}|null>(null);
   const [cropVersion,setCropVersion]=useState(0);
+  const overlaysRef=useRef<PhotoOverlay[]>([]);
+  const [overlays,setOverlays]=useState<PhotoOverlay[]>([]);
+  const [overlayMode,setOverlayMode]=useState(false);
+  const [overlayBusy,setOverlayBusy]=useState(false);
+  const overlayBusyRef=useRef(false);
+  const sourceGeneration=useRef(0);
+  const [overlaySelected,setOverlaySelected]=useState<string|null>(null);
+  const overlaySelectedRef=useRef<string|null>(null);
+  const overlayDrag=useRef<OverlayDrag|null>(null);
+  const overlayFile=useRef<HTMLInputElement>(null);
+  const replaceOverlay=useRef<string|null>(null);
   const viewRef=useRef({zoom:1,x:.5,y:.5});
   const panDrag=useRef<{id:number;x:number;y:number;cx:number;cy:number}|null>(null);
 
@@ -303,6 +326,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     const crop=cropRef.current;
     ctx.beginPath();ctx.rect(crop.x*dw,crop.y*dh,crop.w*dw,crop.h*dh);ctx.clip();
     withQuarterTurn(ctx, dw, dh, rotation, (iw, ih) => ctx.drawImage(img, 0, 0, iw, ih));
+    for(const o of overlaysRef.current)paintOverlay(ctx,overlayDrag.current?.start.id===o.id?overlayDrag.current.preview:o,dw,dh);
     shapesRef.current.forEach((shape,index)=>drawOrientedShape(ctx,textDrag.current?.index===index?textDrag.current.preview:shape,dw,dh,rotation));
     const index=selectedTextRef.current;
     if(index!==null){
@@ -314,6 +338,12 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       });
     }
     if (currentShapeRef.current) drawOrientedShape(ctx, currentShapeRef.current, dw, dh, rotation);
+    const selected=overlaysRef.current.find(o=>o.id===overlaySelectedRef.current);
+    const inset=overlayDrag.current?.preview||selected;
+    if(inset&&!inset.hidden&&!cropDraft.current){
+      const x=inset.x*dw,y=inset.y*dh,ow=inset.w*dw,oh=inset.h*dh,handle=7/view.zoom;
+      ctx.save();ctx.strokeStyle='#38bdf8';ctx.lineWidth=2/view.zoom;ctx.setLineDash([5/view.zoom,3/view.zoom]);ctx.strokeRect(x,y,ow,oh);ctx.setLineDash([]);ctx.fillStyle='#fff';ctx.fillRect(x+ow-handle,y+oh-handle,2*handle,2*handle);ctx.strokeRect(x+ow-handle,y+oh-handle,2*handle,2*handle);ctx.restore();
+    }
     ctx.restore();
     const draft=cropDraft.current;
     if(draft){
@@ -335,7 +365,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   }, [paintCanvas]);
 
   const changePhotoZoom=(percent:number,canvas?:HTMLCanvasElement|null,anchor?:{x:number;y:number})=>{
-    if(isDrawingRef.current||textDrag.current||panDrag.current||pendingTextPosRef.current||cropDraft.current)return;
+    if(isDrawingRef.current||textDrag.current||overlayDrag.current||panDrag.current||pendingTextPosRef.current||cropDraft.current)return;
     const target=canvas||(isFullscreenRef.current?fullscreenCanvasRef.current:canvasRef.current);
     const old=target?photoRect(target):null;
     const zoom=Math.max(1,Math.min(6,percent/100));
@@ -351,7 +381,9 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     setPhotoZoom(Math.round(zoom*100));drawActiveCanvases();
   };
   const selectText=(index:number|null)=>{selectedTextRef.current=index;setSelectedText(index);drawActiveCanvases();};
-  const snapshot=():EditSnapshot=>({rotation:rotationRef.current,shapes:shapesRef.current,crop:{...cropRef.current}});
+  const snapshot=():EditSnapshot=>({rotation:rotationRef.current,shapes:shapesRef.current,crop:{...cropRef.current},overlays:overlaysRef.current});
+  const selectOverlay=(id:string|null)=>{overlaySelectedRef.current=id;setOverlaySelected(id);drawActiveCanvases();};
+  const writeOverlays=(items:PhotoOverlay[])=>{overlaysRef.current=items;setOverlays(items);drawActiveCanvases();};
   const resetView=()=>{const c=cropRef.current;viewRef.current={zoom:1,x:c.x+c.w/2,y:c.y+c.h/2};setPhotoZoom(100);};
   const cancelCrop=()=>{cropDraft.current=null;cropGesture.current=null;setCropping(false);drawActiveCanvases();};
   const remember = () => {
@@ -366,18 +398,21 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       return;
     }
     remember();
+    if(overlayDrag.current)return;
     cropRef.current=turnCrop(cropRef.current,delta);
+    writeOverlays(overlaysRef.current.map(o=>({...o,...turnCrop(o,delta),turn:quarter(o.turn+delta)})));
     rotationRef.current = quarter(rotationRef.current + delta);
     resetView();drawActiveCanvases();
   };
   const undoEdit = () => {
     if (isDrawingRef.current) return;
-    if(textDrag.current||cropDraft.current)return;
+    if(textDrag.current||overlayDrag.current||cropDraft.current)return;
     const last = undoRef.current.pop();
     if (!last) return;
     redoRef.current.push(snapshot());
     selectText(null);
     rotationRef.current = last.rotation;cropRef.current=last.crop;resetView();setCropVersion(v=>v+1);
+    selectOverlay(null);writeOverlays(last.overlays);
     shapesRef.current = last.shapes;
     setShapes(last.shapes);
     editingTextRef.current=null;setPendingTextPos(null);
@@ -385,16 +420,17 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     drawActiveCanvases();
   };
   const redoEdit=()=>{
-    if(isDrawingRef.current||textDrag.current||cropDraft.current)return;
+    if(isDrawingRef.current||textDrag.current||overlayDrag.current||cropDraft.current)return;
     const next=redoRef.current.pop();if(!next)return;
     undoRef.current.push(snapshot());
     if(undoRef.current.length>100)undoRef.current.shift();
     selectText(null);
     rotationRef.current=next.rotation;cropRef.current=next.crop;resetView();setCropVersion(v=>v+1);shapesRef.current=next.shapes;
+    selectOverlay(null);writeOverlays(next.overlays);
     setShapes(next.shapes);editingTextRef.current=null;setPendingTextPos(null);setPendingTextValue('');
     drawActiveCanvases();
   };
-  const chooseTool=(next:MarkupTool)=>{if(cropDraft.current)cancelCrop();setPhotoPan(false);setTool(next);editingTextRef.current=null;setPendingTextPos(null);if(next!=='text')selectText(null);};
+  const chooseTool=(next:MarkupTool)=>{setOverlayMode(false);selectOverlay(null);if(cropDraft.current)cancelCrop();setPhotoPan(false);setTool(next);editingTextRef.current=null;setPendingTextPos(null);if(next!=='text')selectText(null);};
   const resizeSelected=(factor:number)=>{
     const i=selectedTextRef.current;if(i===null||textDrag.current)return;
     const sh=shapesRef.current[i];if(sh?.tool!=='text')return;
@@ -415,7 +451,8 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       if(key==='z'||key==='y'){e.preventDefault();e.stopPropagation();if(key==='y'||e.shiftKey)redoEdit();else undoEdit();}
       return;
     }
-    if(e.shiftKey||e.repeat||pendingTextPosRef.current||isDrawingRef.current||textDrag.current)return;
+    if(e.shiftKey||e.repeat||pendingTextPosRef.current||isDrawingRef.current||textDrag.current||overlayDrag.current)return;
+    if(key==='delete'&&overlaySelectedRef.current){e.preventDefault();e.stopPropagation();removeOverlay();return;}
     if(key==='h'){e.preventDefault();e.stopPropagation();setPhotoPan(v=>!v);return;}
     if(key==='+'||key==='='||key==='-'||key==='0'){e.preventDefault();e.stopPropagation();changePhotoZoom(key==='0'?100:photoZoom+(key==='-'?-25:25));return;}
     const shortcuts:Record<string,MarkupTool>={p:'pen',c:'circle',a:'arrow',r:'rect',t:'text',l:'line'};
@@ -466,6 +503,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   // Load image ONLY when imageSrc actually changes; guard all state resets
   useEffect(() => {
     shapesRef.current = [];
+    sourceGeneration.current++;overlayDrag.current=null;overlayBusyRef.current=false;setOverlayBusy(false);replaceOverlay.current=null;overlaySelectedRef.current=null;setOverlaySelected(null);setOverlayMode(false);overlaysRef.current=[];setOverlays([]);
     cropRef.current=FULL_CROP;cropDraft.current=null;cropGesture.current=null;setCropping(false);setCropRatio('free');setCropVersion(v=>v+1);
     viewRef.current={zoom:1,x:.5,y:.5};setPhotoZoom(100);setPhotoPan(false);panDrag.current=null;
     textDrag.current=null;editingTextRef.current=null;selectedTextRef.current=null;setSelectedText(null);
@@ -580,7 +618,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
         const src = imageSrcRef.current;
         if (!src) return null;
         const crop=cropRef.current;
-        if (shapesRef.current.length === 0 && rotationRef.current === 0 && crop.x===0&&crop.y===0&&crop.w===1&&crop.h===1) return src;
+        if (shapesRef.current.length === 0 && overlaysRef.current.length===0 && rotationRef.current === 0 && crop.x===0&&crop.y===0&&crop.w===1&&crop.h===1) return src;
 
         const img = loadedImageRef.current;
         if (img && img.complete) {
@@ -595,6 +633,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
               if (ctx) {
                 ctx.translate(-crop.x*outW,-crop.y*outH);
                 withQuarterTurn(ctx, outW, outH, rotation, (iw, ih) => ctx.drawImage(img, 0, 0, iw, ih));
+                for(const o of overlaysRef.current)paintOverlay(ctx,o,outW,outH);
                 for (const shape of shapesRef.current) drawOrientedShape(ctx, shape, outW, outH, rotation);
                 return offscreen.toDataURL('image/jpeg', 0.95);
               }
@@ -662,6 +701,49 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     setTool('text');selectText(index);editingTextRef.current=index;
     setPendingTextValue(shape.text||'');setPendingTextPos(p);
   };
+  const boundedOverlay=(o:PhotoOverlay,bounds:CropRect,factor=1):PhotoOverlay=>{
+    const max=Math.min(bounds.w/o.w,bounds.h/o.h);
+    const f=clamp(factor,Math.min(max,.02/Math.max(o.w,o.h)),max);
+    const w=o.w*f,h=o.h*f;
+    return {...o,w,h,x:clamp(o.x+(o.w-w)/2,bounds.x,bounds.x+bounds.w-w),y:clamp(o.y+(o.h-h)/2,bounds.y,bounds.y+bounds.h-h)};
+  };
+  const addOverlayFile=async(e:React.ChangeEvent<HTMLInputElement>)=>{
+    const file=e.target.files?.[0],replaceId=replaceOverlay.current;e.target.value='';replaceOverlay.current=null;
+    if(!file||!imageSrcRef.current||overlayBusyRef.current)return;
+    const source=imageSrcRef.current,generation=sourceGeneration.current;
+    overlayBusyRef.current=true;setOverlayBusy(true);
+    try{
+      const src=await compressImageFile(file,1600,.95);
+      const image=new Image();await new Promise<void>((resolve,reject)=>{image.onload=()=>resolve();image.onerror=reject;image.src=src;});
+      if(sourceGeneration.current!==generation||imageSrcRef.current!==source)return;
+      const main=loadedImageRef.current;if(!main||!image.naturalWidth||!image.naturalHeight)return;
+      const dim=orientedSize(main.naturalWidth,main.naturalHeight,rotationRef.current),c=cropRef.current;
+      const ratio=image.naturalWidth/image.naturalHeight*dim.h/dim.w;
+      const old=overlaysRef.current.find(o=>o.id===replaceId);
+      if(replaceId&&!old)return;
+      const w=Math.min(old?.w??c.w*.34,(old?.h??c.h*.34)*ratio),h=w/ratio;
+      const item:PhotoOverlay={id:old?.id??('inset_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)),image,turn:0,opacity:old?.opacity??1,hidden:false,w,h,x:old?old.x:c.x+c.w-w-c.w*.04,y:old?old.y:c.y+c.h-h-c.h*.04};
+      remember();writeOverlays(old?overlaysRef.current.map(o=>o.id===old.id?boundedOverlay(item,c):o):[...overlaysRef.current,boundedOverlay(item,c)]);
+      selectText(null);setPhotoPan(false);setOverlayMode(true);selectOverlay(item.id);
+    }catch{if(sourceGeneration.current===generation)onNotify(imageUploadError(file,lang,lang==='en'?'Could not insert image':'ไม่สามารถแทรกรูปได้'),'danger');}
+    finally{if(sourceGeneration.current===generation){overlayBusyRef.current=false;setOverlayBusy(false);}}
+  };
+  const pickOverlay=(replace=false)=>{
+    if(overlayBusyRef.current||cropDraft.current||pendingTextPosRef.current||isDrawingRef.current||textDrag.current||overlayDrag.current)return;
+    replaceOverlay.current=replace?overlaySelectedRef.current:null;overlayFile.current?.click();
+  };
+  const modifyOverlay=(fn:(o:PhotoOverlay)=>PhotoOverlay)=>{
+    if(cropDraft.current||overlayDrag.current)return;
+    const id=overlaySelectedRef.current,old=overlaysRef.current.find(o=>o.id===id);if(!old)return;
+    remember();writeOverlays(overlaysRef.current.map(o=>o.id===id?fn(o):o));
+  };
+  const removeOverlay=()=>{if(cropDraft.current||overlayDrag.current)return;const id=overlaySelectedRef.current;if(!id)return;remember();writeOverlays(overlaysRef.current.filter(o=>o.id!==id));selectOverlay(null);};
+  const rotateOverlay=(delta:number)=>{
+    const img=loadedImageRef.current;if(!img)return;const dim=orientedSize(img.naturalWidth,img.naturalHeight,rotationRef.current);
+    modifyOverlay(o=>{const w=o.h*dim.h/dim.w,h=o.w*dim.w/dim.h;return boundedOverlay({...o,turn:quarter(o.turn+delta),w,h,x:o.x+(o.w-w)/2,y:o.y+(o.h-h)/2},cropRef.current);});
+  };
+  const duplicateOverlay=()=>{const o=overlaysRef.current.find(x=>x.id===overlaySelectedRef.current);if(!o||cropDraft.current)return;const c=cropRef.current,id='inset_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);remember();writeOverlays([...overlaysRef.current,boundedOverlay({...o,id,x:o.x+c.w*.04,y:o.y+c.h*.04},c)]);selectOverlay(id);};
+  const layerOverlay=(front:boolean)=>{const o=overlaysRef.current.find(x=>x.id===overlaySelectedRef.current);if(!o||cropDraft.current)return;const others=overlaysRef.current.filter(x=>x.id!==o.id);remember();writeOverlays(front?[...others,o]:[o,...others]);};
   const fitRatio=(bounds:CropRect,ratio:string):CropRect=>{
     if(ratio==='free')return {...bounds};
     const img=loadedImageRef.current;if(!img)return {...bounds};
@@ -672,7 +754,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   };
   const startCrop=()=>{
     if(!loadedImageRef.current?.naturalWidth||pendingTextPosRef.current||isDrawingRef.current||textDrag.current||panDrag.current)return;
-    setPhotoPan(false);selectText(null);resetView();setCropRatio('free');
+    setPhotoPan(false);setOverlayMode(false);selectOverlay(null);selectText(null);resetView();setCropRatio('free');
     const c=cropRef.current;cropDraft.current={x:c.x+c.w*.05,y:c.y+c.h*.05,w:c.w*.9,h:c.h*.9};
     setCropping(true);drawActiveCanvases();
   };
@@ -706,6 +788,15 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     }
     const { nx, ny } = getPos(e, canvas);
 
+    if(overlayMode){
+      const v=photoRect(canvas);if(!v)return;
+      const selected=overlaysRef.current.find(o=>o.id===overlaySelectedRef.current&&!o.hidden);
+      const handle=selected&&Math.hypot((nx-selected.x-selected.w)*v.dw,(ny-selected.y-selected.h)*v.dh)<18;
+      const hit=handle?selected:[...overlaysRef.current].reverse().find(o=>!o.hidden&&nx>=o.x&&nx<=o.x+o.w&&ny>=o.y&&ny<=o.y+o.h);
+      selectOverlay(hit?.id??null);
+      if(hit){canvas.setPointerCapture(e.pointerId);overlayDrag.current={id:e.pointerId,start:hit,preview:hit,nx,ny,resize:!!handle};}
+      return;
+    }
     // Existing labels are selectable even when another drawing tool is active.
     for(let i=shapesRef.current.length-1;i>=0;i--){
         const shape=shapesRef.current[i];if(shape.tool!=='text')continue;
@@ -758,6 +849,11 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     shape.y2=Math.max(0,Math.min(1,shape.y1+len*uy/h));
   };
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const od=overlayDrag.current;
+    if(od&&od.id===e.pointerId){const {nx,ny}=getPos(e,e.currentTarget),o=od.start,c=cropRef.current;
+      if(od.resize){const v=photoRect(e.currentTarget);if(!v)return;const px=o.w*v.dw,py=o.h*v.dh;const f=1+((nx-od.nx)*v.dw*px+(ny-od.ny)*v.dh*py)/Math.max(1,px*px+py*py);const max=Math.min((c.x+c.w-o.x)/o.w,(c.y+c.h-o.y)/o.h);if(max>0){const k=clamp(f,Math.min(.1,max),max);od.preview={...o,w:o.w*k,h:o.h*k};}}
+      else {od.preview={...o,x:clamp(o.x+nx-od.nx,c.x,c.x+c.w-o.w),y:clamp(o.y+ny-od.ny,c.y,c.y+c.h-o.h)};}
+      paintCanvas(e.currentTarget);return;}
     const cg=cropGesture.current;
     if(cg&&cg.id===e.pointerId){
       const {nx,ny}=getPos(e,e.currentTarget),bounds=cropRef.current;
@@ -801,6 +897,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   };
 
   const handlePointerUp = (e:React.PointerEvent<HTMLCanvasElement>) => {
+    const od=overlayDrag.current;if(od&&od.id===e.pointerId){overlayDrag.current=null;if(od.preview!==od.start){remember();writeOverlays(overlaysRef.current.map(o=>o.id===od.start.id?od.preview:o));}drawActiveCanvases();return;}
     if(cropGesture.current?.id===e.pointerId){cropGesture.current=null;drawActiveCanvases();return;}
     if(panDrag.current?.id===e.pointerId){panDrag.current=null;drawActiveCanvases();return;}
     const drag=textDrag.current;
@@ -835,7 +932,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     }
   };
 
-  const cancelStroke=()=>{cropGesture.current=null;panDrag.current=null;textDrag.current=null;touchText.current=null;isDrawingRef.current=false;currentShapeRef.current=null;drawActiveCanvases();};
+  const cancelStroke=()=>{overlayDrag.current=null;cropGesture.current=null;panDrag.current=null;textDrag.current=null;touchText.current=null;isDrawingRef.current=false;currentShapeRef.current=null;drawActiveCanvases();};
   const commitTextAnnotation = () => {
     const clean = pendingTextValue.trim();
     if (!pendingTextPos || !clean) {
@@ -930,6 +1027,8 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     {label:tr('ทำซ้ำ','Redo'),shortcut:'Ctrl+Y',run:redoEdit,disabled:!redoRef.current.length},
     {label:tr('แก้ข้อความที่เลือก','Edit selected text'),run:()=>{const i=selectedTextRef.current;if(i!==null)editExistingText(i,isFullscreen?fullscreenCanvasRef.current:canvasRef.current);},disabled:selectedText===null},
     ...tools.map(item=>({label:item.label,shortcut:({pen:'P',circle:'C',arrow:'A',line:'L',rect:'R',text:'T'} as Record<MarkupTool,string>)[item.id],run:()=>{chooseTool(item.id);}})),
+    {label:tr('เพิ่มรูปซ้อน','Insert image'),run:()=>pickOverlay(),disabled:cropping||overlayBusy},
+    {label:tr('เลือกรูปซ้อน','Select inset image'),run:()=>{setPhotoPan(false);selectText(null);setOverlayMode(true);},disabled:!overlays.length||cropping},
     {label:tr('ตัดรูป (Crop)','Crop photo'),run:startCrop,disabled:cropping},
     {label:tr('คืนขอบเขตรูปเดิม','Restore full image'),run:resetCrop,disabled:cropping||cropRef.current.w===1&&cropRef.current.h===1},
     {label:tr('ซูมเข้า','Zoom in'),run:()=>changePhotoZoom(photoZoom+25)},
@@ -967,6 +1066,25 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       <button type="button" onClick={applyCrop} className="rounded-lg bg-emerald-600 text-white px-3 py-1.5 font-semibold">{tr('ยืนยันตัดรูป','Apply crop')}</button>
     </>}
   </div>;
+  const overlayControls=(dark=false)=>imageSrc&&!cropping&&<div className={'flex flex-wrap items-center justify-center gap-1.5 rounded-lg border px-2 py-1 text-xs '+(dark?'border-slate-700 text-white':'border-slate-200 text-slate-700')}>
+    <button type="button" disabled={overlayBusy} onClick={()=>pickOverlay()} className="inline-flex items-center gap-1 rounded border px-2 py-1.5 font-semibold disabled:opacity-50"><ImagePlus className="w-4 h-4"/>{overlayBusy?tr('กำลังอ่านรูป…','Loading…'):tr('เพิ่มรูป','Insert image')}</button>
+    {!!overlays.length&&<button type="button" aria-pressed={overlayMode} onClick={()=>{setPhotoPan(false);selectText(null);setOverlayMode(!overlayMode);if(overlayMode)selectOverlay(null);}} className={'rounded border px-2 py-1.5 '+(overlayMode?'bg-blue-600 text-white':'')}>{tr('เลือกรูปย่อย','Select inset')} ({overlays.length})</button>}
+    {overlayMode&&overlays.map((o,i)=><button key={o.id} type="button" aria-pressed={overlaySelected===o.id} onClick={()=>selectOverlay(o.id)} className={'rounded border px-2 py-1 '+(overlaySelected===o.id?'bg-blue-600 text-white':'')}>{tr('รูป','Image')} {i+1}{o.hidden?' ◌':''}</button>)}
+    {overlayMode&&overlaySelected&&<div className="flex flex-wrap items-center gap-1">
+      <button type="button" onClick={()=>modifyOverlay(o=>boundedOverlay(o,cropRef.current,1/1.15))} className="rounded border px-2 py-1" title={tr('ย่อรูป','Smaller')}>−</button>
+      <button type="button" onClick={()=>modifyOverlay(o=>boundedOverlay(o,cropRef.current,1.15))} className="rounded border px-2 py-1" title={tr('ขยายรูป','Larger')}>+</button>
+      <button type="button" onClick={()=>rotateOverlay(-1)} className="rounded border p-1" title={tr('หมุนซ้าย','Rotate left')}><RotateCcw className="w-4 h-4"/></button>
+      <button type="button" onClick={()=>rotateOverlay(1)} className="rounded border p-1" title={tr('หมุนขวา','Rotate right')}><RotateCw className="w-4 h-4"/></button>
+      <button type="button" onClick={()=>pickOverlay(true)} className="rounded border px-2 py-1">{tr('แทนรูป','Replace')}</button>
+      <button type="button" onClick={duplicateOverlay} className="rounded border px-2 py-1">{tr('คัดลอก','Copy')}</button>
+      <button type="button" onClick={()=>layerOverlay(true)} className="rounded border px-2 py-1">{tr('ไว้หน้า','Front')}</button>
+      <button type="button" onClick={()=>layerOverlay(false)} className="rounded border px-2 py-1">{tr('ไว้หลัง','Back')}</button>
+      <button type="button" onClick={()=>modifyOverlay(o=>({...o,hidden:!o.hidden}))} className="rounded border px-2 py-1">{overlays.find(o=>o.id===overlaySelected)?.hidden?tr('แสดง','Show'):tr('ซ่อน','Hide')}</button>
+      <select aria-label={tr('ความทึบรูปย่อย','Inset opacity')} value={overlays.find(o=>o.id===overlaySelected)?.opacity??1} onChange={e=>modifyOverlay(o=>({...o,opacity:+e.target.value}))} className="rounded border px-1 py-1 bg-slate-100 text-slate-800">{[1,.75,.5,.25].map(a=><option key={a} value={a}>{Math.round(a*100)}%</option>)}</select>
+      <button type="button" onClick={removeOverlay} className="rounded border px-2 py-1 text-rose-500">{tr('ลบรูปย่อย','Delete inset')}</button>
+    </div>}
+    {overlayMode&&<span className="basis-full text-center">{tr('ลากรูปเพื่อย้าย • ลากมุมเพื่อปรับขนาด • เลือกเครื่องมือวาดเพื่อมาร์กบนภาพ','Drag image to move · Drag corner to resize · Choose drawing tool to annotate')}</span>}
+  </div>;
   const textHint=tr('คลิกพื้นที่ว่างเพื่อเพิ่มข้อความ • คลิกข้อความเดิมเพื่อแก้คำ • ลากเพื่อย้าย • ลากมุมหรือกด −/+ เพื่อปรับขนาด','Click empty space to add text · Click existing text to edit · Drag to move · Drag corner or use −/+ to resize');
   const inlinePopupCoords =
     pendingTextPos && imageSrc && !isFullscreen
@@ -980,6 +1098,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
 
   return (
     <div ref={rootRef} tabIndex={0} onPointerDownCapture={focusEditor} onKeyDown={editorKeys} className="space-y-2.5 outline-none">
+      <input ref={overlayFile} type="file" accept="image/*,.dng,.heic,.heif" className="hidden" onChange={addOverlayFile}/>
       {/* Inline Drawing Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
         <div className="flex flex-wrap items-center gap-1">
@@ -1079,8 +1198,9 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       </div>
 
       {cropControls()}
+      {overlayControls()}
       {!cropping&&zoomControls()}
-      {!cropping&&tool === 'text' && imageSrc && !isFullscreen && !photoPan && (
+      {!cropping&&!overlayMode&&tool === 'text' && imageSrc && !isFullscreen && !photoPan && (
         <div className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-1.5">
           {textHint}
         </div>
@@ -1101,9 +1221,9 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
           onPointerUp={handlePointerUp}
           onPointerCancel={cancelStroke}
           onLostPointerCapture={cancelStroke}
-          onDoubleClick={()=>{if(!cropping&&!photoPan&&!pendingTextPosRef.current&&selectedTextRef.current===null)openFullscreen();}}
+          onDoubleClick={()=>{if(!cropping&&!overlayMode&&!photoPan&&!pendingTextPosRef.current&&selectedTextRef.current===null)openFullscreen();}}
           className={`w-full h-full block touch-none ${
-            cropping ? 'cursor-crosshair' : photoPan ? 'cursor-grab active:cursor-grabbing' : tool === 'text' ? 'cursor-text' : 'cursor-crosshair'
+            cropping ? 'cursor-crosshair' : overlayMode ? 'cursor-move' : photoPan ? 'cursor-grab active:cursor-grabbing' : tool === 'text' ? 'cursor-text' : 'cursor-crosshair'
           } ${imageSrc ? '' : 'hidden'}`}
         />
 
@@ -1273,8 +1393,8 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
               </div>
             </div>
 
-            <div className="shrink-0 bg-slate-900 flex flex-wrap gap-2 justify-center px-2 py-1">{cropControls(true)}{!cropping&&zoomControls(true)}</div>
-            {!cropping&&tool === 'text' && !photoPan && (
+            <div className="shrink-0 bg-slate-900 flex flex-wrap gap-2 justify-center px-2 py-1">{cropControls(true)}{overlayControls(true)}{!cropping&&zoomControls(true)}</div>
+            {!cropping&&!overlayMode&&tool === 'text' && !photoPan && (
               <div className="bg-blue-950/90 border-b border-blue-800/70 text-blue-200 text-xs font-semibold px-4 py-1.5 text-center shrink-0">
                 {textHint}
               </div>
@@ -1295,7 +1415,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
                   onPointerCancel={cancelStroke}
           onLostPointerCapture={cancelStroke}
                   className={`w-full h-full block touch-none ${
-                    cropping ? 'cursor-crosshair' : photoPan ? 'cursor-grab active:cursor-grabbing' : tool === 'text' ? 'cursor-text' : 'cursor-crosshair'
+                    cropping ? 'cursor-crosshair' : overlayMode ? 'cursor-move' : photoPan ? 'cursor-grab active:cursor-grabbing' : tool === 'text' ? 'cursor-text' : 'cursor-crosshair'
                   }`}
                 />
 
