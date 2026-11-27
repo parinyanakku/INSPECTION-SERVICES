@@ -1,5 +1,10 @@
 import express from 'express';
 import path from 'path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI, Type } from '@google/genai';
@@ -78,6 +83,60 @@ function parseAiDefectJson(rawText: string): {
 async function startServer() {
   const app = express();
   app.use(express.json({ limit: '15mb' }));
+
+  // Explicit opt-in: deploy behind an authenticated / rate-limited gateway.
+  // LibreOffice is a separate DOCX renderer, not Microsoft Word itself.
+  // Never store customer reports in the repository or public storage.
+  if (process.env.ENABLE_REPORT_PDF_CONVERTER === 'true') {
+    const allowedOrigin = (process.env.REPORT_PDF_ALLOWED_ORIGIN || '').trim();
+    let converting = false;
+    const route = '/api/report/docx-to-pdf';
+    app.options(route, (req,res)=>{
+      if (allowedOrigin && req.get('Origin') === allowedOrigin) {
+        res.set('Access-Control-Allow-Origin',allowedOrigin);
+        res.set('Vary','Origin');
+        res.set('Access-Control-Allow-Methods','POST, OPTIONS');
+        res.set('Access-Control-Allow-Headers','Content-Type');
+        res.sendStatus(204);
+      } else res.sendStatus(403);
+    });
+    app.post(route, (req,res,next)=>{
+      const origin=req.get('Origin');
+      if(origin && origin!==allowedOrigin){
+        const own = req.protocol+'://'+req.get('host');
+        if(origin!==own){res.sendStatus(403);return;}
+      }
+      if(origin && origin===allowedOrigin){res.set('Access-Control-Allow-Origin',origin);res.set('Vary','Origin');}
+      res.set('Cache-Control','no-store');
+      if(converting){res.status(503).send('Converter busy');return;}
+      next();
+    }, express.raw({type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',limit:'150mb'}), async(req,res)=>{
+      if(converting){res.status(503).send('Converter busy');return;}
+      const input=req.body;
+      if(!Buffer.isBuffer(input)||input.length<4||input.readUInt32LE(0)!==0x04034b50){res.status(400).send('Invalid DOCX');return;}
+      converting=true;
+      let dir:string|undefined;
+      try{
+        dir=await mkdtemp(path.join(tmpdir(),'inspection-pdf-'));
+        const docx=path.join(dir,'report.docx');
+        await writeFile(docx,input,{mode:0o600});
+        const profile=pathToFileURL(path.join(dir,'profile')).href;
+        await promisify(execFile)(process.env.SOFFICE_PATH||'soffice',[
+          '-env:UserInstallation='+profile,'--headless','--nologo','--nodefault','--norestore',
+          '--convert-to','pdf:writer_pdf_Export','--outdir',dir,docx,
+        ],{timeout:120000,maxBuffer:1024*1024,windowsHide:true});
+        const pdf=await readFile(path.join(dir,'report.pdf'));
+        if(pdf.subarray(0,5).toString()!=='%PDF-')throw Error('Invalid PDF output');
+        res.type('application/pdf').send(pdf);
+      }catch{
+        res.status(502).send('DOCX conversion unavailable');
+      }finally{
+        if(dir)await rm(dir,{recursive:true,force:true}).catch(()=>{});
+        converting=false;
+      }
+    });
+  }
+
 
   app.post('/api/analyze-defect', async (req, res) => {
     try {
