@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.182",
+  "latest": "v1.0.183",
   "releases": [
+    {
+      "version": "v1.0.183",
+      "build": 183,
+      "storageSchema": 2,
+      "date": "2026-11-27T08:58:43.502Z",
+      "notes": "Add bounded-memory incremental SHA-256 for large workspace records",
+      "commit": "04edd1c5631ee3b17a36ca74cbdd4e011c623159"
+    },
     {
       "version": "v1.0.182",
       "build": 182,
