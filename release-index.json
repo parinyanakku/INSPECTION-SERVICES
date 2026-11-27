@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.99",
+  "latest": "v1.0.100",
   "releases": [
+    {
+      "version": "v1.0.100",
+      "build": 100,
+      "storageSchema": 2,
+      "date": "2026-11-27T05:34:43.550Z",
+      "notes": "Bound report image memory and reduce duplicate PDF assets for large inspections",
+      "commit": "733dccbe8f8d650b8c4a271c6a405e8534b36b3d"
+    },
     {
       "version": "v1.0.99",
       "build": 99,
