@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.175",
+  "latest": "v1.0.176",
   "releases": [
+    {
+      "version": "v1.0.176",
+      "build": 176,
+      "storageSchema": 2,
+      "date": "2026-11-27T08:28:16.679Z",
+      "notes": "Use resumable JSON uploads with byte progress and verify Drive file size and local restore before success",
+      "commit": "710e773548c2b9deabf112adb751048b69a16adb"
+    },
     {
       "version": "v1.0.175",
       "build": 175,
