@@ -5,6 +5,7 @@ import {
   ArrowUp,
   ArrowDown,
   Building2,
+  Globe,
   ClipboardList,
   Download,
   FilePlus2,
@@ -70,6 +71,7 @@ import { VersionUpdate } from './components/VersionUpdate';
 import { StudioTab } from './components/StudioTab';
 import { DefectListTab } from './components/DefectListTab';
 import { ExportTab } from './components/ExportTab';
+import { ClientWebsiteTab } from './components/ClientWebsiteTab';
 import {
   ApiKeyGuideModal,
   ApiKeySettingsModal,
@@ -140,7 +142,7 @@ function loadWorkspaceView(projects:ProjectFile[]):WorkspaceView {
     const saved=JSON.parse(workspaceStorage.getItem(WORKSPACE_VIEW_KEY)||'null');
     const project=projects.find(p=>p.id===saved?.projectId);
     if(!project)return empty;
-    const tab:WorkspaceTab=saved.tab==='list'||saved.tab==='export'?saved.tab:'studio';
+    const tab:WorkspaceTab=saved.tab==='list'||saved.tab==='export'||saved.tab==='client'?saved.tab:'studio';
     const floorId=project.floors.some(f=>f.id===saved.floorId)?saved.floorId:project.floors[0]?.id||null;
     return {projectId:project.id,tab,floorId};
   }catch{return empty;}
@@ -1450,7 +1452,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
                 </div>
               </div>
 
-              {/* 3 Segmented Workspace Tabs */}
+              {/* Workspace Tabs */}
               <div className="flex flex-wrap gap-2 mt-4">
                 <button
                   type="button"
@@ -1487,6 +1489,9 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
                 >
                   <Download className="w-4 h-4" />
                   {t.tabExport}
+                </button>
+                <button type="button" onClick={()=>setActiveTab('client')} className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${activeTab==='client'?'brand-bg text-white':'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}>
+                  <Globe className="w-4 h-4"/>{lang==='en'?'Customer website':'เว็บไซต์ลูกค้า'}
                 </button>
               </div>
             </section>
@@ -1527,6 +1532,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
               />
             )}
 
+            {activeTab==='client'&&<ClientWebsiteTab key={activeProject.id} project={activeProject} brand={brand} lang={lang}/>}
             {activeTab === 'export' && (
               <ExportTab
                 lang={lang}
