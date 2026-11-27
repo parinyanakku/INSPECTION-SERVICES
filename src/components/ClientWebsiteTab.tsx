@@ -79,8 +79,29 @@ async function storageRequest(path:string,method:string,body:BodyInit,contentTyp
  if(!res.ok)throw Error('ระบบจัดเก็บออนไลน์ตอบกลับ '+res.status+' '+(await res.text()).slice(0,220));
  return res;
 }
+async function shortLinkRequest(method:string,query='',body?:unknown){
+ const session=reportSession();
+ const res=await fetch(REPORT_API+'/rest/v1/inspection_report_short_links'+query,{method,headers:{...session.headers,'Content-Type':'application/json',Prefer:'return=minimal'},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store'});
+ if(!res.ok)throw Error('Short link service: '+res.status);
+ return res;
+}
+async function registerShortLink(path:string,key:Uint8Array,expiresAt:number){
+ const {id}=reportSession();
+ if(!path.startsWith(id+'/')||expiresAt<=Date.now())throw Error('ลิงก์หมดอายุหรือไม่ใช่ของบัญชีนี้');
+ const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',key)),v=>v.toString(16).padStart(2,'0')).join('');
+ try{await shortLinkRequest('POST','',{token_hash:hash,owner_id:id,object_path:path,expires_at:new Date(expiresAt).toISOString()});}
+ catch(err){
+   const existing=await shortLinkRequest('GET','?token_hash=eq.'+hash+'&select=object_path,expires_at');
+   const row=(await existing.json())[0];
+   if(!row||row.object_path!==path||Math.abs(Date.parse(row.expires_at)-expiresAt)>1000)throw err;
+ }
+ const viewer=new URL('r.html',window.location.href);
+ viewer.hash=btoa(String.fromCharCode(...key)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+ return {path,url:viewer.href,expiresAt};
+}
 async function removeSharedReport(path:string){
  await storageRequest('object/'+REPORT_BUCKET,'DELETE',JSON.stringify({prefixes:[path]}),'application/json');
+ await shortLinkRequest('DELETE','?object_path=eq.'+encodeURIComponent(path));
 }
 async function publishSharedReport(html:string,days:number):Promise<SharedLink>{
  const {id}=reportSession();
@@ -95,14 +116,7 @@ async function publishSharedReport(html:string,days:number):Promise<SharedLink>{
  try{
    await storageRequest('object/'+fullPath,'POST',payload,'application/octet-stream');uploaded=true;
    const expiresAt=Date.now()+days*86400000;
-   const result=await (await storageRequest('object/sign/'+fullPath,'POST',JSON.stringify({expiresIn:days*86400}),'application/json')).json();
-   const rawSigned=result.signedURL||result.signedUrl;
-   if(typeof rawSigned!=='string'||!rawSigned)throw Error('Missing signed URL');
-   const signed=new URL(rawSigned.startsWith('/object/')?'/storage/v1'+rawSigned:rawSigned,REPORT_API);
-   if(signed.origin!==REPORT_API||signed.pathname!=='/storage/v1/object/sign/'+fullPath||!signed.searchParams.get('token'))throw Error('Invalid signed URL');
-   const viewer=new URL('customer-report.html',window.location.href);
-   viewer.hash=new URLSearchParams({u:signed.href,k:Array.from(key,v=>v.toString(16).padStart(2,'0')).join('')}).toString();
-   return {path,url:viewer.href,expiresAt};
+   return await registerShortLink(path,key,expiresAt);
  }catch(e){if(uploaded)try{await removeSharedReport(path);}catch{}throw e;}
 }
 
@@ -126,6 +140,18 @@ export function ClientWebsiteTab({project,brand,lang}:{project:ProjectFile;brand
    if(busy||!window.confirm(tr('ยกเลิกลิงก์นี้? ลูกค้าจะไม่สามารถโหลดรายงานจากลิงก์เดิมได้อีก','Revoke this link? It will no longer load the report.')))return;
    setBusy(true);try{await removeSharedReport(link.path);saveLinks(links.filter(x=>x.path!==link.path));setMessage(tr('ยกเลิกลิงก์แล้ว','Link revoked'));}
    catch(e){setMessage(tr('ยกเลิกไม่สำเร็จ: ','Revoke failed: ')+(e instanceof Error?e.message:String(e)));}finally{setBusy(false);}
+ }
+ async function shortenExisting(link:SharedLink){
+   if(busy)return;
+   setBusy(true);setMessage('');
+   try{
+     const p=new URLSearchParams(new URL(link.url).hash.slice(1)),key=p.get('k')||'';
+     if(!/^[a-f0-9]{64}$/.test(key))throw Error('Invalid legacy key');
+     const short=await registerShortLink(link.path,Uint8Array.from(key.match(/../g)!,v=>parseInt(v,16)),link.expiresAt);
+     saveLinks(links.map(x=>x.path===link.path?short:x));
+     setMessage(tr('ย่อลิงก์แล้ว ไม่ต้องอัปโหลดรูปใหม่','Link shortened without uploading images again'));
+   }catch(e){setMessage(tr('ย่อลิงก์ไม่สำเร็จ: ','Shortening failed: ')+(e instanceof Error?e.message:String(e)));}
+   finally{setBusy(false);}
  }
  async function copyLink(url:string){try{await navigator.clipboard.writeText(url);setMessage(tr('คัดลอกลิงก์แล้ว','Link copied'));}catch{setMessage(tr('กรุณาคัดลอกลิงก์จากช่องข้อความ','Copy the link from the text field'));}}
 
@@ -151,6 +177,7 @@ export function ClientWebsiteTab({project,brand,lang}:{project:ProjectFile;brand
        <div className="text-xs text-slate-600">{link.expiresAt>Date.now()?tr('หมดอายุ: ','Expires: ')+new Date(link.expiresAt).toLocaleString(lang==='en'?'en-GB':'th-TH'):tr('หมดอายุแล้ว','Expired')}</div>
        <input readOnly value={link.url} onFocus={e=>e.target.select()} aria-label={tr('ลิงก์เว็บไซต์ลูกค้า','Customer link')} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs"/>
        <div className="flex flex-wrap gap-2">
+         {link.expiresAt>Date.now()&&link.url.includes('#u=')&&<button type="button" disabled={busy} onClick={()=>shortenExisting(link)} className="flex items-center gap-1 rounded-lg bg-blue-700 text-white px-3 py-2 text-sm disabled:opacity-50"><Link2 className="w-4 h-4"/>{tr('ย่อลิงก์เดิม','Shorten existing link')}</button>}
          <button type="button" onClick={()=>copyLink(link.url)} className="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"><Copy className="w-4 h-4"/>{tr('คัดลอกลิงก์','Copy link')}</button>
          <a href={'https://social-plugins.line.me/lineit/share?url='+encodeURIComponent(link.url)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 rounded-lg bg-emerald-600 text-white px-3 py-2 text-sm"><Share2 className="w-4 h-4"/>{tr('แชร์ LINE','Share LINE')}</a>
          <a href={link.url} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-slate-300 px-3 py-2 text-sm">{tr('เปิดดู','Preview')}</a>
