@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.63",
+  "latest": "v1.0.64",
   "releases": [
+    {
+      "version": "v1.0.64",
+      "build": 64,
+      "storageSchema": 2,
+      "date": "2026-11-27T01:55:00.199Z",
+      "notes": "Center report labels and prevent Thai text and status ticks overlapping table borders",
+      "commit": "479db41b0288835ad12d9367a37bfccb7667cd94"
+    },
     {
       "version": "v1.0.63",
       "build": 63,
