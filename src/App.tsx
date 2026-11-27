@@ -40,6 +40,7 @@ import type {
 import {
   createDefaultSirinaphaProject,
   DEFAULT_BRAND,
+  clearLegacyBuyerIdentity,
   migrateProject,
   orderProjectDefects,
   STORAGE_KEY_BRAND,
@@ -95,22 +96,22 @@ function loadInitialLang(): AppLanguage {
   return 'th';
 }
 
-function loadInitialBrand(): BrandConfig {
+function loadInitialBrand(isAdmin=false): BrandConfig {
   try {
     const raw = workspaceStorage.getItem(STORAGE_KEY_BRAND);
     if (raw) {
       const parsed = JSON.parse(raw);
-      return {
+      return clearLegacyBuyerIdentity({
         ...DEFAULT_BRAND,
         companyName: parsed.companyName || DEFAULT_BRAND.companyName,
         subtitle: parsed.subtitle || DEFAULT_BRAND.subtitle,
         tagline: parsed.tagline ?? DEFAULT_BRAND.tagline,
-        inspectorName: parsed.inspectorName || DEFAULT_BRAND.inspectorName,
-        licenseNo: parsed.licenseNo || DEFAULT_BRAND.licenseNo,
+        inspectorName: typeof parsed.inspectorName==='string'?parsed.inspectorName:DEFAULT_BRAND.inspectorName,
+        licenseNo: typeof parsed.licenseNo==='string'?parsed.licenseNo:DEFAULT_BRAND.licenseNo,
         contactInfo: parsed.contactInfo ?? DEFAULT_BRAND.contactInfo,
         accentColor: parsed.accentColor || DEFAULT_BRAND.accentColor,
         customLogoDataUrl: parsed.customLogoDataUrl ?? null,
-      };
+      },isAdmin);
     }
   } catch {
     // ignore storage errors
@@ -159,7 +160,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
   const lang=language??localLang;
   const t = UI_TEXT[lang];
 
-  const [brand, setBrand] = useState<BrandConfig>(loadInitialBrand);
+  const [brand, setBrand] = useState<BrandConfig>(()=>loadInitialBrand(isAdmin));
   const [projects, setProjects] = useState<ProjectFile[]>(loadInitialProjects);
   const [lastSavedAt, setLastSavedAt] = useState<string>(() => {
     try {
@@ -652,7 +653,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
             confirmStyle: 'primary',
             onConfirm: () => {
               const nextProjects = parsed.projects.map(migrateProject);
-              const nextBrand = parsed.brand ? { ...DEFAULT_BRAND, ...parsed.brand } : brand;
+              const nextBrand = parsed.brand ? clearLegacyBuyerIdentity({ ...DEFAULT_BRAND, ...parsed.brand },isAdmin) : brand;
               setProjects(nextProjects);
               setHubSearch('');
               setBrand(nextBrand);
@@ -1027,14 +1028,14 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
                 </div>
                 <p className="text-xs sm:text-sm text-slate-600 mt-0.5 flex flex-wrap items-center gap-x-2">
                   <span>
-                    {t.inspectorLabel}: <strong className="text-slate-900">{brand.inspectorName}</strong>
+                    {t.inspectorLabel}: <strong className="text-slate-900">{brand.inspectorName||(lang==='en'?'Not set':'ยังไม่ระบุ')}</strong>
                   </span>
                   <span className="text-slate-300" aria-hidden="true">
                     ·
                   </span>
                   <span>
                     {t.licenseLabel}:{' '}
-                    <strong className="text-slate-900 font-mono-num">{brand.licenseNo}</strong>
+                    <strong className="text-slate-900 font-mono-num">{brand.licenseNo||(lang==='en'?'Not set':'ยังไม่ระบุ')}</strong>
                   </span>
                 </p>
               </div>
