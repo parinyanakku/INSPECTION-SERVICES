@@ -583,7 +583,39 @@ export function buildSharedReportPages(
   };
   const ownerFont=fitText(owners.reduce((a,b)=>a.length>=b.length?a:b,''),15.6,11,43);
   const ownerHtml=owners.map(v=>escapeHtml(v)).join('<br />')||'-';
-  const titleFont=fitText(rb.coverTitle||'',32.5,18,37);
+  // Cover titles must wrap at meaningful phrase boundaries, not leave a
+  // short Thai syllable alone on the next line. Use the same explicit breaks
+  // for PDF, Word and Excel rather than depending on each renderer's wrapping.
+  const coverTitle=(rb.coverTitle||'').trim();
+  const titleUnits=(v:string)=>Array.from(v.normalize('NFC').replace(/[\u0e31\u0e34-\u0e3a\u0e47-\u0e4e]/g,'')).length;
+  const titleMeasure=typeof document!=='undefined'?document.createElement('canvas').getContext('2d'):null;
+  if(titleMeasure)titleMeasure.font='800 28px Tahoma, sans-serif';
+  const lineWidth=(v:string)=>Math.max(titleUnits(v)*14,titleMeasure?.measureText(v).width||0);
+  const explicitLines=coverTitle.split(/\r?\n/).map(v=>v.trim()).filter(Boolean);
+  let titleLines=explicitLines.length?explicitLines:[''];
+  if(titleLines.length===1){
+    const value=titleLines[0];
+    // A project name is a distinct phrase; keep it intact on its own line
+    // when the full title is wide. Preserve all original wording.
+    const projectIndex=value.search(/(?:\s+|^)(?:โครงการ|Project\b)/i);
+    if(projectIndex>0&&titleUnits(value)>30){
+      const first=value.slice(0,projectIndex).trim(),second=value.slice(projectIndex).trim();
+      if(titleUnits(first)>=8&&titleUnits(second)>=8)titleLines=[first,second];
+    }
+    if(titleLines.length===1&&lineWidth(value)>500){
+      const candidates=Array.from(value.matchAll(/\s+/g)).map(m=>{
+        const i=m.index??0;
+        return [value.slice(0,i).trim(),value.slice(i+m[0].length).trim()];
+      }).filter(([a,b])=>titleUnits(a)>=8&&titleUnits(b)>=8&&!/\d$/.test(a)&&!/^\d/.test(b));
+      candidates.sort((a,b)=>Math.abs(lineWidth(a[0])-lineWidth(a[1]))-Math.abs(lineWidth(b[0])-lineWidth(b[1])));
+      if(candidates.length)titleLines=candidates[0];
+    }
+  }
+  const widestTitleLine=Math.max(1,...titleLines.map(lineWidth));
+  // Actual cover content width is about 638px. Reserve a generous margin
+  // for differences between PDF's embedded font, Word and Excel.
+  const titleFont=Math.max(16,Math.min(titleLines.length>1?28:32.5,Math.floor(28*490/widestTitleLine*10)/10));
+  const titleHtml=titleLines.map(line=>escapeHtml(line)).join('<br />');
   const custom = {
     ...createDefaultCustomExportSettings(),
     ...(rb.customExport || {}),
@@ -922,8 +954,8 @@ export function buildSharedReportPages(
             ? `<div style="margin:0 auto 18px auto;"><img data-pdf-photo="true" src="${coverGraphicSrc}" style="max-width:460px; max-height:300px; width:auto; height:auto; object-fit:contain; display:inline-block;" /></div>`
             : ''
         }
-        <div style="font-size:${titleFont}px; font-weight:800; color:#0f172a; line-height:1.3; margin-bottom:10px; overflow-wrap:anywhere; word-break:normal;">
-          ${escapeHtml(rb.coverTitle)}
+        <div style="font-size:${titleFont}px; font-weight:800; color:#0f172a; text-align:center; line-height:1.3; margin:0 auto 16px; max-width:100%; overflow-wrap:break-word; word-break:normal;">
+          ${titleHtml}
         </div>
         <div data-pdf-center-text="true" style="display:inline-block; padding:7px 18px 11px; text-align:center; vertical-align:middle; line-height:1.45; border-radius:6px; background:#eff6ff; border:1.5px solid ${accentHex}; color:${accentHex}; font-size:16.9px; font-weight:700; margin-bottom:20px;">
           ${escapeHtml(rb.propertyCondition)}
