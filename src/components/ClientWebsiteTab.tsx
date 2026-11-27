@@ -171,7 +171,7 @@ export function ClientWebsiteTab({project,brand,lang}:{project:ProjectFile;brand
      <p className="text-xs text-slate-600">{tr('รายงานแบบอ่านอย่างเดียว ณ เวลาส่งออก จัดเก็บแบบเข้ารหัส ผู้มีลิงก์สามารถเปิดดูหรือส่งต่อได้ ไม่ต้องเข้าสู่ระบบ ไม่อัปเดตข้อมูลสด','Encrypted read-only snapshot. Anyone with the link can view or forward it. No sign-in or live sync.')}</p>
      <div className="flex flex-wrap items-center gap-2">
        <label className="text-sm text-slate-700">{tr('อายุลิงก์','Expires in')} <select value={days} onChange={e=>setDays(Number(e.target.value))} disabled={busy} className="rounded-lg border border-slate-300 px-2 py-2">{[1,7,30].map(n=><option key={n} value={n}>{n} {tr('วัน','days')}</option>)}</select></label>
-       <button type="button" onClick={publish} disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy?<Loader2 className="w-4 h-4 animate-spin"/>:<Link2 className="w-4 h-4"/>}{tr('สร้างลิงก์เว็บไซต์ลูกค้า','Create customer link')}</button>
+       <button data-tour="client" type="button" onClick={publish} disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy?<Loader2 className="w-4 h-4 animate-spin"/>:<Link2 className="w-4 h-4"/>}{tr('สร้างลิงก์เว็บไซต์ลูกค้า','Create customer link')}</button>
      </div>
      {links.map(link=><div key={link.path} className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
        <div className="text-xs text-slate-600">{link.expiresAt>Date.now()?tr('หมดอายุ: ','Expires: ')+new Date(link.expiresAt).toLocaleString(lang==='en'?'en-GB':'th-TH'):tr('หมดอายุแล้ว','Expired')}</div>
