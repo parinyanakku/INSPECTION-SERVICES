@@ -75,7 +75,7 @@ function reportSession(){
 }
 async function storageRequest(path:string,method:string,body:BodyInit,contentType:string){
  const session=reportSession();
- const res=await fetch(REPORT_API+'/storage/v1/'+path,{method,headers:{...session.headers,'Content-Type':contentType},body,cache:'no-store'});
+ const res=await fetch(REPORT_API+'/storage/v1/'+path,{method,headers:{...session.headers,'Content-Type':contentType,...(contentType==='application/octet-stream'?{'Cache-Control':'max-age=0'}:{})},body,cache:'no-store'});
  if(!res.ok)throw Error('ระบบจัดเก็บออนไลน์ตอบกลับ '+res.status+' '+(await res.text()).slice(0,220));
  return res;
 }
@@ -96,7 +96,9 @@ async function publishSharedReport(html:string,days:number):Promise<SharedLink>{
    await storageRequest('object/'+fullPath,'POST',payload,'application/octet-stream');uploaded=true;
    const expiresAt=Date.now()+days*86400000;
    const result=await (await storageRequest('object/sign/'+fullPath,'POST',JSON.stringify({expiresIn:days*86400}),'application/json')).json();
-   const signed=new URL('/storage/v1'+result.signedURL,REPORT_API);
+   const rawSigned=result.signedURL||result.signedUrl;
+   if(typeof rawSigned!=='string'||!rawSigned)throw Error('Missing signed URL');
+   const signed=new URL(rawSigned.startsWith('/object/')?'/storage/v1'+rawSigned:rawSigned,REPORT_API);
    if(signed.origin!==REPORT_API||signed.pathname!=='/storage/v1/object/sign/'+fullPath||!signed.searchParams.get('token'))throw Error('Invalid signed URL');
    const viewer=new URL('customer-report.html',window.location.href);
    viewer.hash=new URLSearchParams({u:signed.href,k:Array.from(key,v=>v.toString(16).padStart(2,'0')).join('')}).toString();
