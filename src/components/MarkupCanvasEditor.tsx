@@ -425,7 +425,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   // ESC key handler for fullscreen markup mode (uses refs, registered once)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || !isFullscreenRef.current) return;
+      if (e.key !== 'Escape' || !isFullscreenRef.current || document.querySelector('[role="menu"][aria-label]')) return;
       e.preventDefault();
       e.stopPropagation();
       if (pendingTextPosRef.current) {
