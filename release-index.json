@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.138",
+  "latest": "v1.0.139",
   "releases": [
+    {
+      "version": "v1.0.139",
+      "build": 139,
+      "storageSchema": 2,
+      "date": "2026-11-27T07:12:59.700Z",
+      "notes": "Add bilingual interactive buyer onboarding with real-control spotlight and optional steps",
+      "commit": "835a0d7fab8d5de1c4953678abe2f67fffc5826d"
+    },
     {
       "version": "v1.0.138",
       "build": 138,
