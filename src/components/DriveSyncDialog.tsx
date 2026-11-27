@@ -1,4 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
+import {flushSync} from 'react-dom';
 import type {AppLanguage} from '../types/inspection';
 import {mirrorWorkspace} from '../utils/driveVisibleBackup';
 import {readSyncRecords,restoreSyncRecords,workspaceStorage,flushWorkspace} from '../utils/workspaceStorage';
@@ -67,6 +68,8 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
  const [autoRunning,setAutoRunning]=useState(false);
  const operation=useRef<AbortController|null>(null);
  const [cancelling,setCancelling]=useState(false);
+ const [applyingRestore,setApplyingRestore]=useState(false);
+ useEffect(()=>{if(!busy)return;const warn=(e:BeforeUnloadEvent)=>{e.preventDefault();e.returnValue='';};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[busy]);
  const check=(op:AbortController)=>{if(!active.current||operation.current!==op||op.signal.aborted)throw Error('CANCELLED');};
  function end(op:AbortController){if(operation.current!==op)return;operation.current=null;if(active.current){setBusy(false);setCancelling(false);setAutoRunning(false);}}
  function cancel(){const op=operation.current;if(!op)return;autoHold.current=true;op.abort();if(operation.current!==op)return;setCancelling(true);setMsg(tr('กำลังหยุดงานที่เหลือ… หากกำลังบันทึกชุดข้อมูล จะรอให้บันทึกเสร็จก่อน','Stopping remaining work… An in-flight workspace commit may finish first.'));}
@@ -192,13 +195,18 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
    if(!Array.isArray(remoteProjects))throw Error('Invalid cloud projects');
    if(!empty&&(!marker||marker.hash!==localHash))throw Error('CONFLICT');
    if(!remoteProjects.length&&localProjects.length){setMsg(tr('แฟ้มบน Drive ว่าง แต่เครื่องนี้มีงาน ระบบไม่โหลดทับ','Cloud workspace is empty but this device has work. Restore stopped.'));return;}
-   if(automatic&&!safeRestoreRef.current()){setMsg(tr('มีข้อมูลใหม่บน Drive '+remoteProjects.length+' แฟ้ม จะรับเมื่อกลับหน้าแฟ้มโครงการ','New cloud data: '+remoteProjects.length+' projects. Download deferred until the project list is idle.'));return;}
+   if(!safeRestoreRef.current()){setMsg(tr('มีข้อมูลใหม่บน Drive '+remoteProjects.length+' แฟ้ม จะรับเมื่อกลับหน้าแฟ้มโครงการ','New cloud data: '+remoteProjects.length+' projects. Download deferred until the project list is idle.'));return;}
    if(!automatic&&!window.confirm(tr('พบ '+remoteProjects.length+' แฟ้มโครงการบน Google Drive โหลดลงเครื่องนี้หรือไม่? ระบบเก็บชุดข้อมูลก่อนโหลดไว้ในเครื่อง','Found '+remoteProjects.length+' cloud projects. Download to this device? The previous local snapshot is retained on this device.')))return;
    if((await files(token,userId,op.signal))?.id!==remote.id)throw Error('CONFLICT');check(op);
    if(!active.current)return;
-   check(op);if(automatic&&!safeRestoreRef.current())return;
-   await restoreSyncRecords(data.records,records,JSON.stringify({id:remote.id,hash:remoteHash}));
-   if(active.current){onRestored();await finish(data.records,tr('โหลดข้อมูลสำเร็จ '+remoteProjects.length+' แฟ้มโครงการ','Downloaded '+remoteProjects.length+' projects successfully'));}
+   check(op);if(!safeRestoreRef.current()){setMsg(tr('พบข้อมูลใหม่บน Drive กรุณากลับหน้าแฟ้มโครงการแล้วกดซิงค์อีกครั้ง','New cloud data found. Return to the project list and sync again.'));return;}
+   // Only the local replacement transaction needs to block edits. Uploads and remote checks remain non-modal.
+   flushSync(()=>setApplyingRestore(true));
+   try{
+    check(op);if(!safeRestoreRef.current())throw Error(tr('กรุณากลับหน้าแฟ้มโครงการก่อนโหลดข้อมูล','Return to the project list before restoring.'));
+    await restoreSyncRecords(data.records,records,JSON.stringify({id:remote.id,hash:remoteHash}));
+    if(active.current){onRestored();await finish(data.records,tr('โหลดข้อมูลสำเร็จ '+remoteProjects.length+' แฟ้มโครงการ','Downloaded '+remoteProjects.length+' projects successfully'));}
+   }finally{if(active.current)setApplyingRestore(false);}
   }
  }
  async function toggleAuto(){
@@ -231,9 +239,19 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   return()=>{disposed=true;if(timer!==undefined)window.clearTimeout(timer);window.clearInterval(poll);window.removeEventListener('tis-workspace-sync-change',schedule);window.removeEventListener('online',schedule);document.removeEventListener('visibilitychange',focus);};
  },[auto,link?.id,paused,visible,userId,lang]);
  const switchControl=<button type="button" role="switch" aria-checked={auto} disabled={!link||busy} onClick={()=>void toggleAuto()} className="flex items-center gap-2 text-sm font-semibold disabled:opacity-50"><span className={'inline-flex w-11 h-6 rounded-full p-0.5 transition-colors '+(auto?'bg-emerald-600 justify-end':'bg-slate-400 justify-start')}><span className="w-5 h-5 bg-white rounded-full shadow"/></span>{tr('ซิงค์อัตโนมัติ','Auto sync')} · {auto?tr('เปิด','On'):tr('ปิด','Off')}</button>;
- if(!visible)return auto?<div className="bg-slate-50 border-b border-slate-200 px-4 py-2 flex flex-wrap items-center gap-3 text-xs"><span className="font-semibold text-emerald-800">{tr('ซิงค์อัตโนมัติ: เปิด','Auto sync: On')}</span><span role="status" className="flex-1 text-slate-600 break-words">{msg||tr('รอตรวจสอบข้อมูล','Waiting to check workspace')}</span>{autoRunning&&<button type="button" disabled={cancelling} onClick={cancel} className="text-red-700 underline">{tr('ยกเลิก','Cancel')}</button>}<button type="button" onClick={onOpen} className="text-blue-800 underline">{tr('ตั้งค่าซิงค์','Sync settings')}</button></div>:null;
+ const match=msg.match(/(\d+)\s*\/\s*(\d+)\s*$/);
+ const progress=match&&Number(match[2])>0?{done:Math.min(Number(match[1]),Number(match[2])),total:Number(match[2])}:null;
+ if(!visible)return <>{(busy||auto||msg)&&<div className="bg-slate-50 border-b border-slate-200 px-4 py-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs">
+  <span className="font-semibold text-emerald-800 flex items-center gap-2">{busy&&<span aria-hidden="true" className="w-3.5 h-3.5 rounded-full border-2 border-current border-r-transparent animate-spin"/>}{busy?(cancelling?tr('กำลังยกเลิก Google Drive…','Cancelling Google Drive…'):autoRunning?tr('กำลังซิงค์อัตโนมัติ…','Auto syncing…'):tr('Google Drive กำลังทำงาน…','Google Drive working…')):auto?tr('ซิงค์อัตโนมัติ: เปิด','Auto sync: On'):tr('Google Drive','Google Drive')}</span>
+  <span role="status" aria-live="polite" className="flex-1 min-w-[140px] text-slate-600 break-words">{msg||(busy?tr('กำลังดำเนินการ…','Working…'):tr('รอตรวจสอบข้อมูล','Waiting to check workspace'))}</span>
+  {busy&&progress&&<progress aria-label={tr('ความคืบหน้าการส่งไฟล์','File export progress')} value={progress.done} max={progress.total} className="w-24 sm:w-36 h-2 accent-emerald-600"/>}
+  {busy&&<button type="button" disabled={cancelling||applyingRestore} onClick={cancel} className="rounded-md border border-red-400 px-2 py-1 text-red-700 font-semibold disabled:opacity-50">{tr('ยกเลิก','Cancel')}</button>}
+  <button type="button" onClick={onOpen} className="rounded-md border border-blue-300 px-2 py-1 text-blue-800 font-semibold">{tr('ดูรายละเอียด','View details')}</button>
+ </div>}
+ {applyingRestore&&<div role="status" aria-live="polite" className="fixed inset-0 z-[9999] bg-slate-900/60 flex items-center justify-center p-4"><div className="rounded-xl bg-white text-slate-900 p-5 font-semibold">{tr('กำลังบันทึกข้อมูลที่รับจาก Drive ลงเครื่อง กรุณารอให้เสร็จก่อนแก้ไขแฟ้ม','Applying restored Drive data. Editing will resume when complete.')}</div></div>}
+ </>;
  return <div className="fixed inset-0 z-[80] bg-slate-900/60 flex items-center justify-center p-4"><section role="dialog" aria-modal="true" className="bg-white rounded-2xl p-5 max-w-lg w-full max-h-[90vh] overflow-auto space-y-4">
- <div className="flex justify-between items-center"><h2 className="font-bold text-blue-950">Google Drive Sync · {tr('ทดลอง','Beta')}</h2><button disabled={busy} onClick={onClose} className="border rounded px-3 py-1">{tr('ปิด','Close')}</button></div>
+ <div className="flex justify-between items-center"><h2 className="font-bold text-slate-900">Google Drive Sync · {tr('ทดลอง','Beta')}</h2><button type="button" disabled={applyingRestore} onClick={onClose} className="border border-slate-300 rounded px-3 py-1 text-slate-800 font-semibold disabled:opacity-50">{busy?tr('ซ่อนหน้าต่าง','Minimize'):tr('ปิด','Close')}</button></div>
  <p className="text-sm text-slate-600">{tr('ซิงค์งานระหว่างอุปกรณ์ หรือเลือกส่งสำเนาไฟล์ไป My Drive แยกกัน ไม่ส่งรหัสผ่านหรือ Gemini API Key','Sync between devices or export visible copies to My Drive separately. Passwords and Gemini API keys are excluded.')}</p>
  {link&&<div className="rounded-lg bg-emerald-50 p-3 text-sm break-all"><strong>{tr('จดจำบัญชี Google แล้ว','Google account remembered')}</strong><div>{link.email}</div>{link.lastSync&&<div className="text-xs mt-1">{tr('ซิงค์ล่าสุด: ','Last sync: ')}{new Date(link.lastSync).toLocaleString(lang==='th'?'th-TH':'en-GB')}</div>}</div>}
  {!link&&<button disabled={!ready||busy} onClick={()=>connect('connect',true)} className="w-full rounded bg-blue-800 text-white p-3 disabled:opacity-50">{tr('เชื่อม Google Drive','Connect Google Drive')}</button>}
@@ -247,7 +265,8 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
  {busy&&<button type="button" disabled={cancelling} onClick={cancel} className="w-full rounded border border-red-600 text-red-700 p-3 font-bold disabled:opacity-50">{cancelling?tr('กำลังยกเลิก…','Cancelling…'):tr('ยกเลิกการดำเนินการ','Cancel operation')}</button>}
  {link?.folder&&/^[A-Za-z0-9_-]+$/.test(link.folder)&&<a className="block text-center rounded border border-slate-300 p-3 font-semibold text-blue-800" href={'https://drive.google.com/drive/folders/'+link.folder} target="_blank" rel="noopener noreferrer">{tr('เปิดโฟลเดอร์ Google Drive','Open Google Drive folder')}</a>}
  {link&&<div className="flex justify-between gap-2"><button disabled={!ready||busy} onClick={()=>connect('connect',true)} className="text-xs underline">{tr('ยืนยันบัญชี Google ใหม่','Reconnect Google account')}</button><button disabled={busy} onClick={async()=>{if(!window.confirm(tr('ยกเลิกการจดจำบัญชีบนเครื่องนี้? ไฟล์ Drive และแฟ้มงานจะไม่ถูกลบ','Forget this Google account on this device? No Drive or local files will be deleted.')))return;clearDriveSession();setToken('');try{workspaceStorage.removeItem(LINK);workspaceStorage.setItem(AUTO,'0');if(!await flushWorkspace())throw Error('Local save failed');setLink(null);setAuto(false);setMsg(tr('ยกเลิกการจดจำบัญชีแล้ว','Account link forgotten'));}catch(e){setMsg(String(e));}}} className="text-xs text-red-700 underline">{tr('ยกเลิกการเชื่อมต่อ','Disconnect')}</button></div>}
- {msg&&<p role="status" className="text-sm bg-slate-100 rounded p-3 break-words">{msg}</p>}
+ {msg&&<div role="status" className="text-sm bg-slate-100 rounded p-3 break-words"><p>{msg}</p>{busy&&progress&&<progress aria-label={tr('ความคืบหน้าการส่งไฟล์','File export progress')} value={progress.done} max={progress.total} className="mt-2 w-full h-2 accent-emerald-600"/>}</div>}
+ {busy&&!applyingRestore&&<p className="text-xs text-slate-600">{tr('กดซ่อนหน้าต่างเพื่อทำงานอื่นต่อได้ โดยงานจะทำต่อขณะเปิดเว็บนี้ไว้','Minimize to continue other work. Keep this app open until the operation finishes.')}</p>
  <p className="text-xs text-slate-500">{tr('กดซิงค์หลังบันทึกงาน ใช้บัญชีเดิมทั้งสองเครื่อง หาก Google หมดอายุสิทธิ์อาจเปิดหน้าขออนุญาตอีกครั้ง สำเนาใน My Drive เป็นไฟล์สำหรับเปิดดู ไม่ใช่ต้นทางซิงค์ และเก็บรุ่นเก่าไว้','Sync after saving. Use the same accounts on both devices. Google may request authorization again when access expires. Visible copies are for viewing, not the sync source, and older copies are retained.')}</p>
  </section></div>;
 }
