@@ -1,7 +1,7 @@
 import {isDngFile,decodeDngToJpeg} from './dngImage';
 import { configureReportFrame, reportDocument, prepareReportCanvasFonts } from './reportLayout';
 import { appendPrintableExcelReport } from './excelReport';
-import { downloadNativeWordReport } from './wordReport';
+import { buildNativeWordReport, downloadNativeWordReport } from './wordReport';
 import ExcelJS from 'exceljs';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -1480,6 +1480,31 @@ function verifyPdfFontMetrics(doc:Document):void{
   }
 }
 
+// Only use an explicitly configured converter; never upload a customer report
+// to an unconfigured public service. GitHub Pages itself cannot run LibreOffice.
+export function isWordPdfConverterConfigured():boolean {
+  return Boolean(String((import.meta as ImportMeta & {env?:Record<string,string|undefined>}).env?.VITE_REPORT_PDF_CONVERTER_URL||'').trim());
+}
+async function convertReportWordToPDF(pages:BuiltReportPage[],filename:string):Promise<void>{
+  const configured=String((import.meta as ImportMeta & {env?:Record<string,string|undefined>}).env?.VITE_REPORT_PDF_CONVERTER_URL||'').trim();
+  const endpoint=new URL(configured,location.href);
+  if(endpoint.protocol!=='https:' && !(endpoint.protocol==='http:'&&['localhost','127.0.0.1'].includes(endpoint.hostname)))throw Error('PDF converter must use HTTPS');
+  if(endpoint.username||endpoint.password)throw Error('Invalid PDF converter URL');
+  const docx=await buildNativeWordReport(pages);
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),150000);
+  try{
+    const response=await fetch(endpoint.href,{method:'POST',headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.wordprocessingml.document'},body:docx,signal:controller.signal,credentials:'same-origin',cache:'no-store',redirect:'error'});
+    if(!response.ok)throw Error('Word to PDF conversion failed ('+response.status+')');
+    const pdf=await response.blob();
+    if(await pdf.slice(0,5).text()!=='%PDF-')throw Error('Converter did not return a PDF');
+    const url=URL.createObjectURL(new Blob([pdf],{type:'application/pdf'}));
+    const link=document.createElement('a');
+    link.href=url;link.download=filename;document.body.appendChild(link);link.click();link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),30000);
+  }finally{clearTimeout(timer);}
+}
+
 export async function exportProjectPDF(
   proj: ProjectFile,
   brand: BrandConfig,
@@ -1492,6 +1517,12 @@ export async function exportProjectPDF(
   const assets = await prepareSharedReportAssets(proj, brand);
   const pages = buildSharedReportPages(proj, brand, lang, assets, rb);
   if (!pages.length) throw Error('No report pages generated');
+
+  if(isWordPdfConverterConfigured()){
+    // Same native DOCX as the blue Word download button.
+    await convertReportWordToPDF(pages,fileName);
+    return fileName;
+  }
 
   const iframe = document.createElement('iframe');
   configureReportFrame(iframe);
