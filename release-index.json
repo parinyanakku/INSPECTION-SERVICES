@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.59",
+  "latest": "v1.0.63",
   "releases": [
+    {
+      "version": "v1.0.63",
+      "build": 63,
+      "storageSchema": 2,
+      "date": "2026-11-27T01:51:35.289Z",
+      "notes": "Allow Pages builds to use an explicitly configured DOCX conversion endpoint",
+      "commit": "de3065c8c35bb562f5a7c5a3b04017aa43517342"
+    },
     {
       "version": "v1.0.59",
       "build": 59,
