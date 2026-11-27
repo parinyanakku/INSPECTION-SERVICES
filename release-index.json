@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.160",
+  "latest": "v1.0.161",
   "releases": [
+    {
+      "version": "v1.0.161",
+      "build": 161,
+      "storageSchema": 2,
+      "date": "2026-11-27T08:02:06.304Z",
+      "notes": "List verified workspace and individual project backups and preview defect counts before selected restore",
+      "commit": "d6eae85940b6c3ace552dea11ff2b32d3b9e68f4"
+    },
     {
       "version": "v1.0.160",
       "build": 160,
