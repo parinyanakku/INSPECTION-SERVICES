@@ -3,7 +3,7 @@ import {BookOpen,ChevronLeft,ChevronRight,X} from 'lucide-react';
 import type {AppLanguage,WorkspaceTab} from '../types/inspection';
 import {workspaceStorage} from '../utils/workspaceStorage';
 
-const KEY='tis_buyer_guided_tour_v1';
+const KEY='tis_buyer_guided_tour_v2';
 type Step={target:string;th:string;en:string;bodyTh:string;bodyEn:string;tab?:WorkspaceTab};
 const steps:Step[]=[
  {target:'brand',th:'ตั้งค่าชื่อผู้ตรวจสอบและบริษัท',en:'Set your inspector and company details',bodyTh:'กดปุ่มแก้ไขข้อมูลบริษัท/โลโก้ กรอกชื่อผู้ตรวจสอบ เลขใบอนุญาต (ถ้ามี) และข้อมูลติดต่อของคุณ แล้วบันทึก',bodyEn:'Open Company & Logo, enter your own inspector details, license if applicable, and contact information, then save.'},
@@ -17,8 +17,11 @@ const steps:Step[]=[
  {target:'tab-list',tab:'list',th:'ตรวจสอบรายการ Defect',en:'Review the defect list',bodyTh:'เปิดแท็บรายการ Defect ตรวจสอบข้อมูลทุกข้อ กรองตามชั้นหรือโซน แก้ไขรายละเอียด และเพิ่มรูปหลังแก้ไขเมื่อมีการตรวจติดตาม',bodyEn:'Open the defect list to review, filter, edit details and add after-repair photos during follow-up.'},
  {target:'report',tab:'export',th:'สร้างเล่มรายงาน',en:'Export the inspection report',bodyTh:'เลือกตรวจครั้งแรกหรือแบบตรวจติดตาม แล้วดาวน์โหลด PDF, Word, Excel แยกไฟล์หรือครบทั้งสามไฟล์',bodyEn:'Choose first inspection or follow-up, then download PDF, Word and Excel individually or together.'},
  {target:'client',tab:'client',th:'ส่งเว็บไซต์ให้ลูกค้า',en:'Share the customer website',bodyTh:'เปิดแท็บเว็บไซต์ลูกค้า เลือกดาวน์โหลด HTML หรือสร้างลิงก์ออนไลน์ กำหนดวันหมดอายุและคัดลอกส่ง LINE เฉพาะผู้ได้รับอนุญาต',bodyEn:'Open Customer website, download HTML or create an expiring link and share it only with authorized recipients.'},
- {target:'backup',th:'บันทึกและสำรองข้อมูล',en:'Save and back up your work',bodyTh:'กลับไปคลังแฟ้มโครงการแล้วสำรอง JSON เก็บไว้ในเครื่องเป็นระยะ เพื่อป้องกันข้อมูลสูญหายเมื่อเปลี่ยนเครื่องหรือเบราว์เซอร์',bodyEn:'Return to the project hub and regularly save JSON backups in a safe location, especially before changing device or browser.'},
+ {target:'drive',th:'ซิงค์และกู้คืนแฟ้มจาก Google Drive',en:'Sync and recover Drive projects',bodyTh:'กดซิงค์ Google Drive ที่แถบบัญชี เชื่อม Google บัญชีเดียวกันทั้งสองเครื่อง เปิดซิงค์อัตโนมัติ ระบบตรวจทุก 20 วินาทีเมื่อเปิดเว็บอยู่ และรับข้อมูลเมื่ออยู่หน้าแฟ้มโครงการ หากแฟ้มขาดให้เลือกกู้คืนแฟ้มที่ขาดจากข้อมูลสำรอง Drive โดยไม่ทับแฟ้มเดิม ต้องยืนยัน Google ใหม่เมื่อสิทธิ์หมดอายุ',bodyEn:'Open Google Drive sync in the account bar, link the same Google account on both devices and enable auto sync. The app checks every 20 seconds while open and receives changes on the idle project list. Use Recover missing projects from Drive backup to add absent projects without overwriting. Renew Google authorization when needed.'},
+ {target:'backup',th:'บันทึกและสำรองข้อมูล',en:'Save and back up your work',bodyTh:'กลับไปคลังแฟ้มโครงการแล้วสำรอง JSON เก็บไว้ในเครื่องเป็นระยะ โดยเฉพาะก่อนเปลี่ยนเครื่องหรือเบราว์เซอร์ หาก Drive แจ้งข้อมูลแก้ไขต่างกัน ให้เก็บ JSON ทั้งสองเครื่องก่อนแก้ไข',bodyEn:'Return to the project hub and regularly save JSON backups, especially before changing devices or browsers. If Drive reports conflicting edits, back up both devices first.'},
 ];
+// Automatically re-offer the guide when its lesson content changes, not on every technical build.
+const guideRevision=JSON.stringify(steps).split('').reduce((h,c)=>Math.imul(h^c.charCodeAt(0),16777619)>>>0,2166136261).toString(16);
 type Props={lang:AppLanguage;active:boolean;hasProject:boolean;hasProjects:boolean;tab:WorkspaceTab;paused:boolean;onClose:()=>void};
 export function BuyerTour({lang,active,hasProject,hasProjects,tab,paused,onClose}:Props){
  const [index,setIndex]=useState(0),[rect,setRect]=useState<{left:number;top:number;width:number;height:number}|null>(null),[hint,setHint]=useState(false);
@@ -30,7 +33,7 @@ export function BuyerTour({lang,active,hasProject,hasProjects,tab,paused,onClose
  else if(step.target==='project'&&!hasProject&&hasProjects)target='open-project';
  else if(step.tab&&step.tab!==tab)target='tab-'+step.tab;
  if(step.target==='project'&&hasProject)target='tab-studio';
- if(step.target==='backup'&&hasProject)target='hub';
+ if((step.target==='backup'||step.target==='drive')&&hasProject)target='hub';
  useEffect(()=>{if(!active){setIndex(0);setRect(null);}},[active]);
  useEffect(()=>{
    if(!active||paused){setRect(null);return;}
@@ -71,5 +74,5 @@ export function BuyerTour({lang,active,hasProject,hasProjects,tab,paused,onClose
    </div>
  </div>;
 }
-export function buyerTourSeen(){try{return workspaceStorage.getItem(KEY)==='1';}catch{return false;}}
-export function markBuyerTourSeen(){try{workspaceStorage.setItem(KEY,'1');}catch{}}
+export function buyerTourSeen(){try{return workspaceStorage.getItem(KEY)===guideRevision;}catch{return false;}}
+export function markBuyerTourSeen(){try{workspaceStorage.setItem(KEY,guideRevision);}catch{}}
