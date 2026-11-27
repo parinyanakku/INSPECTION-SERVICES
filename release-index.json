@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.105",
+  "latest": "v1.0.106",
   "releases": [
+    {
+      "version": "v1.0.106",
+      "build": 106,
+      "storageSchema": 2,
+      "date": "2026-11-27T05:38:07.836Z",
+      "notes": "Sync edited owner list into report settings, fit project heading and expose export errors",
+      "commit": "987f5a4b4d180f1f9447d0d8c8458474f3e39d23"
+    },
     {
       "version": "v1.0.105",
       "build": 105,
