@@ -1,6 +1,8 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {flushSync} from 'react-dom';
 import type {AppLanguage} from '../types/inspection';
+import {createImageIndexScanner,type ImageRange} from '../utils/driveImageIndex.mjs';
+import {DriveReadOnlyPreview,type DrivePreviewIndex} from './DriveReadOnlyPreview';
 import {streamOriginal} from '../utils/driveStreamOriginal';
 import {withDriveDownload} from '../utils/driveDownload';
 import {applyMobileRecords} from '../utils/driveMobileCopy';
@@ -196,6 +198,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
  const [checkedAt,setCheckedAt]=useState('');
  const [localSummary,setLocalSummary]=useState<{projects:number;defects:number}|null>(null);
  const [advanced,setAdvanced]=useState(false);
+ const [mobilePreview,setMobilePreview]=useState<DrivePreviewIndex|null>(null);
  useEffect(()=>{if(!visible)return;let done=false;const refresh=()=>{void readSyncRecords().then(records=>{if(!done)setLocalSummary(counts(records));}).catch(()=>{if(!done)setLocalSummary(null);});};refresh();window.addEventListener('tis-workspace-sync-change',refresh);return()=>{done=true;window.removeEventListener('tis-workspace-sync-change',refresh);};},[visible]);
  const active=useRef(true);
  const [auto,setAuto]=useState(readAuto);
@@ -240,14 +243,14 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
    if(!await flushWorkspace())throw Error('Local connection settings could not be saved');
    if(active.current){setLink(value);if(live?.userId===userId)live.identity=value;}
  }
- function connect(action:'connect'|'sync'|'download'|'export'|'recover'|'browse'|'publish'='connect',choose=false){
+ function connect(action:'connect'|'sync'|'download'|'export'|'recover'|'browse'|'publish'|'preview'='connect',choose=false){
   if(operation.current){setMsg(tr('กำลังทำงานอยู่ กรุณารอหรือกดยกเลิก','An operation is already running. Wait or cancel it.'));return;}
   if(paused){setMsg(tr('ปิดหน้าต่างจัดการบัญชีก่อนซิงค์','Close account management before syncing.'));return;}
   if(!gis()){setMsg(tr('Google ยังโหลดไม่สำเร็จ กรุณาเปิดหน้าซิงค์ใหม่','Google sign-in is not ready. Reopen sync settings.'));return;}
   autoHold.current=false;
   const op=new AbortController();operation.current=op;setBusy(true);setCancelling(false);setMsg(tr('กำลังตรวจสิทธิ์ Google Drive…','Checking Google Drive authorization…'));
   const run=async(access:string)=>{
-   try{check(op);if(action==='export')await exportFiles(access,op);else if(action==='recover')await recoverBackup(access,op);else if(action==='browse')await browseBackups(access,op);else if(action==='publish')await publishLatest(access,op);else if(action!=='connect')await sync(action==='download',access,op);}
+   try{check(op);if(action==='export')await exportFiles(access,op);else if(action==='recover')await recoverBackup(access,op);else if(action==='browse')await browseBackups(access,op);else if(action==='publish')await publishLatest(access,op);else if(action==='preview')await previewOriginal(access,op);else if(action!=='connect')await sync(action==='download',access,op);}
    catch(e){handleError(e,op);}finally{end(op);}
   };
   if(!choose&&validToken(userId)){void run(validToken(userId));return;}
@@ -275,7 +278,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
       else if(action==='export')await exportFiles(access,op);
       else if(action==='recover')await recoverBackup(access,op);
       else if(action==='browse')await browseBackups(access,op);
-      else if(action==='publish')await publishLatest(access,op);
+      else if(action==='publish')await publishLatest(access,op);else if(action==='preview')await previewOriginal(access,op);
       else await sync(action==='download',access,op);
     }catch(e){handleError(e,op);}finally{end(op);}
    },error_callback:()=>{if(active.current&&operation.current===op){setMsg(tr('ยกเลิกหรือเปิดหน้าต่าง Google ไม่สำเร็จ','Google connection cancelled or popup failed'));end(op);}}}).requestAccessToken({prompt:!choose&&remembered?'':'select_account'});
@@ -287,6 +290,54 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   const message=e instanceof Error?e.message:String(e);
   if(message==='CONFLICT'){autoHold.current=true;setMsg(tr('พบข้อมูลคนละชุดหรือแก้ไขทั้งสองเครื่อง ระบบหยุดซิงค์เพื่อไม่เขียนทับ กรุณาสำรอง JSON และติดต่อผู้ดูแล','Different or concurrent changes detected. Sync stopped to prevent overwriting. Export JSON and contact support.'));}
   else{if(message.includes('401')){live=null;setToken('');}setMsg(tr('ดำเนินการไม่สำเร็จ: ','Operation failed: ')+message);}
+ }
+  async function previewOriginal(token:string,op:AbortController){
+  autoHold.current=true;setMobilePreview(null);
+  const remote=await files(token,userId,op.signal,true);check(op);
+  if(!remote||remote.appProperties?.tisJson!=='1')throw Error(tr('ไม่พบ JSON ต้นฉบับ','No original JSON found'));
+  const summary=cloudInfo(remote),expectedHash=remote.appProperties?.hash;
+  if(!summary||!expectedHash||remote.appProperties?.tisUser!==userId)throw Error('Invalid Drive metadata');
+  setCloud(summary);setCheckedAt(new Date().toISOString());
+  const cacheKey='tis_drive_readonly_index_v1';
+  let saved:DrivePreviewIndex|null=null;
+  try{saved=JSON.parse(workspaceStorage.getItem(cacheKey)||'null');}catch{}
+  if(saved?.fileId===remote.id&&saved.hash===expectedHash&&saved.projects.length===summary.projects&&saved.projects.reduce((n,p)=>n+p.defects.length,0)===summary.defects){
+   setMobilePreview(saved);setMsg(tr('เปิดรายการจากดัชนีที่เก็บไว้ · อ่านอย่างเดียว','Opened saved index · Read only'));return;
+  }
+  const response=await api(token,ROOT+'/'+encodeURIComponent(remote.id)+'?alt=media',{signal:op.signal});
+  if(!response.body)throw Error('Streaming not supported');
+  const reader=response.body.getReader(),scanner=createImageIndexScanner();
+  let received=0,last=0;const total=Number(response.headers.get('Content-Length'))||0;
+  try{
+   for(;;){
+    check(op);const part=await reader.read();if(part.done)break;
+    scanner.feed(part.value);received+=part.value.byteLength;
+    if(performance.now()-last>250){last=performance.now();setMsg(tr('กำลังสร้างรายการงานโดยไม่เก็บรูปใน RAM ','Indexing work without retaining images ')+(received/1048576).toFixed(1)+' MB'+(total?' / '+(total/1048576).toFixed(1)+' MB':''));}
+   }
+  }finally{try{await reader.cancel();}catch{}reader.releaseLock();}
+  check(op);const index=scanner.finish();
+  const payload=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(index.bytes));
+  if(payload.format!=='TIS_HOME_INSPECTION_BACKUP_V10'||payload.userId!==userId||payload.contentHash!==expectedHash||!Array.isArray(payload.projects))throw Error('Invalid original snapshot identity');
+  const projects=payload.projects as DrivePreviewIndex['projects'];
+  if(projects.some(p=>!p||typeof p.id!=='string'||!Array.isArray(p.floors)||!Array.isArray(p.defects)||p.defects.some(d=>!d||typeof d.id!=='string'))||new Set(projects.map(p=>p.id)).size!==projects.length||projects.length!==summary.projects||projects.reduce((n,p)=>n+p.defects.length,0)!==summary.defects)throw Error('Project count or structure mismatch');
+  if((await files(token,userId,op.signal,true))?.id!==remote.id)throw Error('CONFLICT');
+  check(op);
+  const next={fileId:remote.id,hash:expectedHash,date:summary.date,projects,ranges:index.ranges,total:index.total};
+  // Non-sync cache. Never replaces the editable workspace.
+  workspaceStorage.setItem(cacheKey,JSON.stringify(next));if(!await flushWorkspace())throw Error('Could not save read-only index');
+  check(op);setMobilePreview(next);setMsg(tr('เปิดรายการจาก Drive สำเร็จ · อ่านอย่างเดียว · ','Drive list opened · Read only · ')+describe(summary));
+ }
+ async function previewPhoto(range:ImageRange,signal:AbortSignal){
+  const access=validToken(userId),index=mobilePreview;
+  if(!access||!index)throw Error(tr('กรุณายืนยัน Google และเปิดดูงานใหม่','Authorize Google and reopen the viewer'));
+  if(!Number.isSafeInteger(range.start)||!Number.isSafeInteger(range.end)||range.start<0||range.end<range.start||range.end>=index.total||range.end-range.start>32*1024*1024)throw Error('Image range exceeds safe size');
+  const r=await api(access,ROOT+'/'+encodeURIComponent(index.fileId)+'?alt=media',{signal,headers:{Range:'bytes='+range.start+'-'+range.end}});
+  if(r.status!==206){try{await r.body?.cancel();}catch{}throw Error(tr('Drive ไม่รองรับโหลดรูปแยกจากไฟล์นี้','Drive did not support partial download for this file'));}
+  const contentRange=r.headers.get('Content-Range');if(contentRange&&!contentRange.startsWith('bytes '+range.start+'-'+range.end+'/'))throw Error('Incorrect image range');
+  const bytes=await r.arrayBuffer();if(bytes.byteLength!==range.end-range.start+1)throw Error('Incomplete original photo');
+  const value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));
+  if(typeof value!=='string'||!/^data:image\/(jpeg|jpg|png|webp|gif|bmp|svg\+xml)[;,]/i.test(value))throw Error('Unsupported image');
+  return value;
  }
  async function exportFiles(token:string,op:AbortController){
   const records=await readSyncRecords();check(op);
@@ -590,7 +641,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
  {applyingRestore&&<div role="status" aria-live="polite" className="fixed inset-0 z-[9999] bg-slate-900/60 flex items-center justify-center p-4"><div className="rounded-xl bg-white text-slate-900 p-5 font-semibold">{tr('กำลังบันทึกข้อมูลที่รับจาก Drive ลงเครื่อง กรุณารอให้เสร็จก่อนแก้ไขแฟ้ม','Applying restored Drive data. Editing will resume when complete.')}</div></div>}
  </>;
  return <div className="fixed inset-0 z-[80] bg-slate-900/60 flex items-center justify-center p-4"><section role="dialog" aria-modal="true" className="bg-white rounded-2xl p-5 max-w-lg w-full max-h-[90vh] overflow-auto space-y-4">
- <div className="sticky top-0 z-10 -mx-1 bg-white px-1 pb-2 space-y-2"><div className="flex justify-between items-center"><h2 className="font-bold text-slate-900">{tr('Google Drive · สำรองข้อมูล','Google Drive · Backup')}</h2><button type="button" disabled={applyingRestore} onClick={()=>{if(!busy){setRecoveryOpen(false);setAdvanced(false);}onClose();}} className="border border-slate-300 rounded px-3 py-1 text-slate-800 font-semibold disabled:opacity-50">{busy?tr('ซ่อนหน้าต่าง','Minimize'):tr('ปิด','Close')}</button></div>
+ <div className="sticky top-0 z-10 -mx-1 bg-white px-1 pb-2 space-y-2"><div className="flex justify-between items-center"><h2 className="font-bold text-slate-900">{tr('Google Drive · สำรองข้อมูล','Google Drive · Backup')}</h2><button type="button" disabled={applyingRestore} onClick={()=>{if(!busy){setRecoveryOpen(false);setAdvanced(false);setMobilePreview(null);}onClose();}} className="border border-slate-300 rounded px-3 py-1 text-slate-800 font-semibold disabled:opacity-50">{busy?tr('ซ่อนหน้าต่าง','Minimize'):tr('ปิด','Close')}</button></div>
  {msg&&<div role="status" aria-live="polite" className="rounded-lg border border-slate-300 bg-slate-50 p-2 text-sm text-slate-900 break-words">{busy&&<span className="inline-block mr-2 w-3 h-3 rounded-full border-2 border-current border-r-transparent animate-spin"/>}{msg}</div>}
  {busy&&!applyingRestore&&<button type="button" disabled={cancelling} onClick={cancel} className="text-sm font-semibold text-red-700 underline">{tr('ยกเลิกการดำเนินการ','Cancel operation')}</button>}
  </div>
@@ -605,7 +656,9 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
  <p className="text-xs text-slate-600">{isMobileReceiver()?tr('มือถือโหลด JSON ต้นฉบับได้แม้คอมปิด ไม่ลดความละเอียด ส่งงานที่แก้ไขกลับคอมได้ คอมต้องเปิดเว็บและยืนยัน Google เพื่อรับงาน','Mobile loads the original JSON even when the computer is off, and sends edits without resizing. Keep the computer app open and authorized to receive edits.'):tr('ส่ง JSON ต้นฉบับครั้งเดียว มือถือโหลดได้โดยตรง รับงานมือถือเมื่ออยู่หน้าแฟ้มโครงการ','Publish one original JSON for direct mobile loading. Receive mobile edits on the project list.')}</p>
  <button data-tour="drive-json-send" disabled={!ready||busy} onClick={()=>connect('publish')} className="w-full rounded-lg bg-emerald-700 text-white p-3 font-bold disabled:opacity-50">{tr('ส่ง JSON ล่าสุดขึ้น Drive','Send latest JSON to Drive')}</button>
  <button data-tour="drive-json-load" disabled={!ready||busy} onClick={()=>connect('download')} className="w-full rounded-lg bg-blue-700 text-white p-3 font-bold disabled:opacity-50">{tr('โหลด JSON ล่าสุดจาก Drive','Load latest JSON from Drive')}</button>
- <div className="rounded-lg border border-slate-200 p-3 space-y-1">{switchControl}<p className="text-xs text-slate-500">{tr('ตรวจทุก 20 วินาทีเมื่อเปิดเว็บและ Google พร้อมใช้งาน ไม่เขียนทับงานที่ขัดแย้งกัน','Checks every 20 seconds while open and authorized; conflicting work is not overwritten.')}</p></div>
+ <button disabled={!ready||busy} onClick={()=>connect('preview')} className="w-full rounded-lg border-2 border-indigo-600 text-indigo-800 p-3 font-bold disabled:opacity-50">{tr('ดูแฟ้มจาก Drive แบบเบา (อ่านอย่างเดียว)','Lightweight Drive viewer (read only)')}</button>
+  {mobilePreview&&<DriveReadOnlyPreview key={mobilePreview.fileId} index={mobilePreview} lang={lang} loadPhoto={previewPhoto} onClose={()=>setMobilePreview(null)}/>}
+  <div className="rounded-lg border border-slate-200 p-3 space-y-1">{switchControl}<p className="text-xs text-slate-500">{tr('ตรวจทุก 20 วินาทีเมื่อเปิดเว็บและ Google พร้อมใช้งาน ไม่เขียนทับงานที่ขัดแย้งกัน','Checks every 20 seconds while open and authorized; conflicting work is not overwritten.')}</p></div>
  <details open={advanced||recoveryOpen} onToggle={e=>{setAdvanced(e.currentTarget.open);if(!e.currentTarget.open&&!busy)setRecoveryOpen(false);}} className="border-t border-slate-200 pt-3 space-y-3">
  <summary className="cursor-pointer text-sm font-semibold text-slate-700">{tr('เพิ่มเติม · กู้คืน / ตั้งค่า','More · Recovery / settings')}</summary>
  {checkedAt&&<p className="text-xs text-slate-500">{tr('ตรวจ Drive ล่าสุด: ','Last checked: ')}{showTime(checkedAt)}</p>}
