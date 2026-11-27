@@ -397,8 +397,8 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       onNotify(lang === 'en' ? 'Finish the text annotation before rotating.' : 'กรุณาบันทึกข้อความก่อนหมุนรูป', 'info');
       return;
     }
-    remember();
     if(overlayDrag.current)return;
+    remember();
     cropRef.current=turnCrop(cropRef.current,delta);
     writeOverlays(overlaysRef.current.map(o=>({...o,...turnCrop(o,delta),turn:quarter(o.turn+delta)})));
     rotationRef.current = quarter(rotationRef.current + delta);
@@ -600,7 +600,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
         editingTextRef.current=null;setPendingTextPos(null);
         setPendingTextValue('');
       } else {
-        textDrag.current=null;
+        overlayDrag.current=null;panDrag.current=null;textDrag.current=null;
         isDrawingRef.current = false;
         currentShapeRef.current = null;
         setIsFullscreen(false);
@@ -753,7 +753,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     return {x:bounds.x+(bounds.w-w)/2,y:bounds.y+(bounds.h-h)/2,w,h};
   };
   const startCrop=()=>{
-    if(!loadedImageRef.current?.naturalWidth||pendingTextPosRef.current||isDrawingRef.current||textDrag.current||panDrag.current)return;
+    if(!loadedImageRef.current?.naturalWidth||pendingTextPosRef.current||isDrawingRef.current||textDrag.current||panDrag.current||overlayDrag.current||overlayBusyRef.current)return;
     setPhotoPan(false);setOverlayMode(false);selectOverlay(null);selectText(null);resetView();setCropRatio('free');
     const c=cropRef.current;cropDraft.current={x:c.x+c.w*.05,y:c.y+c.h*.05,w:c.w*.9,h:c.h*.9};
     setCropping(true);drawActiveCanvases();
@@ -852,7 +852,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     const od=overlayDrag.current;
     if(od&&od.id===e.pointerId){const {nx,ny}=getPos(e,e.currentTarget),o=od.start,c=cropRef.current;
       if(od.resize){const v=photoRect(e.currentTarget);if(!v)return;const px=o.w*v.dw,py=o.h*v.dh;const f=1+((nx-od.nx)*v.dw*px+(ny-od.ny)*v.dh*py)/Math.max(1,px*px+py*py);const max=Math.min((c.x+c.w-o.x)/o.w,(c.y+c.h-o.y)/o.h);if(max>0){const k=clamp(f,Math.min(.1,max),max);od.preview={...o,w:o.w*k,h:o.h*k};}}
-      else {od.preview={...o,x:clamp(o.x+nx-od.nx,c.x,c.x+c.w-o.w),y:clamp(o.y+ny-od.ny,c.y,c.y+c.h-o.h)};}
+      else {const right=c.x+c.w-o.w,bottom=c.y+c.h-o.h;od.preview={...o,x:clamp(o.x+nx-od.nx,Math.min(c.x,right),Math.max(c.x,right)),y:clamp(o.y+ny-od.ny,Math.min(c.y,bottom),Math.max(c.y,bottom))};}
       paintCanvas(e.currentTarget);return;}
     const cg=cropGesture.current;
     if(cg&&cg.id===e.pointerId){
@@ -976,7 +976,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
 
   const closeFullscreen = () => {
     if(cropDraft.current)cancelCrop();
-    panDrag.current=null;textDrag.current=null;
+    overlayDrag.current=null;panDrag.current=null;textDrag.current=null;
     isDrawingRef.current = false;
     currentShapeRef.current = null;
     editingTextRef.current=null;setPendingTextPos(null);
@@ -1223,7 +1223,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
           onLostPointerCapture={cancelStroke}
           onDoubleClick={()=>{if(!cropping&&!overlayMode&&!photoPan&&!pendingTextPosRef.current&&selectedTextRef.current===null)openFullscreen();}}
           className={`w-full h-full block touch-none ${
-            cropping ? 'cursor-crosshair' : overlayMode ? 'cursor-move' : photoPan ? 'cursor-grab active:cursor-grabbing' : tool === 'text' ? 'cursor-text' : 'cursor-crosshair'
+            cropping ? 'cursor-crosshair' : photoPan ? 'cursor-grab active:cursor-grabbing' : overlayMode ? 'cursor-move' : tool === 'text' ? 'cursor-text' : 'cursor-crosshair'
           } ${imageSrc ? '' : 'hidden'}`}
         />
 
@@ -1415,7 +1415,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
                   onPointerCancel={cancelStroke}
           onLostPointerCapture={cancelStroke}
                   className={`w-full h-full block touch-none ${
-                    cropping ? 'cursor-crosshair' : overlayMode ? 'cursor-move' : photoPan ? 'cursor-grab active:cursor-grabbing' : tool === 'text' ? 'cursor-text' : 'cursor-crosshair'
+                    cropping ? 'cursor-crosshair' : photoPan ? 'cursor-grab active:cursor-grabbing' : overlayMode ? 'cursor-move' : tool === 'text' ? 'cursor-text' : 'cursor-crosshair'
                   }`}
                 />
 
