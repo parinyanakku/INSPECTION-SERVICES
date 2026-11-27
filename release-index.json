@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.54",
+  "latest": "v1.0.55",
   "releases": [
+    {
+      "version": "v1.0.55",
+      "build": 55,
+      "storageSchema": 2,
+      "date": "2026-11-27T01:03:45.252Z",
+      "notes": "Organize defect cards with individual plan pin and before photo above repair details",
+      "commit": "1b76b2760d631e37cc5710f469f677dc5c9d52f0"
+    },
     {
       "version": "v1.0.54",
       "build": 54,
