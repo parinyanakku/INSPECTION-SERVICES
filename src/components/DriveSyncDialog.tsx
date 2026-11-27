@@ -378,6 +378,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
    if(marker.sentHash===localHash&&latest?.id===marker.sentId){setMsg(tr('ส่งงานมือถือแล้ว รอคอมพิวเตอร์รับ','Mobile changes sent; waiting for computer.'));return;}
    if(!automatic&&!window.confirm(tr('ส่งการแก้ไขจากมือถือให้คอมพิวเตอร์ โดยคงรูปต้นฉบับที่ไม่ได้แก้ไขหรือไม่?','Send mobile edits to the computer, keeping unchanged original photos?')))return;
    if((await files(token,userId,op.signal,true))?.id!==remote.id||(await linkedFile(token,userId,remote.id,'edit',op.signal))?.id!==latest?.id)throw Error('CONFLICT');
+   if(!equalRecords(await readSyncRecords(),records))throw Error(tr('งานเปลี่ยนระหว่างส่ง กรุณากดส่งใหม่','Work changed before send; please retry.'));
    check(op);const sent=await upload(token,userId,records,latest?.id||copy.id,op.signal,uploadProgress,{kind:'edit',source:remote.id,base:copy.id});
    await markMobile({...marker,sentId:sent.id,sentHash:localHash});check(op);
    setMsg(tr('ส่งงานจากมือถือแล้ว · ','Mobile work sent · ')+describe(counts(records))+tr(' · รอคอมรับและรวมรูปต้นฉบับ',' · waiting for computer to merge originals'));return;
@@ -434,9 +435,16 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   if(!c.projects)throw Error(tr('ไม่ส่งข้อมูลว่างขึ้น Drive','Cannot publish an empty workspace'));
   const remote=await files(token,userId,op.signal,true);check(op);
   if(remote&&await receiveMobileEdits(token,remote,records,await hash(records),op,false))return;
+  if(remote?.appProperties?.tisJson==='1'&&remote.appProperties.hash===await hash(records)){
+   check(op);const ready=await ensureMobileCopy(token,remote,records,op,true);check(op);
+   workspaceStorage.setItem(MARK,JSON.stringify({id:remote.id,hash:await hash(records)}));if(!await flushWorkspace())throw Error('Local marker save failed');
+   await rememberCloud(remote,records);setCheckedAt(new Date().toISOString());
+   setMsg(tr('ต้นฉบับบน Drive ตรงกับเครื่องแล้ว · ','Full JSON already matches · ')+describe(c)+(ready?tr(' · มือถือพร้อมโหลด',' · mobile ready'):tr(' · ฉบับมือถือยังไม่พร้อม',' · mobile copy not ready')));return;
+  }
   const prior=remote?cloudInfo(remote):null;check(op);
   if(!window.confirm(tr('ส่ง JSON จากเครื่องนี้เป็นฉบับล่าสุดบน Drive: ','Publish this device as the latest Drive JSON: ')+describe(c)+(prior?'\nDrive: '+describe(prior)+' · '+showTime(prior.date):'')+'\n'+tr('ฉบับก่อนหน้าจะยังอยู่ใน Drive ไม่ลบไฟล์เดิม ยืนยันเฉพาะเมื่อเครื่องนี้มีงานล่าสุดจริง','Previous versions are retained. Confirm only if this device has the intended latest work.')))return;
   check(op);if((await files(token,userId,op.signal,true))?.id!==remote?.id)throw Error('CONFLICT');
+  if(remote&&await linkedFile(token,userId,remote.id,'edit',op.signal))throw Error('CONFLICT');
   const current=await readSyncRecords();if(!equalRecords(current,records))throw Error(tr('งานเปลี่ยนระหว่างยืนยัน กรุณากดส่งอีกครั้ง','Work changed during confirmation; publish again.'));
   check(op);setMsg(tr('กำลังส่ง JSON ฉบับล่าสุด…','Uploading latest JSON…'));
   const file=await upload(token,userId,records,remote?.id||'',op.signal,uploadProgress);check(op);
@@ -482,6 +490,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
    if(marker?.id===remote.id&&!downloadOnly){
     if(!automatic&&!window.confirm(tr('ส่งงานที่แก้ไขล่าสุดไปยัง Google Drive หรือไม่?','Upload your latest saved changes?')))return;
     if((await files(token,userId,op.signal))?.id!==remote.id)throw Error('CONFLICT');check(op);
+    if(await linkedFile(token,userId,remote.id,'edit',op.signal))throw Error('CONFLICT');
     check(op);const file=await upload(token,userId,records,remote.id,op.signal,uploadProgress),id=file.id;
     if(!active.current)return;
     check(op);workspaceStorage.setItem(MARK,JSON.stringify({id,hash:localHash}));if(!await flushWorkspace())throw Error('Local marker save failed');
