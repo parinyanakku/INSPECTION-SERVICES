@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.212",
+  "latest": "v1.0.213",
   "releases": [
+    {
+      "version": "v1.0.213",
+      "build": 213,
+      "storageSchema": 2,
+      "date": "2026-11-27T15:22:41.856Z",
+      "notes": "Retry initial Drive read stages within one load and refresh committed project screen",
+      "commit": "16a51734e4f6fd01cfcba6fd3cc1c63127506081"
+    },
     {
       "version": "v1.0.212",
       "build": 212,
