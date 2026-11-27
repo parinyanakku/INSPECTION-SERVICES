@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.98",
+  "latest": "v1.0.99",
   "releases": [
+    {
+      "version": "v1.0.99",
+      "build": 99,
+      "storageSchema": 2,
+      "date": "2026-11-27T05:21:35.062Z",
+      "notes": "Add floating scroll-to-bottom navigation alongside back-to-top",
+      "commit": "bafe82496c990f3922fe89635f260eaba059993e"
+    },
     {
       "version": "v1.0.98",
       "build": 98,
