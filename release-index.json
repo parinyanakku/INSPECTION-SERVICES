@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.204",
+  "latest": "v1.0.205",
   "releases": [
+    {
+      "version": "v1.0.205",
+      "build": 205,
+      "storageSchema": 2,
+      "date": "2026-11-27T10:49:59.703Z",
+      "notes": "Spool large Drive downloads to temporary storage; avoid duplicate JSON validation and update guide",
+      "commit": "3754381ef3b4ecd32c82f97a942e4ab0aac35161"
+    },
     {
       "version": "v1.0.204",
       "build": 204,
