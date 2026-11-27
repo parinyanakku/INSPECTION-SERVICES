@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.80",
+  "latest": "v1.0.81",
   "releases": [
+    {
+      "version": "v1.0.81",
+      "build": 81,
+      "storageSchema": 2,
+      "date": "2026-11-27T02:31:10.604Z",
+      "notes": "Add straight line drawing with L shortcut and Shift angle snapping in both markup editors",
+      "commit": "2ba7de5b3e359f8c5db6364d8977aa28e6149b89"
+    },
     {
       "version": "v1.0.80",
       "build": 80,
