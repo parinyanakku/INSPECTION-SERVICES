@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.216",
+  "latest": "v1.0.217",
   "releases": [
+    {
+      "version": "v1.0.217",
+      "build": 217,
+      "storageSchema": 2,
+      "date": "2026-11-27T17:01:37.671Z",
+      "notes": "Merge pull request #1 from teaminspectionproelite/fix/mobile-drive-restore-memory",
+      "commit": "c1c8e260c95bee69cf8ea7c8ebe45f60feae6c4a"
+    },
     {
       "version": "v1.0.216",
       "build": 216,
