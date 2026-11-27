@@ -180,6 +180,8 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
   // Toasts & PDF export state
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const exportLock=useRef(false);
+  const [exportBatch,setExportBatch]=useState<{all:boolean;format:'PDF'|'Word'|'Excel';index:number;total:number}|null>(null);
   const [pdfOverlayVisible,setPdfOverlayVisible]=useState(false);
   const [pdfProgress,setPdfProgress]=useState({done:0,total:0});
   const pdfJobRef=useRef<AbortController|null>(null);
@@ -881,71 +883,55 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
     }));
   };
 
-  const handleExportPDF = async (reportBook?: ReportBookData) => {
-    if (!activeProject || pdfJobRef.current) return;
-    const job=new AbortController();pdfJobRef.current=job;
-    setPdfProgress({done:0,total:0});setPdfOverlayVisible(true);
-    setIsExportingPdf(true);
-    try {
-      // Allow React to paint the loading overlay before mounting/rendering the A4 PDF template
-      await new Promise<void>((resolve) => {
-        requestAnimationFrame(() => setTimeout(resolve, 60));
-      });
-      job.signal.throwIfAborted();
-      const fileName = await exportProjectPDF(activeProject, brand, lang, reportBook,job.signal,(done,total)=>setPdfProgress({done,total}));
-      job.signal.throwIfAborted();
-      notify(
-        lang === 'en'
-          ? `Downloaded ${fileName}${isWordPdfConverterConfigured()?' (Word conversion)':' (built-in PDF; Word converter not configured)'}`
-          : `ดาวน์โหลดไฟล์ ${fileName} เรียบร้อยแล้ว${isWordPdfConverterConfigured()?' (แปลงจาก Word)':' (PDF ระบบเดิม ยังไม่ได้เชื่อมตัวแปลง Word)'}`,
-        'success'
-      );
-    } catch (err: unknown) {
-      if(job.signal.aborted){notify(lang==='en'?'PDF export cancelled':'ยกเลิกการสร้าง PDF แล้ว','warning');return;}
-      const msg = err instanceof Error ? err.message : 'PDF error';
-      notify(
-        lang === 'en'
-          ? `Failed to generate PDF: ${msg}`
-          : `สร้างไฟล์ PDF ไม่สำเร็จ: ${msg}`,
-        'danger'
-      );
-    } finally {
-      if(pdfJobRef.current===job){pdfJobRef.current=null;setPdfOverlayVisible(false);setIsExportingPdf(false);}
-    }
+  const runReportExports=async(formats:('PDF'|'Word'|'Excel')[],reportBook?:ReportBookData)=>{
+    if(!activeProject||exportLock.current||pdfJobRef.current)return;
+    const project=activeProject;
+    const snapshot=reportBook?{...reportBook,customExport:{...reportBook.customExport}}:undefined;
+    const all=formats.length>1;
+    exportLock.current=true;
+    const completed:string[]=[],failed:string[]=[];
+    let cancelled=false;
+    try{
+      for(let i=0;i<formats.length;i++){
+        const format=formats[i];
+        setExportBatch({all,format,index:i+1,total:formats.length});
+        await new Promise<void>(resolve=>setTimeout(resolve,60));
+        try{
+          if(format==='PDF'){
+            const job=new AbortController();pdfJobRef.current=job;
+            setPdfProgress({done:0,total:0});setPdfOverlayVisible(true);setIsExportingPdf(true);
+            try{
+              await new Promise<void>(resolve=>requestAnimationFrame(()=>setTimeout(resolve,60)));
+              job.signal.throwIfAborted();
+              const filename=await exportProjectPDF(project,brand,lang,snapshot,job.signal,(done,total)=>setPdfProgress({done,total}));
+              job.signal.throwIfAborted();
+              if(!all)notify((lang==='en'?'Download requested: ':'ส่งไฟล์ให้เบราว์เซอร์ดาวน์โหลด: ')+filename,'success');
+            }catch(err){if(job.signal.aborted){cancelled=true;break;}throw err;}
+            finally{if(pdfJobRef.current===job){pdfJobRef.current=null;setPdfOverlayVisible(false);setIsExportingPdf(false);}}
+          }else if(format==='Word'){
+            await exportProjectWord(project,brand,lang,snapshot);
+            if(!all)notify(lang==='en'?'Word download requested':'ส่งไฟล์ Word ให้เบราว์เซอร์ดาวน์โหลดแล้ว','success');
+          }else{
+            const kind=await exportProjectExcel(project,brand,lang,snapshot);
+            if(kind!=='xlsx')throw Error(lang==='en'?'Excel fallback CSV only':'ได้ไฟล์ CSV สำรองแทน Excel');
+            if(!all)notify(lang==='en'?'Excel download requested':'ส่งไฟล์ Excel ให้เบราว์เซอร์ดาวน์โหลดแล้ว','success');
+          }
+          completed.push(format);
+        }catch(err){
+          failed.push(format);
+          console.error(err);
+          notify(format+(lang==='en'?' export failed: ':' ส่งออกไม่สำเร็จ: ')+(err instanceof Error?err.message:String(err)),'danger');
+        }
+        if(i<formats.length-1)await new Promise<void>(resolve=>setTimeout(resolve,180));
+      }
+      if(cancelled)notify(lang==='en'?'Report export cancelled':'ยกเลิกการส่งออกรายงานแล้ว','warning');
+      else if(all)notify((lang==='en'?'Download requests: ':'ส่งคำขอดาวน์โหลดแล้ว: ')+completed.length+'/3'+(failed.length?' · '+(lang==='en'?'Failed: ':'ไม่สำเร็จ: ')+failed.join(', '):' · '+(lang==='en'?'Allow multiple downloads if prompted.':'หากเบราว์เซอร์ถาม ให้เลือกอนุญาตดาวน์โหลดหลายไฟล์')),failed.length?'warning':'success');
+    }finally{exportLock.current=false;setExportBatch(null);}
   };
-
-  const handleExportWord = async (reportBook?: ReportBookData) => {
-    if (!activeProject) return;
-    try {
-    await exportProjectWord(activeProject, brand, lang, reportBook);
-    notify(
-      lang === 'en'
-        ? 'Downloaded Word report (.docx)'
-        : 'ดาวน์โหลดรายงาน Word (.docx) เรียบร้อยแล้ว',
-      'success'
-    );
-    } catch(err) {console.error(err);notify((lang==='en'?'Word export failed: ':'สร้างรายงาน Word ไม่สำเร็จ: ')+(err instanceof Error?err.message:String(err)),'danger');}
-  };
-
-  const handleExportExcel = async (reportBook?: ReportBookData) => {
-    if (!activeProject) return;
-    try {
-    const kind = await exportProjectExcel(activeProject, brand, lang, reportBook);
-    notify(
-      kind === 'xlsx'
-        ? lang === 'en'
-          ? 'Downloaded Excel report (.xlsx)'
-          : 'ดาวน์โหลดรายงาน Excel (.xlsx) เรียบร้อยแล้ว'
-        : lang === 'en'
-        ? 'Downloaded fallback CSV report'
-        : 'ดาวน์โหลดรายงานเป็นไฟล์ CSV สำรองเรียบร้อยแล้ว',
-      kind === 'xlsx' ? 'success' : 'info'
-    );
-    } catch(err) {
-      console.error(err);
-      notify((lang==='en'?'Excel export failed: ':'สร้างรายงาน Excel ไม่สำเร็จ: ')+(err instanceof Error?err.message:String(err)),'danger');
-    }
-  };
+  const handleExportPDF=(reportBook?:ReportBookData)=>runReportExports(['PDF'],reportBook);
+  const handleExportWord=(reportBook?:ReportBookData)=>runReportExports(['Word'],reportBook);
+  const handleExportExcel=(reportBook?:ReportBookData)=>runReportExports(['Excel'],reportBook);
+  const handleExportAll=(reportBook:ReportBookData)=>runReportExports(['PDF','Word','Excel'],reportBook);
 
   // Filtered projects in Hub
   const filteredProjects = useMemo(() => {
@@ -1539,6 +1525,8 @@ export default function App({isAdmin=false,language,autoRestoreSafe}:{isAdmin?:b
                 project={activeProject}
                 brand={brand}
                 isExportingPdf={isExportingPdf}
+                exportBatch={exportBatch}
+                onExportAll={handleExportAll}
                 onExportPDF={handleExportPDF}
                 onExportWord={handleExportWord}
                 onExportExcel={handleExportExcel}
