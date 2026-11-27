@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.89",
+  "latest": "v1.0.90",
   "releases": [
+    {
+      "version": "v1.0.90",
+      "build": 90,
+      "storageSchema": 2,
+      "date": "2026-11-27T03:16:08.211Z",
+      "notes": "Use full-width responsive defect details panel with readable fields and separate pin controls",
+      "commit": "98d024799776b86b112decf4934a1f53805fbd44"
+    },
     {
       "version": "v1.0.89",
       "build": 89,
