@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.178",
+  "latest": "v1.0.179",
   "releases": [
+    {
+      "version": "v1.0.179",
+      "build": 179,
+      "storageSchema": 2,
+      "date": "2026-11-27T08:46:52.678Z",
+      "notes": "Simplify Drive dialog to send and load JSON, show live authorization and local versus Drive counts; collapse advanced recovery",
+      "commit": "0d5c5e3ca71ec43f987122ca623af662a8d7f763"
+    },
     {
       "version": "v1.0.178",
       "build": 178,
