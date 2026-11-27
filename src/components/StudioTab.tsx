@@ -695,10 +695,10 @@ export const StudioTab: React.FC<StudioTabProps> = ({
     ...(contextPin?[{label:tr('ลบหมุด','Delete pin')+' #'+contextPin.number,danger:true,run:()=>{if(window.confirm(tr('ยืนยันลบรายการ Defect ข้อที่ ','Delete Defect #')+contextPin.number+'?')){setPinPlacement(null);onUpdateProject(prev=>({...prev,defects:prev.defects.filter(d=>d.id!==contextPin.id)}));}}}]:[]),
   ];
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 items-start">
       <EditorContextMenu point={context.point} actions={contextActions} onClose={context.close} closeLabel={tr('ปิดเมนู','Close menu')}/>
-      {/* LEFT (7/12): Interactive Floor Plan Studio */}
-      <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+      {/* LEFT: Interactive Floor Plan Studio */}
+      <div className="min-w-0 lg:col-span-6 xl:col-span-7 bg-white rounded-2xl border border-slate-200 p-3 sm:p-4">
         {/* Floor Tabs */}
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div className="flex flex-wrap items-center gap-1.5">
@@ -1083,17 +1083,17 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         </div>
       </div>
 
-      {/* RIGHT (5/12): Single Unified Card — Photo Markup Canvas + AI Analyzer + Defect Form */}
-      <div className="lg:col-span-5">
+      {/* RIGHT: Photo Markup Canvas + AI Analyzer */}
+      <div className="min-w-0 lg:col-span-6 xl:col-span-5">
         <div
-          className={`bg-white rounded-2xl border p-4 sm:p-5 transition-colors ${
+          className={`bg-white rounded-2xl border p-3 sm:p-4 transition-colors ${
             activeDraft && placingDraftId === activeDraft.id
               ? 'border-blue-500 ring-2 ring-blue-100'
               : 'border-slate-200'
           }`}
         >
           {/* (1) Header + Upload Photo Button */}
-          <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <h3 className="font-bold text-slate-900 text-sm sm:text-base">{t.markupTitle}</h3>
             <label className="text-xs px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold cursor-pointer flex items-center gap-1.5 whitespace-nowrap">
               <Upload className="w-3.5 h-3.5" />
@@ -1141,8 +1141,16 @@ export const StudioTab: React.FC<StudioTabProps> = ({
             </div>
           </div>
 
-          {/* (4) Divider + Inline Defect Form Directly Below (Zero Duplicate Photos) */}
-          <div className="mt-4 pt-4 border-t border-slate-200">
+        </div>
+      </div>
+
+      {/* FULL WIDTH: defect details and placement — same editor/draft state */}
+      <section aria-label={tr('รายละเอียด Defect และปักหมุด','Defect details and pin placement')} className={'min-w-0 lg:col-span-12 rounded-2xl border bg-white p-3 sm:p-4 '+(readyToPlace?'border-blue-400 ring-2 ring-blue-100':'border-slate-200')}>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <h3 className="font-bold text-sm sm:text-base text-slate-900">{tr('รายละเอียด Defect และปักหมุด','Defect details and pin placement')}</h3>
+          {activeDraft&&<span className="text-xs text-slate-500">{tr('กรอกรายละเอียด → เลือกโซน → ปักหมุด','Enter details → Choose zone → Place pin')}</span>}
+        </div>
+          <div>
             {!activeDraft ? (
               <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-5 text-center text-xs text-slate-500 leading-relaxed">
                 {t.draftEmptyHint}
@@ -1211,10 +1219,12 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                   </button>
                 </div>
 
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 items-start">
+                  <div className="min-w-0 lg:col-span-8 space-y-3">
                 {/* Defect Title & Severity */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <div className="sm:col-span-2">
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
                       {t.defectTitleLabel}
                     </label>
                     <input
@@ -1230,11 +1240,11 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                         )
                       }
                       placeholder={t.defectTitlePlaceholder}
-                      className="w-full px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
                       {t.severityLabel}
                     </label>
                     <select
@@ -1251,7 +1261,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                           )
                         )
                       }
-                      className="w-full px-2.5 py-1.5 text-xs sm:text-sm rounded-xl border border-slate-300 bg-white"
+                      className="w-full px-2.5 py-2 text-sm rounded-xl border border-slate-300 bg-white"
                     >
                       <option value="เร่งด่วน">{translateSeverity('เร่งด่วน', lang)}</option>
                       <option value="ปานกลาง">{translateSeverity('ปานกลาง', lang)}</option>
@@ -1260,11 +1270,12 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                   </div>
                 </div>
 
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
                 {/* Engineering Cause */}
                 {!activeDraft.hideCause ? (
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="text-[11px] font-bold text-slate-600">
+                      <label className="text-xs font-bold text-slate-700">
                         {t.causeLabel}
                       </label>
                       <button
@@ -1282,7 +1293,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                       </button>
                     </div>
                     <textarea
-                      rows={2}
+                      rows={4}
                       value={activeDraft.cause}
                       onChange={(e) =>
                         setDrafts((prev) =>
@@ -1294,7 +1305,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                         )
                       }
                       placeholder={t.causePlaceholder}
-                      className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full min-h-[100px] resize-y px-3 py-2 text-sm leading-relaxed rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 ) : (
@@ -1317,7 +1328,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                 {!activeDraft.hideSolution ? (
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="text-[11px] font-bold text-slate-600">
+                      <label className="text-xs font-bold text-slate-700">
                         {t.solutionLabel}
                       </label>
                       <button
@@ -1337,7 +1348,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                       </button>
                     </div>
                     <textarea
-                      rows={2}
+                      rows={4}
                       value={activeDraft.solution}
                       onChange={(e) =>
                         setDrafts((prev) =>
@@ -1349,7 +1360,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                         )
                       }
                       placeholder={t.solutionPlaceholder}
-                      className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full min-h-[100px] resize-y px-3 py-2 text-sm leading-relaxed rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 ) : (
@@ -1364,15 +1375,17 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                         )
                       )
                     }
-                    className="text-[11px] text-blue-600 hover:underline font-semibold ml-2 cursor-pointer"
+                    className="text-xs text-blue-600 hover:underline font-semibold text-left cursor-pointer"
                   >
                     {t.addSolutionBtn}
                   </button>
                 )}
 
+                  </div>
+                  </div>
                 {/* Two-step pin placement, shared with the plan zone tabs. */}
-                <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <h4 className="flex items-center gap-1.5 text-xs font-bold text-slate-800"><MapPin className="w-4 h-4"/>{tr('ปักหมุดลงแปลน','Place pin on plan')} · {activeFloor?.name}</h4>
+                <div className="min-w-0 lg:col-span-4 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <h4 className="flex items-center gap-1.5 text-sm font-bold text-slate-800"><MapPin className="w-4 h-4"/>{tr('ปักหมุดลงแปลน','Place pin on plan')} · {activeFloor?.name}</h4>
                   <div className="text-xs font-semibold text-slate-700">{tr('1. เลือกโซน','1. Select zone')}</div>
                   {zoneTabs(true)}
                   <button type="button" disabled={!activeFloor} onClick={()=>{if(!readyToPlace)beginPlacement(activeDraft.id);window.requestAnimationFrame(()=>planViewport.current?.scrollIntoView({block:'nearest',behavior:'smooth'}));}} className={'w-full py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 disabled:opacity-50 '+(readyToPlace?'bg-blue-600 text-white':'brand-bg hover:opacity-95 text-white')}>
@@ -1380,11 +1393,11 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                   </button>
                   {readyToPlace&&<div className="flex flex-wrap items-center justify-between gap-2 text-xs text-blue-800"><span>{tr('โซนที่เลือก: ','Selected zone: ')}{lockedZone?.name||activeFloor?.name}</span><button type="button" className="underline" onClick={()=>setPlacingDraftId(null)}>{t.cancelBtn}</button></div>}
                 </div>
+                </div>
               </div>
             )}
           </div>
-        </div>
-      </div>
+      </section>
     </div>
   );
 };
