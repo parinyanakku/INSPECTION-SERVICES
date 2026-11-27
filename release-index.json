@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.132",
+  "latest": "v1.0.135",
   "releases": [
+    {
+      "version": "v1.0.135",
+      "build": 135,
+      "storageSchema": 2,
+      "date": "2026-11-27T06:59:44.576Z",
+      "notes": "Validate returned signed link format and request zero-age storage caching",
+      "commit": "d85102a5a6cb9d09ef335669778827ea631e1357"
+    },
     {
       "version": "v1.0.132",
       "build": 132,
