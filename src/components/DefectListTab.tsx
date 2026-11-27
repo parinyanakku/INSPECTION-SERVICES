@@ -1,8 +1,43 @@
 import React, { useMemo, useState } from 'react';
 import { Camera, CheckCircle2, Edit3, Pen, Plus, Search, Trash2 } from 'lucide-react';
-import type { AppLanguage, DefectItem, ProjectFile } from '../types/inspection';
+import type { AppLanguage, DefectItem, FloorPlan, ProjectFile } from '../types/inspection';
 import { UI_TEXT, translateDefectStatus, translateSeverity } from '../i18n/translations';
 import { compressImageFile, getFloorNameById } from '../utils/imageUtils';
+import { customFloorDataUrl } from '../utils/customFloorSvg';
+import { getArchitecturalFloorSvg } from '../data/defaultData';
+
+
+/** Match the Studio's 4:3 stage, including image letterboxing and pin coordinates. */
+function DefectLocationPreview({floor,defect,lang}:{floor:FloorPlan|undefined;defect:DefectItem;lang:AppLanguage}) {
+  const en=lang==='en';
+  const src=useMemo(()=>floor?(floor.imageUrl || (floor.isCustomBuilder
+    ? customFloorDataUrl(floor)
+    : 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(getArchitecturalFloorSvg(floor.svgPreset??0)))):null,[floor]);
+  const [expanded,setExpanded]=useState(false);
+  const hasPosition=Number.isFinite(defect.x)&&Number.isFinite(defect.y);
+  const color=defect.status==='แก้ไขแล้ว'?'#059669':defect.severity==='เร่งด่วน'?'#e11d48':defect.severity==='เล็กน้อย'?'#2563eb':'#f59e0b';
+  const stage=(large=false)=><div className="relative aspect-[4/3] w-full overflow-hidden rounded-lg bg-white border border-slate-200">
+    {src&&<img src={src} alt={floor?.name||''} loading="lazy" referrerPolicy="no-referrer" className="absolute inset-0 w-full h-full object-contain pointer-events-none"/>}
+    {(floor?.zones||[]).map(z=><div key={z.id} className="absolute pointer-events-none overflow-hidden" style={{left:z.x+'%',top:z.y+'%',width:z.w+'%',height:z.h+'%',background:z.bg+'55',border:'1px dashed '+z.border}}>
+      {large&&<span className="block truncate px-1 text-[10px] font-bold" style={{color:z.border}}>{z.name}</span>}
+    </div>)}
+    {hasPosition&&<span aria-label={(en?'Pin ':'หมุด ')+defect.number} className="absolute z-10 flex items-center justify-center rounded-full border-2 border-white shadow-md text-white font-bold tabular-nums" style={{left:Math.max(0,Math.min(100,defect.x))+'%',top:Math.max(0,Math.min(100,defect.y))+'%',transform:'translate(-50%,-50%)',background:color,width:large?30:20,height:large?30:20,fontSize:large?13:10}}>{defect.number}</span>}
+  </div>;
+  return <div className="min-w-0">
+    <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
+      <span className="text-xs font-bold text-slate-700">{en?'Plan location':'ตำแหน่งบนแปลน'}</span>
+      <span className="text-[11px] font-semibold" style={{color}}>#{defect.number}</span>
+    </div>
+    {src&&hasPosition?<><button type="button" className="block w-full cursor-zoom-in" onClick={()=>setExpanded(true)} aria-label={en?'Enlarge plan location':'ขยายตำแหน่งแปลน'}>{stage()}</button>
+      {expanded&&<div role="dialog" aria-modal="true" aria-label={en?'Plan location':'ตำแหน่งบนแปลน'} className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-3" onClick={()=>setExpanded(false)}>
+        <div className="w-full max-w-3xl rounded-2xl bg-white p-3" onClick={e=>e.stopPropagation()}>
+          <div className="flex items-center justify-between gap-2 mb-2"><strong className="text-sm">#{defect.number} · {floor?.name} · {defect.zone}</strong><button type="button" onClick={()=>setExpanded(false)} className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold">{en?'Close':'ปิด'}</button></div>
+          {stage(true)}
+        </div>
+      </div>}
+    </>:<div className="aspect-[4/3] rounded-lg border border-dashed border-slate-300 bg-slate-50 flex items-center justify-center p-2 text-xs text-slate-500 text-center">{en?'No plan location':'ไม่มีตำแหน่งบนแปลน'}</div>}
+  </div>;
+}
 
 interface DefectListTabProps {
   lang: AppLanguage;
@@ -186,13 +221,14 @@ export const DefectListTab: React.FC<DefectListTabProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filtered.map((d) => {
             const floorName = getFloorNameById(project, d.floorId);
+            const floor = project.floors.find(f=>f.id===d.floorId);
             return (
               <article
                 key={d.id}
-                className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 flex flex-col justify-between hover:border-slate-300 transition-colors"
+                className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 flex flex-col hover:border-slate-300 transition-colors"
               >
                 <div>
-                  <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
                     <div className="flex flex-wrap items-center gap-2 text-xs">
                       <span className="font-mono-num font-bold text-slate-900">#{d.number}</span>
                       <span className="text-slate-300" aria-hidden="true">
@@ -243,27 +279,18 @@ export const DefectListTab: React.FC<DefectListTabProps> = ({
                     {floorName} <span aria-hidden="true">·</span> {d.zone}
                   </p>
 
-                  {!d.hideCause && d.cause && (
-                    <p className="text-xs text-slate-600 mt-2.5 leading-relaxed">
-                      <strong className="text-slate-800">{t.causeLabel}:</strong> {d.cause}
-                    </p>
-                  )}
-                  {!d.hideSolution && d.solution && (
-                    <p className="text-xs text-emerald-800 bg-emerald-50/70 border border-emerald-200/70 rounded-xl px-3 py-2 mt-2 leading-relaxed">
-                      <strong>{t.solutionLabel}:</strong> {d.solution}
-                    </p>
-                  )}
                 </div>
 
-                {/* Before / After Comparison */}
-                <div className="grid grid-cols-2 gap-3 mt-4 pt-3.5 border-t border-slate-100">
-                  <div>
-                    <div className="flex items-center justify-between gap-1 mb-1">
-                      <span className="text-[11px] font-bold text-rose-600 truncate">
+                {/* Top evidence: plan position and before photo, aligned on the same row. */}
+                <div className="grid grid-cols-2 max-[380px]:grid-cols-1 gap-3 mt-3 pt-3 border-t border-slate-100 items-start">
+                  <DefectLocationPreview floor={floor} defect={d} lang={lang}/>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
+                      <span className="text-xs font-bold text-rose-600 truncate">
                         {t.beforeLabel}
                       </span>
                       {d.beforeImg && (
-                        <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <button
                             type="button"
                             onClick={() => onAnnotateDefectPhoto(d.id, 'before')}
@@ -288,32 +315,48 @@ export const DefectListTab: React.FC<DefectListTabProps> = ({
                         src={d.beforeImg}
                         alt={`#${d.number} ${t.beforeLabel}`}
                         referrerPolicy="no-referrer"
+                        loading="lazy"
                         onClick={() =>
                           onOpenLightbox(d.beforeImg!, `#${d.number} ${d.title} — ${t.beforeLabel}`)
                         }
-                        className="w-full h-32 object-cover rounded-xl border border-slate-200 cursor-zoom-in hover:opacity-90 transition-opacity"
+                        className="w-full aspect-[4/3] object-contain bg-slate-50 rounded-xl border border-slate-200 cursor-zoom-in hover:opacity-90 transition-opacity"
                       />
                     ) : (
-                      <label className="w-full h-32 rounded-xl border border-dashed border-rose-300 bg-rose-50/30 hover:bg-rose-50 text-xs text-rose-600 font-semibold flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors">
+                      <label className="w-full aspect-[4/3] rounded-xl border border-dashed border-rose-300 bg-rose-50/30 hover:bg-rose-50 text-xs text-rose-600 font-semibold flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors">
                         <Camera className="w-4 h-4" />
                         <span>{t.addBeforePhotoBtn}</span>
                         <input
                           type="file"
-
+                          accept="image/*,.dng"
                           className="hidden"
                           onChange={(e) => handleQuickPhoto(e, d.id, 'beforeImg')}
                         />
                       </label>
                     )}
                   </div>
+                </div>
 
-                  <div>
-                    <div className="flex items-center justify-between gap-1 mb-1">
-                      <span className="text-[11px] font-bold text-emerald-700 truncate">
+                {/* Bottom row: engineering details and after photo. */}
+                <div className="grid grid-cols-2 max-[380px]:grid-cols-1 gap-3 mt-3 pt-3 border-t border-slate-100 items-start">
+                  <div className="min-w-0">
+                  {!d.hideCause && d.cause && (
+                    <p className="text-xs text-slate-600 mt-2.5 leading-relaxed">
+                      <strong className="text-slate-800">{t.causeLabel}:</strong> {d.cause}
+                    </p>
+                  )}
+                  {!d.hideSolution && d.solution && (
+                    <p className="text-xs text-emerald-800 bg-emerald-50/70 border border-emerald-200/70 rounded-xl px-3 py-2 mt-2 leading-relaxed">
+                      <strong>{t.solutionLabel}:</strong> {d.solution}
+                    </p>
+                  )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
+                      <span className="text-xs font-bold text-emerald-700 truncate">
                         {t.afterLabel}
                       </span>
                       {d.afterImg && (
-                        <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <button
                             type="button"
                             onClick={() => onAnnotateDefectPhoto(d.id, 'after')}
@@ -338,18 +381,19 @@ export const DefectListTab: React.FC<DefectListTabProps> = ({
                         src={d.afterImg}
                         alt={`#${d.number} ${t.afterLabel}`}
                         referrerPolicy="no-referrer"
+                        loading="lazy"
                         onClick={() =>
                           onOpenLightbox(d.afterImg!, `#${d.number} ${d.title} — ${t.afterLabel}`)
                         }
-                        className="w-full h-32 object-cover rounded-xl border border-slate-200 cursor-zoom-in hover:opacity-90 transition-opacity"
+                        className="w-full aspect-[4/3] object-contain bg-slate-50 rounded-xl border border-slate-200 cursor-zoom-in hover:opacity-90 transition-opacity"
                       />
                     ) : (
-                      <label className="w-full h-32 rounded-xl border border-dashed border-emerald-300 bg-emerald-50/30 hover:bg-emerald-50 text-xs text-emerald-700 font-semibold flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors">
+                      <label className="w-full aspect-[4/3] rounded-xl border border-dashed border-emerald-300 bg-emerald-50/30 hover:bg-emerald-50 text-xs text-emerald-700 font-semibold flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors">
                         <CheckCircle2 className="w-4 h-4" />
                         <span>{t.addAfterPhotoBtn}</span>
                         <input
                           type="file"
-
+                          accept="image/*,.dng"
                           className="hidden"
                           onChange={(e) => handleQuickPhoto(e, d.id, 'afterImg')}
                         />
