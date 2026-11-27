@@ -1,5 +1,6 @@
 import { workspaceStorage, flushWorkspace, writeWorkspaceBatch } from './utils/workspaceStorage';
 import {consumePreparedProjects} from './utils/verifiedProjects';
+import {serializeParts} from './utils/recordParts.mjs';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
@@ -126,7 +127,7 @@ function loadInitialProjects(): ProjectFile[] {
   try {
     const raw = workspaceStorage.getItem(STORAGE_KEY_PROJECTS);
     if (raw) {
-      return consumePreparedProjects(raw).map(migrateProject);
+      return consumePreparedProjects(raw,workspaceStorage.getParts(STORAGE_KEY_PROJECTS)).map(migrateProject);
     }
   } catch(error) {
     console.error('Could not read saved project record',error);
@@ -272,7 +273,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe,onOpenDrive}
       try {
         const ts = formatCurrentTime(lang);
         workspaceStorage.setItem(STORAGE_KEY_BRAND, JSON.stringify(nextBrand));
-        workspaceStorage.setItem(STORAGE_KEY_PROJECTS, JSON.stringify(nextProjects));
+        workspaceStorage.setParts(STORAGE_KEY_PROJECTS, serializeParts(nextProjects));
         workspaceStorage.setItem(STORAGE_KEY_LAST_SAVED, ts);
         void flushWorkspace().then(ok => {
           if(ok) {

@@ -2,6 +2,7 @@ import React,{useEffect,useRef,useState} from 'react';
 import {flushSync} from 'react-dom';
 import type {AppLanguage} from '../types/inspection';
 import {openDriveStage,driveRangeBytes,type PendingDriveStage,type RangeCache} from '../utils/driveStageCache';
+import {getParts} from '../utils/recordParts.mjs';
 import {prepareProjects,clearPreparedProjects} from '../utils/verifiedProjects';
 import {retryReadStage} from '../utils/driveReadStage.mjs';
 import {retryDriveRead} from '../utils/driveRetry.mjs';
@@ -65,7 +66,7 @@ const PROJECTS='tis_wl_projects_v10',BRAND='tis_wl_brand_v10',REPORT='tis_report
 const countCache=new WeakMap<Records,{projects:number;defects:number}>();
 function counts(records:Records){
  const known=countCache.get(records);if(known)return known;
- const p=prepareProjects(records[PROJECTS]||'[]');
+ const p=prepareProjects(records[PROJECTS]||'[]',getParts(records,PROJECTS));
  const c={projects:p.length,defects:p.reduce((n,x)=>n+x.defects.length,0)};countCache.set(records,c);return c;
 }
 function cloudInfo(file:FileMeta,records?:Records):CloudSummary|null{

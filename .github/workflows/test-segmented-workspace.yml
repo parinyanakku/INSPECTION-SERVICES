@@ -1,0 +1,20 @@
+name: Test lossless segmented workspace (no deployment)
+on:
+  push:
+    branches: [fix/lossless-segmented-workspace]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-package-lock
+      - run: node --import tsx --test src/utils/driveImageIndex.test.mjs src/utils/driveRetry.test.mjs src/utils/driveRangeDownload.test.mjs src/utils/driveReadStage.test.mjs src/utils/verifiedProjects.test.mjs src/utils/recordParts.test.mjs
+      - run: npm run build -- --base=./
+      - run: npm install --no-save --no-package-lock playwright
+      - run: npx playwright install --with-deps webkit
+      - run: node tests/segmented-workspace-browser.mjs
