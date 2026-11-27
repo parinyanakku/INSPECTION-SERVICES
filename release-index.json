@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.215",
+  "latest": "v1.0.216",
   "releases": [
+    {
+      "version": "v1.0.216",
+      "build": 216,
+      "storageSchema": 2,
+      "date": "2026-11-27T16:22:38.658Z",
+      "notes": "Stop Safari automatic restore loop after interrupted load; retain original staged ranges",
+      "commit": "ff71d77e62476edb467c5dcc7b084671098ce84d"
+    },
     {
       "version": "v1.0.215",
       "build": 215,
