@@ -162,6 +162,7 @@ export const BrandSettingsModal: React.FC<BrandSettingsModalProps> = ({
               <input
                 type="text"
                 value={form.inspectorName}
+                placeholder={lang==='en'?'Enter your inspector name':'กรอกชื่อผู้ตรวจสอบของคุณ'}
                 onChange={(e) => setForm({ ...form, inspectorName: e.target.value })}
                 className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -173,6 +174,7 @@ export const BrandSettingsModal: React.FC<BrandSettingsModalProps> = ({
               <input
                 type="text"
                 value={form.licenseNo}
+                placeholder={lang==='en'?'Enter your license number (if applicable)':'กรอกเลขใบอนุญาตของคุณ (ถ้ามี)'}
                 onChange={(e) => setForm({ ...form, licenseNo: e.target.value })}
                 className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -233,8 +235,8 @@ export const BrandSettingsModal: React.FC<BrandSettingsModalProps> = ({
                 ...form,
                 companyName: form.companyName.trim() || DEFAULT_BRAND.companyName,
                 subtitle: form.subtitle.trim() || DEFAULT_BRAND.subtitle,
-                inspectorName: form.inspectorName.trim() || DEFAULT_BRAND.inspectorName,
-                licenseNo: form.licenseNo.trim() || DEFAULT_BRAND.licenseNo,
+                inspectorName: form.inspectorName.trim(),
+                licenseNo: form.licenseNo.trim(),
               })
             }
             className="px-5 py-2 rounded-xl brand-bg text-white text-sm font-semibold cursor-pointer"
