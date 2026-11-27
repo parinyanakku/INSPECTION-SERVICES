@@ -224,9 +224,29 @@ export const CustomFloorEditor: React.FC<{
    }
    setTool('select');
  };
+ const editorKeys=(e:React.KeyboardEvent<HTMLDivElement>)=>{
+   if(e.defaultPrevented||e.nativeEvent.isComposing||e.altKey||busyRef.current)return;
+   if((e.target as Element).closest('input,textarea,select,[contenteditable="true"]'))return;
+   const key=e.key.toLowerCase();
+   if(key==='escape'){e.preventDefault();e.stopPropagation();cancel();setSelected(null);setTool('select');return;}
+   if(drag.current)return;
+   if(e.ctrlKey||e.metaKey){
+     if(key==='z'||key==='y'){e.preventDefault();e.stopPropagation();if(key==='y'||e.shiftKey)redo();else undo();}
+     else if(key==='d'&&selected&&!e.repeat){e.preventDefault();e.stopPropagation();duplicate();}
+     return;
+   }
+   if(key==='delete'&&selected&&!e.repeat){e.preventDefault();e.stopPropagation();remove();return;}
+   if(chosen&&selected&&['arrowleft','arrowright','arrowup','arrowdown'].includes(key)){
+     e.preventDefault();e.stopPropagation();
+     const delta=e.shiftKey?2.5:.5;
+     const x=bound(chosen.x+(key==='arrowright'?delta:key==='arrowleft'?-delta:0),100-chosen.w);
+     const y=bound(chosen.y+(key==='arrowdown'?delta:key==='arrowup'?-delta:0),100-chosen.h);
+     if(x!==chosen.x||y!==chosen.y)changeRect(selected,{...chosen,x,y});
+   }
+ };
  const box=preview||chosen;
  const button='rounded-lg px-3 py-2.5 text-sm font-semibold border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40';
- return <div className="space-y-3">
+ return <div tabIndex={0} onKeyDown={editorKeys} onPointerDownCapture={e=>{if(!(e.target as Element).closest('input,textarea,select,button,a,[contenteditable="true"]'))e.currentTarget.focus({preventScroll:true});}} className="space-y-3 outline-none">
    <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
     <div className="flex flex-wrap items-center gap-2">
       <strong className="text-sm text-slate-800">{tr('เริ่มจากรูปแปลน / สเก็ต','Start from a plan / sketch')}</strong>
@@ -260,12 +280,13 @@ export const CustomFloorEditor: React.FC<{
     </div>
     <div className="flex flex-wrap gap-2 mb-3">
       <button type="button" className={button+' !bg-blue-700 !text-white'} onClick={addRoom}>{tr('+ เพิ่มห้องทันที','+ Add room')}</button>
-      <button type="button" className={button} disabled={!past.length} onClick={undo}>{tr('↶ ย้อนกลับ','↶ Undo')}</button>
-      <button type="button" className={button} disabled={!future.length} onClick={redo}>{tr('↷ ทำซ้ำ','↷ Redo')}</button>
+      <button type="button" className={button} disabled={!past.length} onClick={undo} title="Ctrl+Z / Cmd+Z">{tr('↶ ย้อนกลับ','↶ Undo')}</button>
+      <button type="button" className={button} disabled={!future.length} onClick={redo} title="Ctrl+Y / Ctrl+Shift+Z">{tr('↷ ทำซ้ำ','↷ Redo')}</button>
       <a className={button} href={customFloorDataUrl(floor)} download="floor-plan.svg">{tr('ดาวน์โหลดแปลน SVG','Download plan SVG')}</a>
     </div>
     <div className="flex flex-wrap gap-1.5">{tools.map(t=><button key={t.id} type="button" aria-pressed={tool===t.id} onClick={()=>{setTool(t.id);setSelected(null);cancel();}} className={button+(tool===t.id?' !bg-blue-700 !text-white !border-blue-700':'')}>{en?t.en:t.th}</button>)}</div>
     <p className="text-xs text-slate-600 mt-2">{tr('แตะเพิ่มห้องทันที หรือลากวาดบนแปลน • แตะห้องแล้วลากย้ายได้เลย • ลากจุดมุมเพื่อปรับขนาด • บันทึกอัตโนมัติ','Add a room or draw on the grid. Tap and drag to move; drag the corner handle to resize. Changes save automatically.')}</p>
+    <p className="hidden sm:block text-[10px] text-slate-500">{tr("คลิกแปลนก่อนใช้คีย์ลัด · Ctrl+Z ย้อนกลับ · Ctrl+Y ทำซ้ำ · Ctrl+D คัดลอก · ลูกศรย้าย · Delete ลบที่เลือก · Esc ยกเลิก","Click the plan first · Ctrl+Z Undo · Ctrl+Y Redo · Ctrl+D Duplicate · Arrows Move · Delete selection · Esc Cancel")}</p>
     {chosen&&selected&&<div className="flex flex-wrap items-center gap-2 mt-2">
       {selected.kind==='room'&&<input aria-label={tr('ชื่อห้อง','Room name')} className="min-w-0 w-40 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs" value={(chosen as FloorZone).name} onChange={e=>commit({...floor,zones:zones.map(z=>z.id===selected.id?{...z,name:e.target.value}:z)})}/>}
       <button type="button" className={button} onClick={()=>resize(2.5)}>{tr('ขยาย','Enlarge')}</button>
