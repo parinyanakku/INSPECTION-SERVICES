@@ -20,19 +20,60 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: #f1f5f9;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+/* High-contrast scrollbars for long lists, dialogs and the plan viewport. */
+@media screen {
+  :root {
+    --scroll-track: #e2e8f0;
+    --scroll-thumb: #64748b;
+    --scroll-hover: #2563eb;
+    --scroll-active: #1d4ed8;
+  }
+  :root[data-inspection-theme="dark"] {
+    --scroll-track: #253247;
+    --scroll-thumb: #93c5fd;
+    --scroll-hover: #bfdbfe;
+    --scroll-active: #60a5fa;
+  }
+  /* Include both document and nested scrollbars. The specificity also
+     supersedes the older theme-specific scrollbar colors in App.tsx. */
+  html:root::-webkit-scrollbar,
+  html:root *::-webkit-scrollbar {
+    width: 14px;
+    height: 14px;
+  }
+  html:root::-webkit-scrollbar-track,
+  html:root *::-webkit-scrollbar-track,
+  html:root[data-inspection-theme]:not([data-inspection-theme="light"]) *::-webkit-scrollbar-track {
+    background: var(--scroll-track);
+    border-radius: 6px;
+  }
+  html:root::-webkit-scrollbar-thumb,
+  html:root *::-webkit-scrollbar-thumb,
+  html:root[data-inspection-theme]:not([data-inspection-theme="light"]) *::-webkit-scrollbar-thumb {
+    background: var(--scroll-thumb);
+    border: 2px solid var(--scroll-track);
+    border-radius: 9999px;
+  }
+  html:root::-webkit-scrollbar-thumb:hover,
+  html:root *::-webkit-scrollbar-thumb:hover,
+  html:root[data-inspection-theme]:not([data-inspection-theme="light"]) *::-webkit-scrollbar-thumb:hover {
+    background: var(--scroll-hover);
+  }
+  html:root::-webkit-scrollbar-thumb:active,
+  html:root *::-webkit-scrollbar-thumb:active,
+  html:root[data-inspection-theme]:not([data-inspection-theme="light"]) *::-webkit-scrollbar-thumb:active {
+    background: var(--scroll-active);
+  }
+  html:root::-webkit-scrollbar-corner,
+  html:root *::-webkit-scrollbar-corner {
+    background: var(--scroll-track);
+  }
+  @supports not selector(::-webkit-scrollbar) {
+    html, html * {
+      scrollbar-width: auto;
+      scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+    }
+  }
 }
 
 .brand-bg {
