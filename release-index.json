@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.88",
+  "latest": "v1.0.89",
   "releases": [
+    {
+      "version": "v1.0.89",
+      "build": 89,
+      "storageSchema": 2,
+      "date": "2026-11-27T03:04:42.267Z",
+      "notes": "Add non-destructive photo crop with aspect ratios drag handles and undoable full-resolution export",
+      "commit": "06f0e97709a954da4728781f67d104365e6ea8b4"
+    },
     {
       "version": "v1.0.88",
       "build": 88,
