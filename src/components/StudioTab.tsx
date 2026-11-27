@@ -30,6 +30,7 @@ import { compressImageFile } from '../utils/imageUtils';
 import { workspaceStorage } from '../utils/workspaceStorage';
 import { FloorPlanSvg } from './FloorPlanSvg';
 import { CustomFloorEditor } from './CustomFloorEditor';
+import {EditorContextMenu,useEditorMenu,type MenuAction} from './EditorContextMenu';
 import { customFloorDataUrl } from '../utils/customFloorSvg';
 import {
   MarkupCanvasEditor,
@@ -130,6 +131,8 @@ export const StudioTab: React.FC<StudioTabProps> = ({
   const [drafts, setDrafts] = useState<DraftDefect[]>([]);
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [placingDraftId, setPlacingDraftId] = useState<string | null>(null);
+  const [pinPlacement,setPinPlacement]=useState<{id:string;kind:'move'|'copy'}|null>(null);
+  useEffect(()=>setPinPlacement(null),[project.id,activeFloorId]);
 
   const activeDraft =
     drafts.find((d) => d.id === activeDraftId) || drafts[0] || null;
@@ -150,13 +153,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
   onNotifyRef.current = onNotify;
   onUpdateProjectRef.current = onUpdateProject;
 
-  const handlePlanKeys=(e:React.KeyboardEvent<HTMLDivElement>)=>{
-    if(e.defaultPrevented||e.nativeEvent.isComposing||e.altKey||!(e.ctrlKey||e.metaKey)||draggingPinRef.current||zoneDragRef.current)return;
-    if((e.target as Element).closest('input,textarea,select,[contenteditable="true"]'))return;
-    const key=e.key.toLowerCase();
-    if(key!=='z'&&key!=='y')return;
-    e.preventDefault();e.stopPropagation();
-    const redo=key==='y'||e.shiftKey;
+  const applyPinHistory=(redo:boolean)=>{
     const from=redo?pinRedo.current:pinUndo.current,to=redo?pinUndo.current:pinRedo.current;
     const change=from[from.length-1];if(!change)return;
     const expected=redo?change.before:change.after;
@@ -167,6 +164,15 @@ export const StudioTab: React.FC<StudioTabProps> = ({
     from.pop();to.push(change);
     onUpdateProjectRef.current(prev=>({...prev,defects:prev.defects.map(item=>item.id===change.id&&item.floorId===change.floorId?{...item,...pos}:item)}));
     onNotifyRef.current(langRef.current==='en'?(redo?'Pin move redone':'Pin move undone'):(redo?'ทำซ้ำตำแหน่งหมุดแล้ว':'ย้อนตำแหน่งหมุดแล้ว'),'success');
+  };
+
+  const handlePlanKeys=(e:React.KeyboardEvent<HTMLDivElement>)=>{
+    if(e.defaultPrevented||e.nativeEvent.isComposing||e.altKey||draggingPinRef.current||zoneDragRef.current)return;
+    if((e.target as Element).closest('input,textarea,select,[contenteditable="true"]'))return;
+    const key=e.key.toLowerCase();
+    if(key==='escape'){setPinPlacement(null);setPlacingDraftId(null);return;}
+    if(!(e.ctrlKey||e.metaKey)||(key!=='z'&&key!=='y'))return;
+    e.preventDefault();e.stopPropagation();applyPinHistory(key==='y'||e.shiftKey);
   };
 
   // Global pointer move / up for pin dragging and zone move/resize
@@ -400,6 +406,25 @@ export const StudioTab: React.FC<StudioTabProps> = ({
   };
 
   const handleFloorStageClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if(pinPlacement&&activeFloor&&!isZoneSetupMode){
+      const rect=floorStageRef.current?.getBoundingClientRect();
+      const d=project.defects.find(item=>item.id===pinPlacement.id&&item.floorId===activeFloor.id);
+      if(!rect||!d||!rect.width||!rect.height){setPinPlacement(null);return;}
+      const x=Math.max(2,Math.min(98,+((e.clientX-rect.left)/rect.width*100).toFixed(2)));
+      const y=Math.max(2,Math.min(98,+((e.clientY-rect.top)/rect.height*100).toFixed(2)));
+      const zone=findZoneAtPoint(activeFloor,x,y)?.name||d.zone;
+      const after={x,y,zone};
+      if(pinPlacement.kind==='move'){
+        const before={x:d.x,y:d.y,zone:d.zone};
+        if(before.x!==x||before.y!==y||before.zone!==zone){
+          pinUndo.current.push({id:d.id,floorId:d.floorId,before,after});if(pinUndo.current.length>50)pinUndo.current.shift();pinRedo.current=[];
+          onUpdateProject(prev=>({...prev,defects:prev.defects.map(item=>item.id===d.id?{...item,...after}:item)}));
+        }
+      }else{
+        onUpdateProject(prev=>({...prev,defects:[...prev.defects,{...d,...after,id:'def_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),number:Math.max(0,...prev.defects.map(item=>item.number||0))+1,status:'รอแก้ไข',afterImg:null,createdAt:new Date().toISOString().split('T')[0]}]}));
+      }
+      setPinPlacement(null);return;
+    }
     if (!placingDraftId || isZoneSetupMode || !activeFloor) return;
     const draft = drafts.find((d) => d.id === placingDraftId);
     if (!draft) return;
@@ -562,6 +587,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
     setDrafts((prev) => [newDraft, ...prev]);
     setActiveDraftId(newDraft.id);
     setPlacingDraftId(null);
+    return newDraft.id;
   };
 
   const getPinColorClass = (d: DefectItem) => {
@@ -571,8 +597,38 @@ export const StudioTab: React.FC<StudioTabProps> = ({
     return 'bg-amber-500 border-white';
   };
 
+  const context=useEditorMenu(()=>{
+    // A stationary hold may have started a drag; cancel before release.
+    if(!draggingPinRef.current?.moved)draggingPinRef.current=null;
+    zoneDragRef.current=null;panStart.current=null;
+  });
+  const contextPinId=context.point?.target?.closest('[data-defect-id]')?.getAttribute('data-defect-id');
+  const contextPin=floorDefects.find(d=>d.id===contextPinId);
+  const contextZoneId=context.point?.target?.closest('[data-zone-id]')?.getAttribute('data-zone-id');
+  const tr=(th:string,en:string)=>lang==='en'?en:th;
+  const beginPinAction=(kind:'move'|'copy')=>{
+    if(!contextPin)return;
+    setPlacingDraftId(null);setPanMode(false);setIsZoneSetupMode(false);setPinPlacement({id:contextPin.id,kind});
+  };
+  const contextActions:MenuAction[]=[
+    {label:tr('ย้อนตำแหน่งหมุด','Undo pin move'),shortcut:'Ctrl+Z',run:()=>applyPinHistory(false),disabled:!pinUndo.current.length},
+    {label:tr('ทำซ้ำตำแหน่งหมุด','Redo pin move'),shortcut:'Ctrl+Y',run:()=>applyPinHistory(true),disabled:!pinRedo.current.length},
+    {label:tr('เพิ่มหมุด Defect','Add Defect pin'),run:()=>{setPinPlacement(null);setPanMode(false);setIsZoneSetupMode(false);setPlacingDraftId(activeDraft?.id||handleCreateBlankDraft());},disabled:!activeFloor},
+    ...(contextPin?[
+      {label:tr('แก้ไขหมุด','Edit pin')+' #'+contextPin.number,run:()=>onOpenDefectModal(contextPin.id)},
+      {label:tr('ย้ายตำแหน่งหมุด','Move pin'),run:()=>beginPinAction('move')},
+      {label:tr('คัดลอกหมุด','Copy pin'),run:()=>beginPinAction('copy')},
+    ]:[]),
+    ...(contextZoneId&&isZoneSetupMode?[{label:tr('แก้ไขโซน','Edit zone'),run:()=>onOpenZoneModal(contextZoneId)}]:[]),
+    {label:panMode?tr('ออกจากโหมดเลื่อน','Exit pan'):tr('เลื่อนแปลน','Pan plan'),run:()=>{setPinPlacement(null);setPanMode(v=>!v);}},
+    {label:tr('ซูมเข้า','Zoom in'),run:()=>changeZoom(planZoom+25)},
+    {label:tr('ซูมออก','Zoom out'),run:()=>changeZoom(planZoom-25)},
+    {label:tr('พอดีหน้าจอ','Fit view'),run:()=>{changeZoom(100);if(planViewport.current){planViewport.current.scrollLeft=0;planViewport.current.scrollTop=0;}}},
+    ...(contextPin?[{label:tr('ลบหมุด','Delete pin')+' #'+contextPin.number,danger:true,run:()=>{if(window.confirm(tr('ยืนยันลบรายการ Defect ข้อที่ ','Delete Defect #')+contextPin.number+'?')){setPinPlacement(null);onUpdateProject(prev=>({...prev,defects:prev.defects.filter(d=>d.id!==contextPin.id)}));}}}]:[]),
+  ];
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+      <EditorContextMenu point={context.point} actions={contextActions} onClose={context.close} closeLabel={tr('ปิดเมนู','Close menu')}/>
       {/* LEFT (7/12): Interactive Floor Plan Studio */}
       <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
         {/* Floor Tabs */}
@@ -715,6 +771,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         </div>
 
         {/* Mode Banners */}
+        {pinPlacement&&<div className="mb-3 p-3 rounded-xl bg-blue-50 border border-blue-300 flex items-center justify-between gap-2 text-xs"><strong>{pinPlacement.kind==='move'?tr('คลิกตำแหน่งใหม่บนแปลนเพื่อย้ายหมุด','Click a new plan position to move pin'):tr('คลิกตำแหน่งใหม่บนแปลนเพื่อคัดลอกหมุด','Click a new plan position to copy pin')}</strong><button type="button" onClick={()=>setPinPlacement(null)} className="rounded border bg-white px-2 py-1">{tr('ยกเลิก','Cancel')}</button></div>}
         {placingDraftId && (
           <div className="mb-3 p-3 rounded-xl bg-blue-50 border border-blue-300 flex items-center justify-between gap-2">
             <span className="text-xs sm:text-sm font-semibold text-blue-900">
@@ -766,7 +823,8 @@ export const StudioTab: React.FC<StudioTabProps> = ({
           ref={floorStageRef}
           tabIndex={0}
           onKeyDown={handlePlanKeys}
-          onPointerDownCapture={e=>{e.currentTarget.focus({preventScroll:true});}}
+          {...context.bind}
+          onPointerDownCapture={e=>{e.currentTarget.focus({preventScroll:true});context.bind.onPointerDownCapture(e);}}
           onClick={handleFloorStageClick}
           onDragOver={(e) => {
             e.preventDefault();
@@ -781,7 +839,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
           style={{width:planZoom+'%',marginLeft:planZoom<100?'auto':0,marginRight:planZoom<100?'auto':0}}
           className={`relative aspect-[4/3] overflow-hidden bg-slate-50 select-none ${
             isZoneSetupMode ? 'zone-setup-active' : ''
-          } ${placingDraftId ? 'cursor-crosshair ring-2 ring-blue-400' : ''} ${
+          } ${placingDraftId||pinPlacement ? 'cursor-crosshair ring-2 ring-blue-400' : ''} ${
             isFloorDropActive ? 'floor-drop-active' : ''
           }`}
         >
@@ -805,7 +863,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                 key={z.id}
                 data-zone-id={z.id}
                 onPointerDown={(e) => {
-                  if (!isZoneSetupMode) return;
+                  if (e.button!==0||!e.isPrimary||!isZoneSetupMode) return;
                   e.stopPropagation();
                   setSelectedZoneId(z.id);
                   zoneDragRef.current = {
@@ -859,6 +917,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                     className="zone-resize-handle"
                     title={lang==='en'?'Drag to resize zone':'ลากเพื่อปรับขนาดโซน'}
                     onPointerDown={(e) => {
+                      if(e.button!==0||!e.isPrimary)return;
                       e.stopPropagation();
                       setSelectedZoneId(z.id);
                       zoneDragRef.current = {
@@ -887,7 +946,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                 type="button"
                 data-defect-id={d.id}
                 onPointerDown={(e) => {
-                  if (placingDraftId) return;
+                  if (e.button!==0||!e.isPrimary||placingDraftId||pinPlacement) return;
                   e.stopPropagation();
                   draggingPinRef.current = {
                     defectId: d.id,
@@ -898,6 +957,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                   };
                 }}
                 onClick={(e) => {
+                  if(pinPlacement||placingDraftId)return;
                   e.stopPropagation();
                   if (pinMovedJustNowRef.current) {
                     pinMovedJustNowRef.current = false;
@@ -924,7 +984,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
         </div>
         )}
 
-        {!isEditingFloor&&<p className="hidden sm:block text-[10px] text-slate-500 mt-2">{lang==='en'?'Click the plan · Ctrl+Z undo pin move · Ctrl+Y redo':'คลิกแปลน · Ctrl+Z ย้อนตำแหน่งหมุด · Ctrl+Y ทำซ้ำ'}</p>}
+        {!isEditingFloor&&<p className="hidden sm:block text-[10px] text-slate-500 mt-2">{lang==='en'?'Right-click / hold for menu · Click the plan · Ctrl+Z undo pin move · Ctrl+Y redo':'คลิกขวา / แตะค้างเพื่อเปิดเมนู · คลิกแปลน · Ctrl+Z ย้อนตำแหน่งหมุด · Ctrl+Y ทำซ้ำ'}</p>}
         {/* Legend */}
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
           <div className="flex flex-wrap items-center gap-3">
