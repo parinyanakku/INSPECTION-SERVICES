@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.95",
+  "latest": "v1.0.96",
   "releases": [
+    {
+      "version": "v1.0.96",
+      "build": 96,
+      "storageSchema": 2,
+      "date": "2026-11-27T04:58:09.064Z",
+      "notes": "Add floating back-to-top button for long inspection pages",
+      "commit": "20ce930b78433e7f809753ab02d516e6af8eb76c"
+    },
     {
       "version": "v1.0.95",
       "build": 95,
