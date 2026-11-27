@@ -1,6 +1,7 @@
 import {imageUploadError} from '../utils/dngImage';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import {EditorContextMenu,useEditorMenu,type MenuAction} from './EditorContextMenu';
 import {
   ArrowUpRight,
   Camera,
@@ -221,6 +222,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   const pendingTextPosRef = useRef(pendingTextPos);
   const isDrawingRef = useRef(false);
   const currentShapeRef = useRef<OrientedShape | null>(null);
+  const touchText=useRef<{id:number;x:number;y:number;nx:number;ny:number}|null>(null);
 
   imageSrcRef.current = imageSrc;
   shapesRef.current = shapes;
@@ -513,10 +515,11 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = e.currentTarget;
-    if (!canvas || !loadedImageRef.current?.naturalWidth) return;
+    if(e.button!==0||!e.isPrimary||!canvas||!loadedImageRef.current?.naturalWidth)return;
     const { nx, ny } = getPos(e, canvas);
 
     if (tool === 'text') {
+      if(e.pointerType==='touch'){touchText.current={id:e.pointerId,x:e.clientX,y:e.clientY,nx,ny};return;}
       setPendingTextPos({ x: nx, y: ny });
       setPendingTextValue('');
       return;
@@ -539,6 +542,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const tap=touchText.current;if(tap&&tap.id===e.pointerId&&Math.hypot(e.clientX-tap.x,e.clientY-tap.y)>4)touchText.current=null;
     if (!isDrawingRef.current || !currentShapeRef.current) return;
     const { nx, ny } = getPos(e, e.currentTarget);
     if (currentShapeRef.current.tool === 'pen') {
@@ -553,7 +557,9 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     paintCanvas(e.currentTarget);
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e:React.PointerEvent<HTMLCanvasElement>) => {
+    const tap=touchText.current;touchText.current=null;
+    if(tap&&tap.id===e.pointerId&&Math.hypot(e.clientX-tap.x,e.clientY-tap.y)<=4){setPendingTextPos({x:tap.nx,y:tap.ny});setPendingTextValue('');return;}
     if (!isDrawingRef.current || !currentShapeRef.current) return;
     const s = currentShapeRef.current;
     isDrawingRef.current = false;
@@ -572,6 +578,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     }
   };
 
+  const cancelStroke=()=>{touchText.current=null;isDrawingRef.current=false;currentShapeRef.current=null;drawActiveCanvases();};
   const commitTextAnnotation = () => {
     const clean = pendingTextValue.trim();
     if (!pendingTextPos || !clean) {
@@ -647,6 +654,17 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     { id: 'text', label: t.toolText, icon: <TypeIcon className="w-3.5 h-3.5" /> },
   ];
 
+  const context=useEditorMenu(()=>{cancelStroke();});
+  const tr=(th:string,en:string)=>lang==='en'?en:th;
+  const contextActions:MenuAction[]=[
+    {label:tr('ย้อนกลับ','Undo'),shortcut:'Ctrl+Z',run:undoEdit,disabled:!undoRef.current.length},
+    {label:tr('ทำซ้ำ','Redo'),shortcut:'Ctrl+Y',run:redoEdit,disabled:!redoRef.current.length},
+    ...tools.map((item,i)=>({label:item.label,shortcut:['P','C','A','R','T'][i],run:()=>{setTool(item.id);setPendingTextPos(null);}})),
+    {label:tr('หมุนซ้าย 90°','Rotate left 90°'),run:()=>rotatePhoto(-1)},
+    {label:tr('หมุนขวา 90°','Rotate right 90°'),run:()=>rotatePhoto(1)},
+    {label:isFullscreen?tr('ออกจากเต็มหน้าจอ','Exit fullscreen'):tr('เต็มหน้าจอ','Fullscreen'),run:isFullscreen?closeFullscreen:openFullscreen},
+    {label:tr('ล้างเส้นมาร์ก','Clear marks'),run:clearMarks,danger:true,disabled:!shapesRef.current.length},
+  ];
   const inlinePopupCoords =
     pendingTextPos && imageSrc && !isFullscreen
       ? getFloatingPopupPercent(canvasRef.current, pendingTextPos)
@@ -763,7 +781,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
         </div>
       )}
 
-      <p className="text-[10px] text-slate-500 hidden sm:block">{lang==='en'?'Click the editor first · Ctrl+Z Undo · Ctrl+Y Redo · P Pen · C Circle · A Arrow · R Rectangle · T Text':'คลิกกระดานก่อนใช้คีย์ลัด · Ctrl+Z ย้อนกลับ · Ctrl+Y ทำซ้ำ · P ปากกา · C วงกลม · A ลูกศร · R สี่เหลี่ยม · T ข้อความ'}</p>
+      <p className="text-[10px] text-slate-500 hidden sm:block">{lang==='en'?'Right-click / hold for menu · Click the editor first · Ctrl+Z Undo · Ctrl+Y Redo · P Pen · C Circle · A Arrow · R Rectangle · T Text':'คลิกขวา / แตะค้างเพื่อเปิดเมนู · คลิกกระดานก่อนใช้คีย์ลัด · Ctrl+Z ย้อนกลับ · Ctrl+Y ทำซ้ำ · P ปากกา · C วงกลม · A ลูกศร · R สี่เหลี่ยม · T ข้อความ'}</p>
       {/* Inline Canvas Container */}
       <div
         ref={wrapRef}
@@ -772,10 +790,11 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
         <canvas
           id="markupCanvas"
           ref={canvasRef}
+          {...context.bind}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
+          onPointerCancel={cancelStroke}
           onDoubleClick={openFullscreen}
           className={`w-full h-full block touch-none ${
             tool === 'text' ? 'cursor-text' : 'cursor-crosshair'
@@ -962,10 +981,11 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
               >
                 <canvas
                   ref={fullscreenCanvasRef}
-                  onPointerDown={handlePointerDown}
+                  {...context.bind}
+          onPointerDown={handlePointerDown}
                   onPointerMove={handlePointerMove}
                   onPointerUp={handlePointerUp}
-                  onPointerCancel={handlePointerUp}
+                  onPointerCancel={cancelStroke}
                   className={`w-full h-full block touch-none ${
                     tool === 'text' ? 'cursor-text' : 'cursor-crosshair'
                   }`}
@@ -1017,6 +1037,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
           </div>,
           document.body
         )}
+      <EditorContextMenu point={context.point} actions={contextActions} onClose={context.close} closeLabel={tr('ปิดเมนู','Close menu')}/>
     </div>
   );
 };
