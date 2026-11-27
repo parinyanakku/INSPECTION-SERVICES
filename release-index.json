@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.86",
+  "latest": "v1.0.87",
   "releases": [
+    {
+      "version": "v1.0.87",
+      "build": 87,
+      "storageSchema": 2,
+      "date": "2026-11-27T03:00:25.974Z",
+      "notes": "Add zone editing tabs with isolated overlays and automatic focus for overlapping zones",
+      "commit": "1433a5b8f725ddb34da75e24a0e4a4cb789a9264"
+    },
     {
       "version": "v1.0.86",
       "build": 86,
