@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.126",
+  "latest": "v1.0.127",
   "releases": [
+    {
+      "version": "v1.0.127",
+      "build": 127,
+      "storageSchema": 2,
+      "date": "2026-11-27T06:47:38.159Z",
+      "notes": "Add cooperative cancellation to report generation and prevent cancelled downloads",
+      "commit": "2900e65b424d130f10933dc72366fe14c22d7855"
+    },
     {
       "version": "v1.0.126",
       "build": 126,
