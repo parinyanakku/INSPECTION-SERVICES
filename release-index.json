@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.106",
+  "latest": "v1.0.107",
   "releases": [
+    {
+      "version": "v1.0.107",
+      "build": 107,
+      "storageSchema": 2,
+      "date": "2026-11-27T06:10:32.457Z",
+      "notes": "Balance Thai cover title by phrase and fit explicit lines across report formats",
+      "commit": "89055b1120ab4019eba2d72905a865e14a01653c"
+    },
     {
       "version": "v1.0.106",
       "build": 106,
