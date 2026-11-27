@@ -83,7 +83,15 @@ async function linkedFile(token:string,userId:string,sourceId:string,kind:'mobil
  const tag=kind==='mobile'?'tisMobile':'tisMobileEdit';
  const q=new URLSearchParams({spaces:'drive',q:"trashed = false and appProperties has { key='tisUser' and value='"+userId+"' } and appProperties has { key='"+tag+"' and value='1' } and appProperties has { key='source' and value='"+sourceId+"' }",fields:'files(id,name,createdTime,appProperties,size)',pageSize:'100',orderBy:'createdTime desc'});
  const data=await (await api(token,ROOT+'?'+q,{signal})).json();
- return (data.files||[]).find((f:FileMeta)=>f.appProperties?.source===sourceId&&f.appProperties?.tisUser===userId&&f.appProperties?.[tag]==='1');
+ return (data.files||[]).find((f:FileMeta)=>f.appProperties?.source===sourceId&&f.appProperties?.tisUser===userId&&f.appProperties?.[tag]==='1'&&(kind!=='mobile'||f.appProperties?.lossless==='1'));
+}
+async function parseSnapshotBlob(blob:Blob){
+ const head=new Uint8Array(await blob.slice(0,2).arrayBuffer());
+ if(head[0]===31&&head[1]===139){
+  if(typeof DecompressionStream==='undefined')throw Error('Browser does not support lossless gzip. Update Safari or Chrome.');
+  return new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).json();
+ }
+ return JSON.parse(await blob.text());
 }
 async function readSnapshot(token:string,userId:string,id:string,signal?:AbortSignal,progress?:(received:number,total:number)=>void):Promise<Snapshot>{
  const response=await api(token,ROOT+'/'+encodeURIComponent(id)+'?alt=media',{signal});
@@ -92,9 +100,9 @@ async function readSnapshot(token:string,userId:string,id:string,signal?:AbortSi
  if(progress&&response.body){
   const reader=response.body.getReader();let parts:Uint8Array<ArrayBuffer>[]=[];let received=0,lastUpdate=0;
   try{for(;;){const chunk=await reader.read();if(chunk.done)break;parts.push(new Uint8Array(chunk.value));received+=chunk.value.byteLength;if(performance.now()-lastUpdate>200){lastUpdate=performance.now();progress(received,total);}}}finally{reader.releaseLock();}
-  const blob=new Blob(parts,{type:'application/json'});parts=[];
-  progress(received,received);data=JSON.parse(await blob.text());
- }else data=await response.json();
+  const blob=new Blob(parts);parts=[];
+  progress(received,received);data=await parseSnapshotBlob(blob);
+ }else data=await parseSnapshotBlob(await response.blob());
  if(data.userId!==userId)throw Error('Backup account mismatch');
  if(data.format==='TIS_DRIVE_V1')return {...data,records:validateDriveRecords(data.records)};
  if(data.format!=='TIS_HOME_INSPECTION_BACKUP_V10'||!Array.isArray(data.projects)||!data.reportBooks||typeof data.reportBooks!=='object')throw Error('Invalid JSON backup');
@@ -123,18 +131,22 @@ async function upload(token:string,userId:string,records:Records,parent:string,s
  for(const [key,value] of Object.entries(records))if(key.startsWith(REPORT))Object.defineProperty(reportBooks,key.slice(REPORT.length),{value:JSON.parse(value),enumerable:true});
  const exportedAt=new Date().toISOString(),contentHash=await hash(records),c=counts(records);
  const snapshot={format:'TIS_HOME_INSPECTION_BACKUP_V10',exportedAt,userId,contentHash,brand:records[BRAND]?JSON.parse(records[BRAND]):undefined,projects,reportBooks};
- const variantProps:Record<string,string>=variant?.kind==='mobile'?{tisMobile:'1',source:variant.source!}:variant?.kind==='edit'?{tisMobileEdit:'1',source:variant.source!,base:variant.base!}:{tisJson:'1',...(variant?.ack?{mobileAck:variant.ack}:{})};
- const metadata={name:(variant?.kind==='mobile'?'TIS_MobileBackup_':variant?.kind==='edit'?'TIS_MobileEdits_':'TIS_FullBackup_')+exportedAt.replace(/[:.]/g,'-')+'.json',parents:[folder],mimeType:'application/json',appProperties:{tisUser:userId,...variantProps,parent:parent||'root',projects:String(c.projects),defects:String(c.defects),hash:contentHash}};
- const payload=new Blob([JSON.stringify(snapshot)],{type:'application/json'});
+ const variantProps:Record<string,string>=variant?.kind==='mobile'?{tisMobile:'1',source:variant.source!,lossless:'1'}:variant?.kind==='edit'?{tisMobileEdit:'1',source:variant.source!,base:variant.base!}:{tisJson:'1',...(variant?.ack?{mobileAck:variant.ack}:{})};
+ const raw=new Blob([JSON.stringify(snapshot)],{type:'application/json'});
+ const compressed=!!variant&&(variant.kind==='mobile'||variant.kind==='edit')&&typeof CompressionStream!=='undefined'&&typeof DecompressionStream!=='undefined';
+ const payload=compressed?await new Response(raw.stream().pipeThrough(new CompressionStream('gzip'))).blob():raw;
+ if(signal?.aborted)throw Error('CANCELLED');
+ const mime=compressed?'application/gzip':'application/json';
+ const metadata={name:(variant?.kind==='mobile'?'TIS_MobileBackup_':variant?.kind==='edit'?'TIS_MobileEdits_':'TIS_FullBackup_')+exportedAt.replace(/[:.]/g,'-')+(compressed?'.json.gz':'.json'),parents:[folder],mimeType:mime,appProperties:{tisUser:userId,...variantProps,parent:parent||'root',projects:String(c.projects),defects:String(c.defects),hash:contentHash}};
  const fields='id,createdTime,appProperties,size';
- const start=await api(token,'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields='+fields,{method:'POST',signal,headers:{'Content-Type':'application/json; charset=UTF-8','X-Upload-Content-Type':'application/json','X-Upload-Content-Length':String(payload.size)},body:JSON.stringify(metadata)});
+ const start=await api(token,'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields='+fields,{method:'POST',signal,headers:{'Content-Type':'application/json; charset=UTF-8','X-Upload-Content-Type':mime,'X-Upload-Content-Length':String(payload.size)},body:JSON.stringify(metadata)});
  const location=start.headers.get('Location');
  if(!location)throw Error('Drive did not return an upload session');
  const session=new URL(location);
  if(session.protocol!=='https:'||!['www.googleapis.com','content.googleapis.com'].includes(session.hostname)||session.username||session.password)throw Error('Invalid Drive upload session');
  const chunk=4*1024*1024;let offset=0,attempts=0;let data:FileMeta|undefined;
  async function put(range:string,body?:Blob){
-  return fetch(session.href,{method:'PUT',signal,headers:{Authorization:'Bearer '+token,'Content-Range':range,'Content-Type':'application/json'},body,cache:'no-store'});
+  return fetch(session.href,{method:'PUT',signal,headers:{Authorization:'Bearer '+token,'Content-Range':range,'Content-Type':mime},body,cache:'no-store'});
  }
  function acknowledged(res:Response){
   const range=res.headers.get('Range');if(!range)return 0;
@@ -354,7 +366,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   mobileRetry.current={id:source.id,time:Date.now()};
   try{
    check(op);setMsg(tr('กำลังเตรียม JSON สำหรับมือถือ…','Preparing mobile JSON…'));
-   const compact=await compactMobileRecords(records,op.signal,(done,total)=>setMsg(tr('เตรียมรูปสำหรับมือถือ ','Preparing mobile images ')+done+'/'+total));
+   const compact=await compactMobileRecords(records,op.signal,(done,total)=>setMsg(tr('เตรียมข้อมูลต้นฉบับสำหรับมือถือ ','Preparing original mobile data ')+done+'/'+total));
    check(op);await upload(token,userId,compact,source.id,op.signal,uploadProgress,{kind:'mobile',source:source.id});
    return true;
   }catch(e){check(op);setMsg(tr('JSON ต้นฉบับอยู่บน Drive แล้ว แต่สร้างฉบับมือถือไม่สำเร็จ: ','Original JSON saved, but mobile copy failed: ')+String(e));return false;}
@@ -370,16 +382,18 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   const marker=readMarker(),copy=await linkedFile(token,userId,remote.id,'mobile',op.signal);check(op);
   if(!copy){setMsg(tr('พบ JSON ต้นฉบับแล้ว แต่ยังไม่มีฉบับมือถือ กรุณาเปิดคอมและกดส่ง JSON ล่าสุด','Full JSON found; mobile copy not ready. Open the computer and send latest JSON.'));return;}
   const sameSource=marker?.mobile&&marker.sourceId===remote.id&&marker.id===copy.id;
+  const previousBase=marker?.mobile&&marker.sourceId===remote.id&&marker.id!==copy.id?marker.id:null;
   const acknowledged=!!(marker?.sentId&&remote.appProperties?.mobileAck===marker.sentId&&marker.sentHash===localHash);
   const dirty=!!marker?.mobile&&localHash!==marker.hash;
-  if(sameSource&&!downloadOnly&&dirty){
+  if((sameSource||previousBase)&&!downloadOnly&&dirty){
    const latest=await linkedFile(token,userId,remote.id,'edit',op.signal);check(op);
    if(latest&&latest.id!==marker.sentId){autoHold.current=true;throw Error('CONFLICT');}
    if(marker.sentHash===localHash&&latest?.id===marker.sentId){setMsg(tr('ส่งงานมือถือแล้ว รอคอมพิวเตอร์รับ','Mobile changes sent; waiting for computer.'));return;}
    if(!automatic&&!window.confirm(tr('ส่งการแก้ไขจากมือถือให้คอมพิวเตอร์ โดยคงรูปต้นฉบับที่ไม่ได้แก้ไขหรือไม่?','Send mobile edits to the computer, keeping unchanged original photos?')))return;
    if((await files(token,userId,op.signal,true))?.id!==remote.id||(await linkedFile(token,userId,remote.id,'edit',op.signal))?.id!==latest?.id)throw Error('CONFLICT');
    if(!equalRecords(await readSyncRecords(),records))throw Error(tr('งานเปลี่ยนระหว่างส่ง กรุณากดส่งใหม่','Work changed before send; please retry.'));
-   check(op);const sent=await upload(token,userId,records,latest?.id||copy.id,op.signal,uploadProgress,{kind:'edit',source:remote.id,base:copy.id});
+   check(op);const baseId=previousBase||copy.id;
+   const sent=await upload(token,userId,records,latest?.id||baseId,op.signal,uploadProgress,{kind:'edit',source:remote.id,base:baseId});
    await markMobile({...marker,sentId:sent.id,sentHash:localHash});check(op);
    setMsg(tr('ส่งงานจากมือถือแล้ว · ','Mobile work sent · ')+describe(counts(records))+tr(' · รอคอมรับและรวมรูปต้นฉบับ',' · waiting for computer to merge originals'));return;
   }
@@ -410,8 +424,10 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
  async function receiveMobileEdits(token:string,remote:FileMeta,records:Records,localHash:string,op:AbortController,automatic:boolean){
   if(remote.appProperties?.tisJson!=='1')return false;
   const edit=await linkedFile(token,userId,remote.id,'edit',op.signal);check(op);if(!edit)return false;
-  const copy=await linkedFile(token,userId,remote.id,'mobile',op.signal);
-  if(!copy||edit.appProperties?.base!==copy.id||remote.appProperties?.hash!==localHash){autoHold.current=true;throw Error('CONFLICT');}
+  const baseId=edit.appProperties?.base;
+  if(!baseId||!/^[A-Za-z0-9_-]+$/.test(baseId)||remote.appProperties?.hash!==localHash){autoHold.current=true;throw Error('CONFLICT');}
+  const copy=await (await api(token,ROOT+'/'+encodeURIComponent(baseId)+'?fields=id,appProperties,trashed',{signal:op.signal})).json();
+  if(copy.trashed||copy.appProperties?.tisUser!==userId||copy.appProperties?.tisMobile!=='1'||copy.appProperties?.source!==remote.id)throw Error('Invalid mobile baseline');
   if(!safeRestoreRef.current()){setMsg(tr('มีงานจากมือถือ รอรับที่หน้าแฟ้มโครงการ','Mobile edits ready; return to the project list.'));return true;}
   if(!automatic&&!window.confirm(tr('พบงานจากมือถือ ต้องการรวมเข้าคอมโดยรักษารูปต้นฉบับหรือไม่?','Merge mobile work into the computer while preserving original photos?')))return true;
   setMsg(tr('กำลังรวมงานมือถือกับรูปต้นฉบับ…','Merging mobile work with originals…'));
@@ -586,7 +602,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   <div className="rounded-lg border border-slate-200 p-3"><strong>{tr('ในเครื่องนี้','This device')}</strong><div className="mt-1 font-bold">{localSummary?describe(localSummary):'—'}</div></div>
   <div className="rounded-lg border border-slate-200 p-3"><strong>Google Drive</strong><div className="mt-1 font-bold text-emerald-700">{cloud?describe(cloud):'—'}</div>{cloud&&<div className="mt-1 text-xs text-slate-500">{showTime(cloud.date)}{!checkedAt&&(' · '+tr('ข้อมูลครั้งก่อน','Last known'))}</div>}</div>
  </div>
- <p className="text-xs text-slate-600">{isMobileReceiver()?tr('มือถือใช้ฉบับขนาดเล็ก ส่งงานที่แก้ไขกลับคอมได้โดยไม่ทับรูปต้นฉบับ คอมต้องเปิดเว็บและยืนยัน Google เพื่อรับงาน','Mobile uses a smaller copy and sends edits back without replacing original photos. Keep the computer app open and authorized to receive edits.'):tr('คอมเก็บรูปต้นฉบับและสร้างฉบับมือถืออัตโนมัติ รับงานมือถือเมื่ออยู่หน้าแฟ้มโครงการ','Computer keeps originals, creates mobile copies, and receives mobile edits on the project list.')}</p>
+ <p className="text-xs text-slate-600">{isMobileReceiver()?tr('มือถือใช้ข้อมูลภาพต้นฉบับ ไม่ลดความละเอียด ส่งงานที่แก้ไขกลับคอมได้ คอมต้องเปิดเว็บและยืนยัน Google เพื่อรับงาน','Mobile uses original-quality images and sends edits back without resizing. Keep the computer app open and authorized to receive edits.'):tr('คอมสร้างฉบับมือถือแบบบีบอัดไฟล์โดยไม่ลดคุณภาพรูป รับงานมือถือเมื่ออยู่หน้าแฟ้มโครงการ','Computer creates lossless mobile copies, and receives mobile edits on the project list.')}</p>
  <button data-tour="drive-json-send" disabled={!ready||busy} onClick={()=>connect('publish')} className="w-full rounded-lg bg-emerald-700 text-white p-3 font-bold disabled:opacity-50">{tr('ส่ง JSON ล่าสุดขึ้น Drive','Send latest JSON to Drive')}</button>
  <button data-tour="drive-json-load" disabled={!ready||busy} onClick={()=>connect('download')} className="w-full rounded-lg bg-blue-700 text-white p-3 font-bold disabled:opacity-50">{tr('โหลด JSON ล่าสุดจาก Drive','Load latest JSON from Drive')}</button>
  <div className="rounded-lg border border-slate-200 p-3 space-y-1">{switchControl}<p className="text-xs text-slate-500">{tr('ตรวจทุก 20 วินาทีเมื่อเปิดเว็บและ Google พร้อมใช้งาน ไม่เขียนทับงานที่ขัดแย้งกัน','Checks every 20 seconds while open and authorized; conflicting work is not overwritten.')}</p></div>
