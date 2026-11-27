@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.100",
+  "latest": "v1.0.105",
   "releases": [
+    {
+      "version": "v1.0.105",
+      "build": 105,
+      "storageSchema": 2,
+      "date": "2026-11-27T05:36:29.415Z",
+      "notes": "Allow additional owner lines on editable Excel cover without moving footer",
+      "commit": "9b91295367520e0d66a6c5f8863b1e4a44a67db8"
+    },
     {
       "version": "v1.0.100",
       "build": 100,
