@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.83",
+  "latest": "v1.0.85",
   "releases": [
+    {
+      "version": "v1.0.85",
+      "build": 85,
+      "storageSchema": 2,
+      "date": "2026-11-27T02:43:04.848Z",
+      "notes": "Show actual regrouped pin number after adding a defect to an existing zone",
+      "commit": "4a64de197035093e3a621c4ed9013fa26a3499c0"
+    },
     {
       "version": "v1.0.83",
       "build": 83,
