@@ -178,6 +178,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe,onOpenDrive}
   const [activeFloorId, setActiveFloorId] = useState<string | null>(initialView.floorId);
   const [hubSearch, setHubSearch] = useState('');
   const [tourActive,setTourActive]=useState(false);
+  const [mobileSettings,setMobileSettings]=useState(false);
   const [tourOffer,setTourOffer]=useState(()=>!isAdmin&&!buyerTourSeen());
   const closeTour=useCallback(()=>{setTourActive(false);setTourOffer(false);markBuyerTourSeen();},[]);
   const startTour=()=>{setTourOffer(false);setTourActive(true);markBuyerTourSeen();};
@@ -1004,35 +1005,35 @@ export default function App({isAdmin=false,language,autoRestoreSafe,onOpenDrive}
       </div>
 
       {(showBackToTop||showBackToBottom)&&!showBrandModal&&!showApiKeyModal&&!showApiKeyGuideModal&&!projectModalTarget.open&&!defectModalTarget.open&&!annotateTarget&&!zoneModalTargetId&&!showSaveAsModal&&!lightbox&&!confirmState&&!pdfOverlayVisible&&(
-        <nav aria-label={lang==='en'?'Page navigation':'เลื่อนหน้า'} className="no-print fixed z-30 right-4 sm:right-6 flex flex-col items-end gap-2" style={{bottom:'calc(1rem + env(safe-area-inset-bottom, 0px))'}}>
+        <nav aria-label={lang==='en'?'Page navigation':'เลื่อนหน้า'} className="no-print fixed z-30 right-2 sm:right-6 flex flex-col items-end gap-1.5 sm:gap-2" style={{bottom:'calc(1rem + env(safe-area-inset-bottom, 0px))'}}>
           {showBackToTop&&<button type="button" onClick={scrollToTop}
             aria-label={lang==='en'?'Back to top':'เลื่อนไปบนสุด'}
             title={lang==='en'?'Back to top':'เลื่อนไปบนสุด'}
-            className="flex min-h-11 min-w-[88px] items-center justify-center gap-1.5 rounded-full brand-bg px-3.5 py-2.5 text-white text-xs font-semibold shadow-lg border border-white/30 hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-500 cursor-pointer">
+            className="flex h-11 w-11 sm:w-auto sm:min-w-[88px] items-center justify-center gap-1.5 rounded-full brand-bg sm:px-3.5 sm:py-2.5 text-white text-xs font-semibold shadow-lg border border-white/30 hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-500 cursor-pointer">
             <ArrowUp className="w-5 h-5 shrink-0" aria-hidden="true"/>
-            <span>{lang==='en'?'Top':'บนสุด'}</span>
+            <span className="hidden sm:inline">{lang==='en'?'Top':'บนสุด'}</span>
           </button>}
           {showBackToBottom&&<button type="button" onClick={scrollToBottom}
             aria-label={lang==='en'?'Go to bottom':'เลื่อนไปล่างสุด'}
             title={lang==='en'?'Go to bottom':'เลื่อนไปล่างสุด'}
-            className="flex min-h-11 min-w-[88px] items-center justify-center gap-1.5 rounded-full brand-bg px-3.5 py-2.5 text-white text-xs font-semibold shadow-lg border border-white/30 hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-500 cursor-pointer">
+            className="flex h-11 w-11 sm:w-auto sm:min-w-[88px] items-center justify-center gap-1.5 rounded-full brand-bg sm:px-3.5 sm:py-2.5 text-white text-xs font-semibold shadow-lg border border-white/30 hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-500 cursor-pointer">
             <ArrowDown className="w-5 h-5 shrink-0" aria-hidden="true"/>
-            <span>{lang==='en'?'Bottom':'ล่างสุด'}</span>
+            <span className="hidden sm:inline">{lang==='en'?'Bottom':'ล่างสุด'}</span>
           </button>}
         </nav>
       )}
       {/* Main Content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-5 no-print">
+      <main className="flex-1 min-w-0 max-w-7xl w-full mx-auto px-2.5 sm:px-6 py-3 sm:py-5 no-print">
         {/* Global White-Label Header */}
-        <header className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 mb-5">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <header className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 mb-3 sm:mb-5">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-4">
             <div className="flex items-center gap-3.5 min-w-0">
               <div className="p-1.5 bg-slate-50 rounded-xl border border-slate-200 shrink-0">
-                <BrandLogo brand={brand} className="w-12 h-12 sm:w-14 sm:h-14" />
+                <BrandLogo brand={brand} className="w-10 h-10 sm:w-14 sm:h-14" />
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
-                  <h1 className="text-lg sm:text-xl font-extrabold tracking-tight brand-text truncate">
+                  <h1 className="text-base sm:text-xl font-extrabold tracking-tight brand-text break-words sm:truncate">
                     {brand.companyName}
                   </h1>
                   <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">
@@ -1054,8 +1055,10 @@ export default function App({isAdmin=false,language,autoRestoreSafe,onOpenDrive}
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-start md:justify-end gap-2 min-w-0">
+            <div className="flex flex-wrap items-center justify-start md:justify-end gap-1.5 sm:gap-2 min-w-0">
+              <button type="button" aria-expanded={mobileSettings||tourActive} onClick={()=>setMobileSettings(v=>!v)} className="sm:hidden min-h-10 rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 inline-flex items-center gap-1.5"><Palette className="w-4 h-4"/>{lang==='en'?'Settings':'ตั้งค่าโปรแกรม'} {mobileSettings||tourActive?'▴':'▾'}</button>
               {!isAdmin&&<button type="button" onClick={startTour} className="inline-flex items-center gap-1.5 rounded-xl border border-blue-300 bg-blue-50 px-3 py-2 text-xs sm:text-sm font-semibold text-blue-800 hover:bg-blue-100 whitespace-nowrap"><BookOpen className="w-4 h-4"/>{lang==='en'?'Guided tour':'แนะนำการใช้งาน'}</button>}
+              <div className={`${mobileSettings||tourActive?'flex':'hidden'} sm:contents w-full flex-wrap gap-2 order-last sm:order-none`}>
               <label className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700">
                 <Palette className="w-4 h-4 shrink-0"/>
                 <span className="whitespace-nowrap">{lang==='en'?'Theme':'โทนสี'}</span>
@@ -1073,6 +1076,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe,onOpenDrive}
                 <Palette className="w-4 h-4" />
                 {t.editBrandBtn}
               </button>
+              </div>
               {activeProject ? (
                 <button
                   type="button"
@@ -1099,7 +1103,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe,onOpenDrive}
           </div>
 
           {/* Client-Side Gemini API Key Status & Controls Bar */}
-          <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+          <div className={`${mobileSettings||tourActive?'flex':'hidden'} sm:flex mt-3 pt-3 border-t border-slate-100 flex-wrap items-center justify-between gap-2`}>
             <div className="flex flex-wrap items-center gap-2">
               <span
                 className={`inline-flex items-center px-2.5 py-1 rounded-lg border text-xs font-bold whitespace-nowrap ${
@@ -1139,7 +1143,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe,onOpenDrive}
 
         {/* VIEW 1: PROJECT HUB */}
         {!activeProject ? (
-          <div className="space-y-5">
+          <div className="space-y-3 sm:space-y-5">
             {/* JSON File Management Bar */}
             <section className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3.5">
@@ -1193,8 +1197,8 @@ export default function App({isAdmin=false,language,autoRestoreSafe,onOpenDrive}
             </section>
 
             {/* 2 Summary KPI Cards */}
-            <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="bg-white rounded-2xl border border-slate-200 p-5 flex items-center justify-between">
+            <section className="grid grid-cols-2 gap-2 sm:gap-4">
+              <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 flex items-center justify-between gap-1.5">
                 <div>
                   <div className="text-xs sm:text-sm font-semibold text-slate-500">
                     {t.totalProjectsLabel}
@@ -1206,12 +1210,12 @@ export default function App({isAdmin=false,language,autoRestoreSafe,onOpenDrive}
                     <span className="text-sm font-medium text-slate-500">{t.unitFiles}</span>
                   </div>
                 </div>
-                <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center">
+                <div className="hidden sm:flex w-11 h-11 rounded-xl bg-blue-50 text-blue-700 items-center justify-center">
                   <FolderKanban className="w-5 h-5" />
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl border border-slate-200 p-5 flex items-center justify-between">
+              <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 flex items-center justify-between gap-1.5">
                 <div>
                   <div className="text-xs sm:text-sm font-semibold text-slate-500">
                     {t.activeProjectsLabel}
@@ -1223,7 +1227,7 @@ export default function App({isAdmin=false,language,autoRestoreSafe,onOpenDrive}
                     <span className="text-sm font-medium text-slate-500">{t.unitFiles}</span>
                   </div>
                 </div>
-                <div className="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                <div className="hidden sm:flex w-11 h-11 rounded-xl bg-amber-50 text-amber-600 items-center justify-center">
                   <Wrench className="w-5 h-5" />
                 </div>
               </div>
@@ -1413,14 +1417,14 @@ export default function App({isAdmin=false,language,autoRestoreSafe,onOpenDrive}
           </div>
         ) : (
           /* VIEW 2: ACTIVE PROJECT WORKSPACE */
-          <div className="space-y-5">
-            <section className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+          <div className="space-y-3 sm:space-y-5">
+            <section className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 sm:gap-3 pb-2.5 sm:pb-4 border-b border-slate-100">
                 <div className="min-w-0 flex-1">
                   <h2 className="font-bold text-slate-900 break-words leading-snug" style={{fontSize:`clamp(15px, 2vw, ${Math.max(15,Math.min(20,Math.round(1100/Math.max(1,activeProject.name.length))))}px)`}}>
                     {activeProject.name}
                   </h2>
-                  <p className="text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-x-2">
+                  <p className="text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-x-2 break-words">
                     <span>
                       {t.houseNoPrefix} {activeProject.houseNo}
                     </span>
@@ -1431,29 +1435,29 @@ export default function App({isAdmin=false,language,autoRestoreSafe,onOpenDrive}
                   </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <div className="grid grid-cols-3 sm:flex sm:flex-wrap items-center gap-1.5 sm:gap-2 shrink-0">
                   <button
                     type="button"
                     onClick={() =>
                       setProjectModalTarget({ open: true, project: activeProject })
                     }
-                    className="text-xs px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                    className="text-xs px-2 sm:px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold flex items-center justify-center sm:justify-start gap-1.5 whitespace-nowrap cursor-pointer"
                   >
                     <Pencil className="w-3.5 h-3.5" />
-                    {t.editProjectShort}
+                    <span className="sm:hidden">{lang==='en'?'Edit':'แก้ไขแฟ้ม'}</span><span className="hidden sm:inline">{t.editProjectShort}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => handleBackupSingleProjectJson(activeProject)}
-                    className="text-xs px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                    className="text-xs px-2 sm:px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold flex items-center justify-center sm:justify-start gap-1.5 whitespace-nowrap cursor-pointer"
                   >
                     <Archive className="w-3.5 h-3.5" />
-                    {t.backupProjectShort}
+                    <span className="sm:hidden">JSON</span><span className="hidden sm:inline">{t.backupProjectShort}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => persistAll(brand, projects, true)}
-                    className="text-xs px-3.5 py-2 rounded-xl brand-bg text-white font-semibold flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                    className="text-xs px-2 sm:px-3.5 py-2 rounded-xl brand-bg text-white font-semibold flex items-center justify-center sm:justify-start gap-1.5 whitespace-nowrap cursor-pointer"
                   >
                     <Save className="w-3.5 h-3.5" />
                     {t.saveShort}
@@ -1462,47 +1466,47 @@ export default function App({isAdmin=false,language,autoRestoreSafe,onOpenDrive}
               </div>
 
               {/* Workspace Tabs */}
-              <div className="flex flex-wrap gap-2 mt-4">
+              <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 sm:gap-2 mt-2.5 sm:mt-4">
                 <button
                   type="button"
                   data-tour="tab-studio"
                   onClick={() => setActiveTab('studio')}
-                  className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                  className={`px-2 py-2.5 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center justify-center sm:justify-start gap-1.5 whitespace-nowrap cursor-pointer ${
                     activeTab === 'studio'
                       ? 'brand-bg text-white'
                       : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                   }`}
                 >
                   <Building2 className="w-4 h-4" />
-                  {t.tabStudio}
+                  <span className="sm:hidden">{lang==='en'?'Plan & AI':'แปลน & AI'}</span><span className="hidden sm:inline">{t.tabStudio}</span>
                 </button>
                 <button
                   type="button"
                   data-tour="tab-list"
                   onClick={() => setActiveTab('list')}
-                  className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer tabular-nums ${
+                  className={`px-2 py-2.5 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center justify-center sm:justify-start gap-1.5 whitespace-nowrap cursor-pointer tabular-nums ${
                     activeTab === 'list'
                       ? 'brand-bg text-white'
                       : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                   }`}
                 >
                   <ClipboardList className="w-4 h-4" />
-                  {t.tabList} ({activeProject.defects.length})
+                  <span className="sm:hidden">Defect</span><span className="hidden sm:inline">{t.tabList}</span> ({activeProject.defects.length})
                 </button>
                 <button
                   type="button"
                   data-tour="tab-export"
                   onClick={() => setActiveTab('export')}
-                  className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                  className={`px-2 py-2.5 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center justify-center sm:justify-start gap-1.5 whitespace-nowrap cursor-pointer ${
                     activeTab === 'export'
                       ? 'brand-bg text-white'
                       : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                   }`}
                 >
                   <Download className="w-4 h-4" />
-                  {t.tabExport}
+                  <span className="sm:hidden">{lang==='en'?'Reports':'รายงาน'}</span><span className="hidden sm:inline">{t.tabExport}</span>
                 </button>
-                <button type="button" data-tour="tab-client" onClick={()=>setActiveTab('client')} className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${activeTab==='client'?'brand-bg text-white':'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}>
+                <button type="button" data-tour="tab-client" onClick={()=>setActiveTab('client')} className={`px-2 py-2.5 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center justify-center sm:justify-start gap-1.5 whitespace-nowrap cursor-pointer ${activeTab==='client'?'brand-bg text-white':'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}>
                   <Globe className="w-4 h-4"/>{lang==='en'?'Customer website':'เว็บไซต์ลูกค้า'}
                 </button>
               </div>
