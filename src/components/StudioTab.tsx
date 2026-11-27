@@ -1,5 +1,5 @@
 import {isDngFile,imageUploadError} from '../utils/dngImage';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Eye,
   EyeOff,
@@ -94,7 +94,6 @@ export const StudioTab: React.FC<StudioTabProps> = ({
   const planViewport=useRef<HTMLDivElement|null>(null);
   const panStart=useRef<{x:number;y:number;left:number;top:number;id:number}|null>(null);
   useEffect(()=>{try{workspaceStorage.setItem(viewKey,JSON.stringify({pinSize,zoom:planZoom}));}catch{}},[viewKey,pinSize,planZoom]);
-  useEffect(()=>{const vp=planViewport.current;if(vp){vp.scrollLeft=Math.max(0,(vp.scrollWidth-vp.clientWidth)/2);vp.scrollTop=Math.max(0,(vp.scrollHeight-vp.clientHeight)/2);}},[planZoom,activeFloorId,isEditingFloor]);
   const changeZoom=(n:number)=>setPlanZoom(Math.max(50,Math.min(300,n)));
   type PinPosition={x:number;y:number;zone:string};
   type PinMove={id:string;floorId:string;before:PinPosition;after:PinPosition};
@@ -145,6 +144,47 @@ export const StudioTab: React.FC<StudioTabProps> = ({
     beginPlacement(activeDraft.id);setPinZoneChoice({floorId:activeFloor.id,draftId:activeDraft.id,zoneId});
     if(scrollToPlan)window.requestAnimationFrame(()=>planViewport.current?.scrollIntoView({block:'nearest',behavior:'smooth'}));
   };
+
+  // Fit the explicitly selected zone using the actual scroll viewport and
+  // stage dimensions. Zone coordinates are percentages of the same stage
+  // used for placing pins; never infer the target from the image aspect ratio.
+  const lastFocusedChoice=useRef<typeof currentZoneChoice>(null);
+  const lastPlanView=useRef({zoom:-1,floor:'',editing:false});
+  useLayoutEffect(()=>{
+    const vp=planViewport.current,stage=floorStageRef.current;
+    if(!vp||!stage||!vp.clientWidth||!vp.clientHeight||!stage.offsetWidth||!stage.offsetHeight)return;
+    const floor=activeFloor?.id||'';
+    const previous=lastPlanView.current;
+    const viewChanged=previous.zoom!==planZoom||previous.floor!==floor||previous.editing!==isEditingFloor;
+    lastPlanView.current={zoom:planZoom,floor,editing:isEditingFloor};
+    const newChoice=currentZoneChoice!==lastFocusedChoice.current;
+    lastFocusedChoice.current=currentZoneChoice;
+    if(readyToPlace&&currentZoneChoice){
+      const raw=lockedZone||{x:0,y:0,w:100,h:100};
+      const x=Math.max(0,Math.min(100,raw.x)),y=Math.max(0,Math.min(100,raw.y));
+      const w=Math.max(.1,Math.min(100-x,raw.w)),h=Math.max(.1,Math.min(100-y,raw.h));
+      if(![x,y,w,h].every(Number.isFinite))return;
+      if(newChoice){
+        // Leave breathing room around the zone and respect the existing
+        // manual zoom range; full-floor selection returns to 100%.
+        const fit=lockedZone?planZoom*Math.min(vp.clientWidth*.86/(stage.offsetWidth*w/100),vp.clientHeight*.86/(stage.offsetHeight*h/100)):100;
+        const target=Math.max(50,Math.min(300,Math.floor(fit/5)*5));
+        if(target!==planZoom){setPlanZoom(target);return;}
+      }
+      if(newChoice||viewChanged){
+        // Calculate from the post-zoom DOM, including any centered stage
+        // margin, borders, and scrollbars. Clamp to reachable scroll bounds.
+        const vr=vp.getBoundingClientRect(),sr=stage.getBoundingClientRect();
+        const cx=vp.scrollLeft+sr.left-vr.left-vp.clientLeft+sr.width*(x+w/2)/100;
+        const cy=vp.scrollTop+sr.top-vr.top-vp.clientTop+sr.height*(y+h/2)/100;
+        vp.scrollLeft=Math.max(0,Math.min(vp.scrollWidth-vp.clientWidth,cx-vp.clientWidth/2));
+        vp.scrollTop=Math.max(0,Math.min(vp.scrollHeight-vp.clientHeight,cy-vp.clientHeight/2));
+      }
+    }else if(viewChanged){
+      vp.scrollLeft=Math.max(0,(vp.scrollWidth-vp.clientWidth)/2);
+      vp.scrollTop=Math.max(0,(vp.scrollHeight-vp.clientHeight)/2);
+    }
+  },[currentZoneChoice,lockedZone,readyToPlace,planZoom,activeFloor?.id,isEditingFloor]);
 
   // Markup canvas state
   const [markupImageSrc, setMarkupImageSrc] = useState<string | null>(null);
@@ -799,6 +839,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
               {placingDraftId&&<button type="button" onClick={()=>setPlacingDraftId(null)} className="text-xs px-2 py-1 rounded border border-blue-200 bg-white">{t.cancelBtn}</button>}
             </div>
             {zoneTabs()}
+            <p className="text-[11px] text-blue-800">{tr('เลือกโซนแล้วแปลนจะเลื่อนและซูมพอดีโซนอัตโนมัติ','Selecting a zone automatically pans and fits the plan to that zone.')}</p>
             <div className={'rounded-lg px-2.5 py-2 text-xs font-semibold '+(readyToPlace?'bg-blue-600 text-white':'bg-white text-slate-500')}>
               {readyToPlace?tr('ขั้นที่ 2 คลิกตำแหน่งบนแปลนในโซน: ','Step 2 Click the position inside: ')+(lockedZone?.name||activeFloor.name):tr('ขั้นที่ 2 เลือกโซนก่อน แล้วคลิกตำแหน่งบนแปลน','Step 2 Choose a zone, then click the plan')}
             </div>
@@ -824,7 +865,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
             <span className="tabular-nums min-w-9">{pinSize}px</span>
             <span className="font-semibold ml-1">{lang==='en'?'Zoom':'ซูมแปลน'}</span>
             <button type="button" onClick={()=>changeZoom(planZoom-25)} className="border bg-white rounded px-2 py-1 font-bold" aria-label="Zoom out">−</button>
-            <input aria-label={lang==='en'?'Plan zoom':'ซูมแปลน'} type="range" min={50} max={300} step={10} value={planZoom} onChange={ev=>changeZoom(+ev.target.value)} className="w-20 accent-blue-700"/>
+            <input aria-label={lang==='en'?'Plan zoom':'ซูมแปลน'} type="range" min={50} max={300} step={5} value={planZoom} onChange={ev=>changeZoom(+ev.target.value)} className="w-20 accent-blue-700"/>
             <button type="button" onClick={()=>changeZoom(planZoom+25)} className="border bg-white rounded px-2 py-1 font-bold" aria-label="Zoom in">+</button>
             <span className="tabular-nums">{planZoom}%</span>
             <button type="button" onClick={()=>{changeZoom(100);const vp=planViewport.current;if(vp){vp.scrollLeft=0;vp.scrollTop=0;}}} className="border bg-white rounded px-2 py-1">{lang==='en'?'Fit':'พอดีจอ'}</button>
