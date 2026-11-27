@@ -107,6 +107,7 @@ function legacyIdentityFingerprint(value:string):number{
 export function clearLegacyBuyerIdentity(brand:BrandConfig,isAdmin:boolean):BrandConfig{
   if(isAdmin)return brand;
   return {...brand,
+    subtitle: typeof brand.subtitle==='string'&&brand.subtitle.trim()!==DEFAULT_BRAND.subtitle?brand.subtitle:'',
     inspectorName:legacyIdentityFingerprint(brand.inspectorName||'')===1062844061?'':brand.inspectorName,
     licenseNo:legacyIdentityFingerprint(brand.licenseNo||'')===2823607140?'':brand.licenseNo,
   };
