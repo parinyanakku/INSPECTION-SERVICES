@@ -1,6 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {flushSync} from 'react-dom';
 import type {AppLanguage} from '../types/inspection';
+import {withDriveDownload} from '../utils/driveDownload';
 import {applyMobileRecords} from '../utils/driveMobileCopy';
 import {hashWorkspaceRecords} from '../utils/driveRecordHash';
 import {mirrorWorkspace} from '../utils/driveVisibleBackup';
@@ -91,18 +92,11 @@ async function parseSnapshotBlob(blob:Blob){
   if(typeof DecompressionStream==='undefined')throw Error('Browser does not support lossless gzip. Update Safari or Chrome.');
   return new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).json();
  }
- return JSON.parse(await blob.text());
+ return new Response(blob).json();
 }
 async function readSnapshot(token:string,userId:string,id:string,signal?:AbortSignal,progress?:(received:number,total:number)=>void):Promise<Snapshot>{
  const response=await api(token,ROOT+'/'+encodeURIComponent(id)+'?alt=media',{signal});
- const total=Number(response.headers.get('Content-Length'))||0;
- let data;
- if(progress&&response.body){
-  const reader=response.body.getReader();let parts:Uint8Array<ArrayBuffer>[]=[];let received=0,lastUpdate=0;
-  try{for(;;){const chunk=await reader.read();if(chunk.done)break;parts.push(new Uint8Array(chunk.value));received+=chunk.value.byteLength;if(performance.now()-lastUpdate>200){lastUpdate=performance.now();progress(received,total);}}}finally{reader.releaseLock();}
-  const blob=new Blob(parts);parts=[];
-  progress(received,received);data=await parseSnapshotBlob(blob);
- }else data=await parseSnapshotBlob(await response.blob());
+ let data=await withDriveDownload(response,parseSnapshotBlob,signal,progress);
  if(data.userId!==userId)throw Error('Backup account mismatch');
  if(data.format==='TIS_DRIVE_V1')return {...data,records:validateDriveRecords(data.records)};
  if(data.format!=='TIS_HOME_INSPECTION_BACKUP_V10'||!Array.isArray(data.projects)||!data.reportBooks||typeof data.reportBooks!=='object')throw Error('Invalid JSON backup');

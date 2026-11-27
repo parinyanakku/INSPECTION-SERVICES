@@ -92,9 +92,11 @@ export async function restoreSyncRecords(records:Record<string,string>,expected:
  if(nowKeys.length!==Object.keys(expected).length||nowKeys.some(k=>now[k]!==expected[k]))throw Error('Local work changed during sync');
  const keys=Object.keys(records);
  if(keys.some(k=>!syncKey(k)||typeof records[k]!=='string'))throw Error('Invalid sync records');
- const projects=JSON.parse(records[SYNC_PROJECTS]||'null');
- if(!Array.isArray(projects)||projects.some(p=>!p||typeof p.id!=='string'||!Array.isArray(p.floors)||!Array.isArray(p.defects)))throw Error('Invalid projects');
- for(const k of keys){const value=JSON.parse(records[k]);if(k!==SYNC_PROJECTS&&(!value||typeof value!=='object'||Array.isArray(value)))throw Error('Invalid report data');}
+ {
+  const projects=JSON.parse(records[SYNC_PROJECTS]||'null');
+  if(!Array.isArray(projects)||projects.some(p=>!p||typeof p.id!=='string'||!Array.isArray(p.floors)||!Array.isArray(p.defects)))throw Error('Invalid projects');
+ }
+ for(const k of keys){if(k===SYNC_PROJECTS)continue;const value=JSON.parse(records[k]);if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid report data');}
  const oldKeys=[...cache.keys()].filter(syncKey);
  const extras={'tis_drive_pre_restore_v1':JSON.stringify(now),'tis_drive_sync_marker_v1':marker};
  await new Promise<void>((resolve,reject)=>{
