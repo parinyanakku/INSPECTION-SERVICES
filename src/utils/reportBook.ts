@@ -31,6 +31,7 @@ export function createDefaultCustomExportSettings(): ReportCustomExportSettings 
     includeDefectTable: true,
     includeSummaryTable2: true,
     defectsPerPage: 3,
+    defectTableMode: 'before_after',
     defectStatusFilter: 'all',
     defectSeverityFilter: 'all',
     defectSelectionMode: 'filter',
@@ -291,6 +292,7 @@ export function loadReportBookData(
       includeDefectTable: rawCustom.includeDefectTable ?? defaultCustom.includeDefectTable,
       includeSummaryTable2:
         rawCustom.includeSummaryTable2 ?? defaultCustom.includeSummaryTable2,
+      defectTableMode: rawCustom.defectTableMode === 'before_only' ? 'before_only' : 'before_after',
       defectsPerPage:
         rawCustom.defectsPerPage === 2 ||
         rawCustom.defectsPerPage === 3 ||
