@@ -548,24 +548,24 @@ function estimateDefectRowHeight(
     normSolution !== normTitle &&
     (!showCause || normSolution !== normCause);
 
-  let textHeight = 38; // Zone line + floor/severity line + gaps
-  textHeight += Math.max(1, Math.ceil(cleanTitle.length / 32)) * 16;
+  let textHeight = 30; // Compact zone and floor/severity lines
+  textHeight += Math.max(1, Math.ceil(cleanTitle.length / 43)) * 15;
   if (showCause) {
-    textHeight += 4 + Math.max(1, Math.ceil((causePrefix.length + 1 + cleanCause.length) / 34)) * 15;
+    textHeight += 4 + Math.max(1, Math.ceil((causePrefix.length + 1 + cleanCause.length) / 46)) * 14;
   }
   if (showSolution) {
     textHeight +=
-      4 + Math.max(1, Math.ceil((solutionPrefix.length + 1 + cleanSolution.length) / 34)) * 15;
+      4 + Math.max(1, Math.ceil((solutionPrefix.length + 1 + cleanSolution.length) / 46)) * 14;
   }
 
-  const rowTextTotal = textHeight + 82; // cell padding + two-row status grid
-  const rowImageTotal = 142 + 36; // landscape photo box + vertical padding/border
+  const rowTextTotal = textHeight + 60; // cell padding + compact two-row status grid
+  const rowImageTotal = 122 + 25; // landscape photo box + vertical padding/border
   return Math.max(rowImageTotal, rowTextTotal);
 }
 
 /**
  * Builds the complete 5-part A4 Engineering Report Book (Cover, TOC, Intro, Steps & Zones,
- * 5-column landscape Table 1 at up to 2 defects per page with auto-fit pagination, Summary & Table 2, and anchored Page Footer).
+ * 5-column landscape Table 1 at up to 3 defects per page with auto-fit pagination, Summary & Table 2, and anchored Page Footer).
  * Pure inline CSS with Hex/RGB colors only (safe for both Word .doc and html2canvas PDF).
  */
 export function buildSharedReportPages(
@@ -719,14 +719,14 @@ export function buildSharedReportPages(
         projectLabel: 'โครงการ',
       };
 
-  const perPage = 2;
+  const perPage = 3;
   const defectChunks: DefectItem[][] = [];
   if (filteredDefects.length === 0) {
     defectChunks.push([]);
   } else {
     let currentChunk: DefectItem[] = [];
     let currentHeight = 0;
-    const getPageBudget = (chunkIndex: number) => (chunkIndex === 0 ? 500 : 530);
+    const getPageBudget = (chunkIndex: number) => (chunkIndex === 0 ? 540 : 565);
 
     filteredDefects.forEach((d) => {
       const flName = getFloorNameById(proj, d.floorId);
@@ -1211,10 +1211,10 @@ export function buildSharedReportPages(
       const pageNumStr = String(sec3StartPage + chunkIdx);
       const heading = chunkIdx === 0 ? L.sec3Title : L.sec3Cont;
       const caption = chunkIdx === 0 ? L.t1Caption : L.t1CaptionCont;
-      const available=chunkIdx===0?500:530;
+      const available=chunkIdx===0?540:565;
       const estimated=chunk.reduce((sum,d)=>sum+estimateDefectRowHeight(d,getFloorNameById(proj,d.floorId),custom.showCauseDetails,custom.showSolutionDetails,L.causePrefix,L.solutionPrefix),0);
       // Expand photo rows into unused page area without forcing extra rows or cutting off long notes.
-      const photoBoxH=chunk.length>=2?Math.min(194,142+Math.max(0,Math.floor((available-estimated-16)/chunk.length))):170;
+      const photoBoxH=chunk.length>=3?Math.min(138,122+Math.max(0,Math.floor((available-estimated-12)/chunk.length))):Math.min(165,122+Math.max(0,Math.floor((available-estimated-12)/Math.max(1,chunk.length))));
 
       const rowsHtml =
         chunk.length === 0
@@ -1248,7 +1248,7 @@ export function buildSharedReportPages(
 
 
                 const locationSrc=assets?.defectLocationPngMap?.[d.id];
-                const cell='border:1px solid #cbd5e1; padding:6px; vertical-align:top; background:'+rowBg+';';
+                const cell='border:1px solid #cbd5e1; padding:5px; vertical-align:middle; background:'+rowBg+';';
                 const photo=(src:string|null,label:string)=>src
                   ? `<div style="width:100%; height:${photoBoxH}px; background:#f8fafc; border:1px solid #e2e8f0; display:flex; align-items:center; justify-content:center; overflow:hidden;"><img data-pdf-photo="true" src="${src}" style="max-width:100%; max-height:${photoBoxH-2}px; width:auto; height:auto; object-fit:contain; display:block; margin:0 auto;" /></div>`
                   : `<div style="height:${photoBoxH}px; border:1px dashed #cbd5e1; background:#f8fafc; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:12px;">${escapeHtml(label)}</div>`;
@@ -1257,33 +1257,33 @@ export function buildSharedReportPages(
                   {value:'กำลังแก้ไข',label:isEn?'In progress':'กำลังแก้ไข',color:'#d97706',bg:'#fffbeb'},
                   {value:'รอแก้ไข',label:isEn?'Pending':'รอแก้ไข',color:'#dc2626',bg:'#fef2f2'},
                 ];
-                const statusGrid=`<table style="width:100%; table-layout:fixed; border-collapse:collapse; margin-top:5px;"><colgroup><col style="width:33.33%"/><col style="width:33.33%"/><col style="width:33.34%"/></colgroup><tbody><tr>${states.map(st=>`<td style="border:1px solid #cbd5e1; background:#f1f5f9; text-align:center; vertical-align:middle; padding:3px 1px; font-size:10px; font-weight:700; color:#334155;">${escapeHtml(st.label)}</td>`).join('')}</tr><tr>${states.map(st=>`<td style="border:1px solid #cbd5e1; background:${d.status===st.value?st.bg:'#ffffff'}; text-align:center; vertical-align:middle; height:25px; font-size:18px; line-height:1; font-weight:700; color:${d.status===st.value?st.color:'#94a3b8'};">${d.status===st.value?'☑':'☐'}</td>`).join('')}</tr></tbody></table>`;
+                const statusGrid=`<table style="width:100%; table-layout:fixed; border-collapse:collapse; margin-top:3px;"><colgroup><col style="width:33.33%"/><col style="width:33.33%"/><col style="width:33.34%"/></colgroup><tbody><tr>${states.map(st=>`<td style="border:1px solid #cbd5e1; background:#f1f5f9; text-align:center; vertical-align:middle; padding:1px; font-size:10px; line-height:1.15; font-weight:700; color:#334155;">${escapeHtml(st.label)}</td>`).join('')}</tr><tr>${states.map(st=>`<td style="border:1px solid #cbd5e1; background:${d.status===st.value?st.bg:'#ffffff'}; text-align:center; vertical-align:middle; height:18px; padding:0 1px; font-size:15px; line-height:1; font-weight:700; color:${d.status===st.value?st.color:'#94a3b8'};">${d.status===st.value?'☑':'☐'}</td>`).join('')}</tr></tbody></table>`;
                 return `<tr style="break-inside:avoid; page-break-inside:avoid; background:${rowBg};">
                   <td style="${cell} text-align:center; font-weight:800; font-size:14px;">${escapeHtml(d.number)}</td>
                   <td style="${cell} text-align:center;">
-                    ${locationSrc?`<img src="${locationSrc}" width="158" style="max-width:100%; max-height:${photoBoxH}px; width:auto; height:auto; display:block; margin:0 auto; border:1px solid #e2e8f0;" />`:`<div style="height:80px; border:1px dashed #cbd5e1; font-size:11px; color:#64748b;">${isEn?'Location preview unavailable':'ไม่มีภาพตำแหน่งแปลน'}</div>`}
-                    <div style="font-size:10.5px; font-weight:700; margin-top:4px;">${escapeHtml(flName)} · #${escapeHtml(d.number)}</div>
+                    ${locationSrc?`<img src="${locationSrc}" width="158" style="max-width:100%; max-height:${photoBoxH-12}px; width:auto; height:auto; display:block; margin:0 auto; object-fit:contain; border:1px solid #e2e8f0;" />`:`<div style="height:80px; border:1px dashed #cbd5e1; font-size:11px; color:#64748b;">${isEn?'Location preview unavailable':'ไม่มีภาพตำแหน่งแปลน'}</div>`}
+                    <div style="font-size:10.5px; line-height:1.1; font-weight:700; margin-top:2px;">${escapeHtml(flName)} · #${escapeHtml(d.number)}</div>
                   </td>
                   <td style="${cell} text-align:center;">${photo(beforeSrc,L.noImg)}</td>
                   <td style="${cell} text-align:center;">${photo(afterSrc,isEn?'Awaiting after photo':'รอรูปหลังแก้ไข')}</td>
-                  <td style="${cell} text-align:left; line-height:1.4; word-break:break-word;">
-                      <div style="font-weight:800; font-size:13.1px; color:${accentHex}; line-height:1.35; margin-bottom:2px;">
+                  <td style="${cell} vertical-align:top; text-align:left; line-height:1.2; word-break:break-word;">
+                      <div style="font-weight:800; font-size:13.1px; color:${accentHex}; line-height:1.2; margin-bottom:1px;">
                         ${escapeHtml(zoneLabel)}
                       </div>
-                      <div style="font-size:11.9px; color:#64748b; line-height:1.3; margin-bottom:3px;">
+                      <div style="font-size:11.9px; color:#64748b; line-height:1.15; margin-bottom:2px;">
                         ${escapeHtml(flName)} · ${escapeHtml(translateSeverity(d.severity, lang))}
                       </div>
-                      <div style="font-weight:700; font-size:13.1px; color:#0f172a; line-height:1.45;">
+                      <div style="font-weight:700; font-size:13.1px; color:#0f172a; line-height:1.2;">
                         ${escapeHtml(cleanTitle)}
                       </div>
                       ${
                         showCause
-                          ? `<div style="font-size:11.9px; color:#334155; margin-top:3px; line-height:1.4;"><strong>${L.causePrefix}</strong> ${escapeHtml(cleanCause)}</div>`
+                          ? `<div style="font-size:11.9px; color:#334155; margin-top:2px; line-height:1.2;"><strong>${L.causePrefix}</strong> ${escapeHtml(cleanCause)}</div>`
                           : ''
                       }
                       ${
                         showSolution
-                          ? `<div style="font-size:11.9px; color:#065f46; margin-top:3px; line-height:1.4;"><strong>${L.solutionPrefix}</strong> ${escapeHtml(cleanSolution)}</div>`
+                          ? `<div style="font-size:11.9px; color:#065f46; margin-top:2px; line-height:1.2;"><strong>${L.solutionPrefix}</strong> ${escapeHtml(cleanSolution)}</div>`
                           : ''
                       }
 
@@ -1313,7 +1313,7 @@ export function buildSharedReportPages(
           </colgroup>
           <thead>
             <tr>
-              ${[L.colSeq,isEn?'Plan location':'ตำแหน่งหมุด',isEn?'Before':'ก่อนแก้ไข',isEn?'After':'หลังแก้ไข',isEn?'Details / status':'รายละเอียด / สถานะ'].map((label,index)=>`<th style="border:1px solid #cbd5e1; height:52px; padding:5px 4px 9px; text-align:center; vertical-align:middle; color:#ffffff; background:${accentHex}; font-size:14px; font-weight:700; line-height:1.15; overflow-wrap:break-word;">${escapeHtml(label)}</th>`).join('')}
+              ${[L.colSeq,isEn?'Plan location':'ตำแหน่งหมุด',isEn?'Before':'ก่อนแก้ไข',isEn?'After':'หลังแก้ไข',isEn?'Details / status':'รายละเอียด / สถานะ'].map((label,index)=>`<th style="border:1px solid #cbd5e1; height:38px; padding:4px; text-align:center; vertical-align:middle; color:#ffffff; background:${accentHex}; font-size:14px; font-weight:700; line-height:1.15; overflow-wrap:break-word;">${escapeHtml(label)}</th>`).join('')}
             </tr>
           </thead>
           <tbody>
