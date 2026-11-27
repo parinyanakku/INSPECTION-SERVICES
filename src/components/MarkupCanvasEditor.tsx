@@ -1047,12 +1047,12 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     <span className="tabular-nums">{Math.round((shapes[selectedText].textScale??1)*100)}%</span>
     <button type="button" onClick={()=>resizeSelected(1.15)} className="rounded border px-2 py-1" aria-label={tr('ขยายข้อความ','Increase text size')}>+</button>
   </div>;
-  const zoomControls=(dark=false)=>imageSrc&&<div className={'flex flex-wrap items-center justify-center gap-1.5 rounded-lg border px-2 py-1 text-xs '+(dark?'border-slate-700 text-slate-200':'border-slate-200 text-slate-700')}>
+  const zoomControls=(dark=false)=>imageSrc&&<div className={'min-w-0 flex flex-wrap items-center justify-center gap-1 text-xs '+(dark?'text-slate-200':'text-slate-700')}>
     <ZoomIn className="w-4 h-4"/><span className="font-semibold">{tr('ซูมรูป','Photo zoom')}</span>
     <button type="button" onClick={()=>changePhotoZoom(photoZoom-25)} disabled={photoZoom<=100} aria-label={tr('ซูมออก','Zoom out')} className="rounded border p-1 disabled:opacity-40"><Minus className="w-3.5 h-3.5"/></button>
-    <input type="range" min={100} max={600} step={1} value={photoZoom} onChange={e=>changePhotoZoom(+e.target.value)} aria-label={tr('ซูมรูป','Photo zoom')} className="w-20 accent-blue-500"/>
+    <input type="range" min={100} max={600} step={1} value={photoZoom} onChange={e=>changePhotoZoom(+e.target.value)} aria-label={tr('ซูมรูป','Photo zoom')} className="w-14 sm:w-16 accent-blue-500"/>
     <button type="button" onClick={()=>changePhotoZoom(photoZoom+25)} disabled={photoZoom>=600} aria-label={tr('ซูมเข้า','Zoom in')} className="rounded border p-1 disabled:opacity-40"><Plus className="w-3.5 h-3.5"/></button>
-    <span className="tabular-nums min-w-10">{photoZoom}%</span>
+    <span className="tabular-nums whitespace-nowrap">{photoZoom}%</span>
     <button type="button" onClick={()=>changePhotoZoom(100)} className="rounded border px-2 py-1 font-semibold">{tr('พอดีจอ','Fit')}</button>
     <button type="button" aria-pressed={photoPan} onClick={()=>{if(!pendingTextPosRef.current)setPhotoPan(v=>!v);}} className={'inline-flex items-center gap-1 rounded border px-2 py-1 font-semibold '+(photoPan?'bg-blue-600 text-white border-blue-600':'')}><Hand className="w-3.5 h-3.5"/>{tr('เลื่อนรูป','Pan')}</button>
   </div>;
@@ -1066,7 +1066,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
       <button type="button" onClick={applyCrop} className="rounded-lg bg-emerald-600 text-white px-3 py-1.5 font-semibold">{tr('ยืนยันตัดรูป','Apply crop')}</button>
     </>}
   </div>;
-  const overlayControls=(dark=false)=>imageSrc&&!cropping&&<div className={'flex flex-wrap items-center justify-center gap-1.5 rounded-lg border px-2 py-1 text-xs '+(dark?'border-slate-700 text-white':'border-slate-200 text-slate-700')}>
+  const overlayControls=(dark=false)=>imageSrc&&!cropping&&<div className={'min-w-0 flex flex-wrap items-center justify-center gap-1 text-xs '+(overlayMode?'basis-full order-last border-t pt-1.5 ':'')+(dark?'border-slate-700 text-white':'border-slate-200 text-slate-700')}>
     <button type="button" disabled={overlayBusy} onClick={()=>pickOverlay()} className="inline-flex items-center gap-1 rounded border px-2 py-1.5 font-semibold disabled:opacity-50"><ImagePlus className="w-4 h-4"/>{overlayBusy?tr('กำลังอ่านรูป…','Loading…'):tr('เพิ่มรูป','Insert image')}</button>
     {!!overlays.length&&<button type="button" aria-pressed={overlayMode} onClick={()=>{setPhotoPan(false);selectText(null);setOverlayMode(!overlayMode);if(overlayMode)selectOverlay(null);}} className={'rounded border px-2 py-1.5 '+(overlayMode?'bg-blue-600 text-white':'')}>{tr('เลือกรูปย่อย','Select inset')} ({overlays.length})</button>}
     {overlayMode&&overlays.map((o,i)=><button key={o.id} type="button" aria-pressed={overlaySelected===o.id} onClick={()=>selectOverlay(o.id)} className={'rounded border px-2 py-1 '+(overlaySelected===o.id?'bg-blue-600 text-white':'')}>{tr('รูป','Image')} {i+1}{o.hidden?' ◌':''}</button>)}
@@ -1085,6 +1085,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
     </div>}
     {overlayMode&&<span className="basis-full text-center">{tr('ลากรูปเพื่อย้าย • ลากมุมเพื่อปรับขนาด • เลือกเครื่องมือวาดเพื่อมาร์กบนภาพ','Drag image to move · Drag corner to resize · Choose drawing tool to annotate')}</span>}
   </div>;
+  const photoToolsBar=(dark=false)=>imageSrc&&<div className={'flex flex-wrap items-center justify-center gap-x-2 gap-y-1.5 rounded-lg border px-2 py-1.5 '+(dark?'bg-slate-900 border-slate-700':'bg-slate-50 border-slate-200')}>{cropControls(dark)}{overlayControls(dark)}{!cropping&&zoomControls(dark)}</div>;
   const textHint=tr('คลิกพื้นที่ว่างเพื่อเพิ่มข้อความ • คลิกข้อความเดิมเพื่อแก้คำ • ลากเพื่อย้าย • ลากมุมหรือกด −/+ เพื่อปรับขนาด','Click empty space to add text · Click existing text to edit · Drag to move · Drag corner or use −/+ to resize');
   const inlinePopupCoords =
     pendingTextPos && imageSrc && !isFullscreen
@@ -1197,9 +1198,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
         </div>
       </div>
 
-      {cropControls()}
-      {overlayControls()}
-      {!cropping&&zoomControls()}
+      {photoToolsBar()}
       {!cropping&&!overlayMode&&tool === 'text' && imageSrc && !isFullscreen && !photoPan && (
         <div className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-1.5">
           {textHint}
@@ -1393,7 +1392,7 @@ export const MarkupCanvasEditor: React.FC<MarkupCanvasEditorProps> = ({
               </div>
             </div>
 
-            <div className="shrink-0 bg-slate-900 flex flex-wrap gap-2 justify-center px-2 py-1">{cropControls(true)}{overlayControls(true)}{!cropping&&zoomControls(true)}</div>
+            <div className="shrink-0 bg-slate-900 px-2 py-1">{photoToolsBar(true)}</div>
             {!cropping&&!overlayMode&&tool === 'text' && !photoPan && (
               <div className="bg-blue-950/90 border-b border-blue-800/70 text-blue-200 text-xs font-semibold px-4 py-1.5 text-center shrink-0">
                 {textHint}
