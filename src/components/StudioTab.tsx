@@ -51,13 +51,10 @@ interface StudioTabProps {
   onNotify: (msg: string, type?: 'success' | 'info' | 'warning' | 'danger') => void;
 }
 
-function findZoneAtPoint(floor: FloorPlan | null, xPct: number, yPct: number): FloorZone | null {
+function findZoneAtPoint(floor: FloorPlan | null, xPct: number, yPct: number, preferredName?:string): FloorZone | null {
   if (!floor || !Array.isArray(floor.zones)) return null;
-  return (
-    floor.zones.find(
-      (z) => xPct >= z.x && xPct <= z.x + z.w && yPct >= z.y && yPct <= z.y + z.h
-    ) || null
-  );
+  const matches=floor.zones.filter(z=>xPct>=z.x&&xPct<=z.x+z.w&&yPct>=z.y&&yPct<=z.y+z.h);
+  return matches.find(z=>z.name===preferredName)||matches[0]||null;
 }
 
 export const StudioTab: React.FC<StudioTabProps> = ({
@@ -130,12 +127,24 @@ export const StudioTab: React.FC<StudioTabProps> = ({
   // Drafts & pin placement
   const [drafts, setDrafts] = useState<DraftDefect[]>([]);
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
-  const [placingDraftId, setPlacingDraftId] = useState<string | null>(null);
+  const [placingDraftId, setPlacingDraftIdState] = useState<string | null>(null);
+  const [pinZoneChoice,setPinZoneChoice]=useState<{floorId:string;draftId:string;zoneId:string|null}|null>(null);
+  const setPlacingDraftId=(id:string|null)=>{setPinZoneChoice(null);setPlacingDraftIdState(id);};
   const [pinPlacement,setPinPlacement]=useState<{id:string;kind:'move'|'copy'}|null>(null);
-  useEffect(()=>setPinPlacement(null),[project.id,activeFloorId]);
+  useEffect(()=>{setPinPlacement(null);setPlacingDraftIdState(null);setPinZoneChoice(null);},[project.id,activeFloorId]);
 
   const activeDraft =
     drafts.find((d) => d.id === activeDraftId) || drafts[0] || null;
+  const currentZoneChoice=pinZoneChoice&&pinZoneChoice.floorId===activeFloor?.id&&pinZoneChoice.draftId===placingDraftId&&activeDraft?.id===placingDraftId?pinZoneChoice:null;
+  const lockedZone=currentZoneChoice&&activeFloor?.zones.find(z=>z.id===currentZoneChoice.zoneId)||null;
+  const readyToPlace=Boolean(placingDraftId&&currentZoneChoice&&(lockedZone||(activeFloor?.zones.length===0&&currentZoneChoice.zoneId===null)));
+  const beginPlacement=(id:string)=>{setPinPlacement(null);setIsZoneSetupMode(false);setEditingFloorId(null);setPanMode(false);setPlacingDraftId(id);};
+  const choosePinZone=(zoneId:string|null,scrollToPlan=false)=>{
+    if(!activeFloor||!activeDraft)return;
+    if(zoneId===null?activeFloor.zones.length>0:!activeFloor.zones.some(z=>z.id===zoneId))return;
+    beginPlacement(activeDraft.id);setPinZoneChoice({floorId:activeFloor.id,draftId:activeDraft.id,zoneId});
+    if(scrollToPlan)window.requestAnimationFrame(()=>planViewport.current?.scrollIntoView({block:'nearest',behavior:'smooth'}));
+  };
 
   // Markup canvas state
   const [markupImageSrc, setMarkupImageSrc] = useState<string | null>(null);
@@ -257,7 +266,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
           pinMovedJustNowRef.current = true;
           const currentFlId = dp.floorId;
           const floor=projectRef.current.floors.find(f=>f.id===currentFlId)||null;
-          const zone=findZoneAtPoint(floor,dp.last.x,dp.last.y);
+          const zone=findZoneAtPoint(floor,dp.last.x,dp.last.y,dp.before.zone);
           const after={...dp.last,zone:zone?.name||dp.before.zone};
           if(after.x!==dp.before.x||after.y!==dp.before.y||after.zone!==dp.before.zone){
             pinUndo.current.push({id:dp.defectId,floorId:dp.floorId,before:dp.before,after});
@@ -270,7 +279,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
               ...prev,
               defects: prev.defects.map((d) => {
                 if (d.id !== dp.defectId) return d;
-                const matched = findZoneAtPoint(fl, d.x, d.y);
+                const matched = findZoneAtPoint(fl, d.x, d.y, dp.before.zone);
                 return matched ? { ...d, zone: matched.name } : d;
               }),
             };
@@ -413,7 +422,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
       if(!rect||!d||!rect.width||!rect.height){setPinPlacement(null);return;}
       const x=Math.max(2,Math.min(98,+((e.clientX-rect.left)/rect.width*100).toFixed(2)));
       const y=Math.max(2,Math.min(98,+((e.clientY-rect.top)/rect.height*100).toFixed(2)));
-      const zone=findZoneAtPoint(activeFloor,x,y)?.name||d.zone;
+      const zone=findZoneAtPoint(activeFloor,x,y,d.zone)?.name||d.zone;
       const after={x,y,zone};
       if(pinPlacement.kind==='move'){
         const before={x:d.x,y:d.y,zone:d.zone};
@@ -429,20 +438,20 @@ export const StudioTab: React.FC<StudioTabProps> = ({
     if (!placingDraftId || isZoneSetupMode || !activeFloor) return;
     const draft = drafts.find((d) => d.id === placingDraftId);
     if (!draft) return;
+    if(!readyToPlace){onNotify(lang==='en'?'Select a zone tab before placing the pin.':'กรุณาเลือกแท็บโซนก่อนปักหมุด','warning');return;}
 
     const stage = floorStageRef.current;
     if (!stage) return;
     const rect = stage.getBoundingClientRect();
-    const xPct = Math.max(
-      2,
-      Math.min(98, +(((e.clientX - rect.left) / rect.width) * 100).toFixed(2))
-    );
-    const yPct = Math.max(
-      2,
-      Math.min(98, +(((e.clientY - rect.top) / rect.height) * 100).toFixed(2))
-    );
-
-    const matchedZone = findZoneAtPoint(activeFloor, xPct, yPct);
+    if(!rect.width||!rect.height)return;
+    const xPct=Math.max(0,Math.min(100,+((e.clientX-rect.left)/rect.width*100).toFixed(2)));
+    const yPct=Math.max(0,Math.min(100,+((e.clientY-rect.top)/rect.height*100).toFixed(2)));
+    // Never infer the zone from overlapping geometry for new pins.
+    // Validate against the explicitly chosen zone, and keep its name.
+    if(lockedZone&&(xPct<lockedZone.x-.01||xPct>lockedZone.x+lockedZone.w+.01||yPct<lockedZone.y-.01||yPct>lockedZone.y+lockedZone.h+.01)){
+      onNotify(lang==='en'?'Place the pin inside the selected zone or choose another zone.':'ตำแหน่งอยู่นอกโซนที่เลือก กรุณาปักภายในโซนหรือเลือกโซนใหม่','warning');return;
+    }
+    const matchedZone=lockedZone;
     const nextNum =
       project.defects.length > 0
         ? Math.max(...project.defects.map((d) => d.number || 0)) + 1
@@ -453,7 +462,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
       id: `def_${Date.now()}`,
       number: nextNum,
       floorId: activeFloor.id,
-      zone: matchedZone ? matchedZone.name : activeFloor.zones[0]?.name || activeFloor.name,
+      zone: matchedZone ? matchedZone.name : activeFloor.name,
       x: xPct,
       y: yPct,
       title:
@@ -483,8 +492,8 @@ export const StudioTab: React.FC<StudioTabProps> = ({
     setMarkupImageSrc(remainingDrafts[0]?.photoDataUrl ?? null);
     onNotify(
       lang === 'en'
-        ? `Pinned defect #${nextNum} onto "${activeFloor.name}"`
-        : `ปักหมุดข้อที่ #${nextNum} ลงบน "${activeFloor.name}" เรียบร้อยแล้ว`,
+        ? `Pinned defect #${nextNum} · ${activeFloor.name} · ${matchedZone?.name||activeFloor.name}`
+        : `ปักหมุดข้อที่ #${nextNum} · ${activeFloor.name} · ${matchedZone?.name||activeFloor.name} เรียบร้อยแล้ว`,
       'success'
     );
   };
@@ -611,10 +620,19 @@ export const StudioTab: React.FC<StudioTabProps> = ({
     if(!contextPin)return;
     setPlacingDraftId(null);setPanMode(false);setIsZoneSetupMode(false);setPinPlacement({id:contextPin.id,kind});
   };
+  const zoneTabs=(scrollToPlan=false)=>activeFloor&&activeDraft&&<div className="flex flex-wrap gap-1.5" role="group" aria-label={tr('เลือกโซนสำหรับปักหมุด','Select zone for pin')}>
+    {activeFloor.zones.map(z=>{
+      const selected=currentZoneChoice?.zoneId===z.id;
+      return <button type="button" key={z.id} aria-pressed={selected} onClick={()=>choosePinZone(z.id,scrollToPlan)} className={'inline-flex items-center gap-1.5 max-w-full rounded-lg border px-2.5 py-1.5 text-xs font-semibold text-left '+(selected?'bg-blue-600 border-blue-600 text-white ring-2 ring-blue-200':'bg-white border-slate-200 text-slate-700 hover:bg-slate-100')}>
+        <span className="w-2.5 h-2.5 rounded-full shrink-0 border border-white/60" style={{background:z.border}}/><span className="break-words min-w-0">{z.name}</span>{selected&&<span aria-hidden="true">✓</span>}
+      </button>;
+    })}
+    {!activeFloor.zones.length&&<button type="button" aria-pressed={readyToPlace} onClick={()=>choosePinZone(null,scrollToPlan)} className={'rounded-lg border px-2.5 py-1.5 text-xs font-semibold '+(readyToPlace?'bg-blue-600 text-white border-blue-600':'bg-white text-slate-700 border-slate-200')}>{tr('ทั้งชั้น (ยังไม่มีโซน)','Entire floor (no zones)')}</button>}
+  </div>;
   const contextActions:MenuAction[]=[
     {label:tr('ย้อนตำแหน่งหมุด','Undo pin move'),shortcut:'Ctrl+Z',run:()=>applyPinHistory(false),disabled:!pinUndo.current.length},
     {label:tr('ทำซ้ำตำแหน่งหมุด','Redo pin move'),shortcut:'Ctrl+Y',run:()=>applyPinHistory(true),disabled:!pinRedo.current.length},
-    {label:tr('เพิ่มหมุด Defect','Add Defect pin'),run:()=>{setPinPlacement(null);setPanMode(false);setIsZoneSetupMode(false);setPlacingDraftId(activeDraft?.id||handleCreateBlankDraft());},disabled:!activeFloor},
+    {label:tr('เพิ่มหมุด Defect','Add Defect pin'),run:()=>{beginPlacement(activeDraft?.id||handleCreateBlankDraft());},disabled:!activeFloor},
     ...(contextPin?[
       {label:tr('แก้ไขหมุด','Edit pin')+' #'+contextPin.number,run:()=>onOpenDefectModal(contextPin.id)},
       {label:tr('ย้ายตำแหน่งหมุด','Move pin'),run:()=>beginPinAction('move')},
@@ -773,18 +791,16 @@ export const StudioTab: React.FC<StudioTabProps> = ({
 
         {/* Mode Banners */}
         {pinPlacement&&<div className="mb-3 p-3 rounded-xl bg-blue-50 border border-blue-300 flex items-center justify-between gap-2 text-xs"><strong>{pinPlacement.kind==='move'?tr('คลิกตำแหน่งใหม่บนแปลนเพื่อย้ายหมุด','Click a new plan position to move pin'):tr('คลิกตำแหน่งใหม่บนแปลนเพื่อคัดลอกหมุด','Click a new plan position to copy pin')}</strong><button type="button" onClick={()=>setPinPlacement(null)} className="rounded border bg-white px-2 py-1">{tr('ยกเลิก','Cancel')}</button></div>}
-        {placingDraftId && (
-          <div className="mb-3 p-3 rounded-xl bg-blue-50 border border-blue-300 flex items-center justify-between gap-2">
-            <span className="text-xs sm:text-sm font-semibold text-blue-900">
-              {t.placingBanner} &ldquo;{activeFloor?.name}&rdquo;
-            </span>
-            <button
-              type="button"
-              onClick={() => setPlacingDraftId(null)}
-              className="text-xs px-3 py-1 rounded-lg bg-white border border-blue-300 text-blue-800 font-semibold cursor-pointer whitespace-nowrap"
-            >
-              {t.cancelBtn}
-            </button>
+        {activeDraft&&activeFloor&&!isZoneSetupMode&&!isEditingFloor&&!pinPlacement&&(
+          <div className="mb-3 p-3 rounded-xl bg-blue-50 border border-blue-200 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <strong className="text-xs text-blue-900">{tr('ปักหมุด · ขั้นที่ 1 เลือกโซน','Pin · Step 1 Select zone')} · {activeFloor.name}</strong>
+              {placingDraftId&&<button type="button" onClick={()=>setPlacingDraftId(null)} className="text-xs px-2 py-1 rounded border border-blue-200 bg-white">{t.cancelBtn}</button>}
+            </div>
+            {zoneTabs()}
+            <div className={'rounded-lg px-2.5 py-2 text-xs font-semibold '+(readyToPlace?'bg-blue-600 text-white':'bg-white text-slate-500')}>
+              {readyToPlace?tr('ขั้นที่ 2 คลิกตำแหน่งบนแปลนในโซน: ','Step 2 Click the position inside: ')+(lockedZone?.name||activeFloor.name):tr('ขั้นที่ 2 เลือกโซนก่อน แล้วคลิกตำแหน่งบนแปลน','Step 2 Choose a zone, then click the plan')}
+            </div>
           </div>
         )}
 
@@ -840,7 +856,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
           style={{width:planZoom+'%',marginLeft:planZoom<100?'auto':0,marginRight:planZoom<100?'auto':0}}
           className={`relative aspect-[4/3] overflow-hidden bg-slate-50 select-none ${
             isZoneSetupMode ? 'zone-setup-active' : ''
-          } ${placingDraftId||pinPlacement ? 'cursor-crosshair ring-2 ring-blue-400' : ''} ${
+          } ${readyToPlace||pinPlacement ? 'cursor-crosshair ring-2 ring-blue-400' : ''} ${
             isFloorDropActive ? 'floor-drop-active' : ''
           }`}
         >
@@ -858,8 +874,8 @@ export const StudioTab: React.FC<StudioTabProps> = ({
           )}
 
           {/* Zone Overlays */}
-          {showZoneOverlays &&
-            activeFloor?.zones.map((z) => (
+          {(showZoneOverlays||Boolean(readyToPlace&&lockedZone)) &&
+            activeFloor?.zones.filter(z=>!readyToPlace||!lockedZone||z.id===lockedZone.id).map((z) => (
               <div
                 key={z.id}
                 data-zone-id={z.id}
@@ -887,8 +903,8 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                   top: `${z.y}%`,
                   width: `${z.w}%`,
                   height: `${z.h}%`,
-                  background: `${z.bg}88`,
-                  border: `2px dashed ${z.border}`,
+                  background: readyToPlace&&lockedZone?.id===z.id?`${z.bg}55`:`${z.bg}88`,
+                  border: readyToPlace&&lockedZone?.id===z.id?'3px solid #2563eb':`2px dashed ${z.border}`,
                 }}
                 className={`zone-box absolute pointer-events-none ${z.w < 5 || z.h < 5 ? 'zone-box-compact rounded-sm' : 'rounded-xl'} ${
                   selectedZoneId === z.id ? 'zone-box-selected' : ''
@@ -1293,36 +1309,16 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                   </button>
                 )}
 
-                {/* Primary Pin Action Button */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPinPlacement(null);
-                    setIsZoneSetupMode(false);
-                    setEditingFloorId(null);
-                    const next =
-                      placingDraftId === activeDraft.id ? null : activeDraft.id;
-                    setPlacingDraftId(next);
-                    if (next) {
-                      onNotify(
-                        lang === 'en'
-                          ? 'Click anywhere on the active floorplan to place this pin'
-                          : 'คลิกตำแหน่งที่ต้องการบนแปลนชั้นปัจจุบันเพื่อปักหมุด',
-                        'info'
-                      );
-                    }
-                  }}
-                  className={`w-full py-2.5 rounded-xl font-semibold text-xs sm:text-sm transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
-                    placingDraftId === activeDraft.id
-                      ? 'bg-amber-500 hover:bg-amber-600 text-white'
-                      : 'brand-bg hover:opacity-95 text-white'
-                  }`}
-                >
-                  <MapPin className="w-4 h-4" />
-                  {placingDraftId === activeDraft.id
-                    ? t.pinToPlanActiveBtn
-                    : t.pinToPlanBtn}
-                </button>
+                {/* Two-step pin placement, shared with the plan zone tabs. */}
+                <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <h4 className="flex items-center gap-1.5 text-xs font-bold text-slate-800"><MapPin className="w-4 h-4"/>{tr('ปักหมุดลงแปลน','Place pin on plan')} · {activeFloor?.name}</h4>
+                  <div className="text-xs font-semibold text-slate-700">{tr('1. เลือกโซน','1. Select zone')}</div>
+                  {zoneTabs(true)}
+                  <button type="button" disabled={!activeFloor} onClick={()=>{if(!readyToPlace)beginPlacement(activeDraft.id);window.requestAnimationFrame(()=>planViewport.current?.scrollIntoView({block:'nearest',behavior:'smooth'}));}} className={'w-full py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 disabled:opacity-50 '+(readyToPlace?'bg-blue-600 text-white':'brand-bg hover:opacity-95 text-white')}>
+                    <MapPin className="w-4 h-4"/>{readyToPlace?tr('2. คลิกตำแหน่งปักหมุดบนแปลน','2. Click position on plan'):tr('เลือกโซนก่อนปักหมุด','Select zone before placing')}
+                  </button>
+                  {readyToPlace&&<div className="flex flex-wrap items-center justify-between gap-2 text-xs text-blue-800"><span>{tr('โซนที่เลือก: ','Selected zone: ')}{lockedZone?.name||activeFloor?.name}</span><button type="button" className="underline" onClick={()=>setPlacingDraftId(null)}>{t.cancelBtn}</button></div>}
+                </div>
               </div>
             )}
           </div>
