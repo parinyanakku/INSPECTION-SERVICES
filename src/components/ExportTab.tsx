@@ -85,6 +85,8 @@ interface ExportTabProps {
   project: ProjectFile;
   brand: BrandConfig;
   isExportingPdf: boolean;
+  exportBatch: {all:boolean;format:'PDF'|'Word'|'Excel';index:number;total:number}|null;
+  onExportAll: (reportBook: ReportBookData) => void;
   onExportPDF: (reportBook: ReportBookData) => void;
   onExportWord: (reportBook: ReportBookData) => void;
   onExportExcel: (reportBook: ReportBookData) => void;
@@ -115,6 +117,8 @@ export const ExportTab: React.FC<ExportTabProps> = ({
   project,
   brand,
   isExportingPdf,
+  exportBatch,
+  onExportAll,
   onExportPDF,
   onExportWord,
   onExportExcel,
@@ -376,7 +380,7 @@ export const ExportTab: React.FC<ExportTabProps> = ({
             </div>
             <button
               type="button"
-              disabled={isExportingPdf}
+              disabled={!!exportBatch||isExportingPdf}
               onClick={() => {
                 if (enabledSectionsCount === 0) {
                   onNotify(t.customNoSectionWarning, 'warning');
@@ -408,6 +412,7 @@ export const ExportTab: React.FC<ExportTabProps> = ({
             </div>
             <button
               type="button"
+              disabled={!!exportBatch}
               onClick={() => {
                 if (enabledSectionsCount === 0) {
                   onNotify(t.customNoSectionWarning, 'warning');
@@ -416,7 +421,7 @@ export const ExportTab: React.FC<ExportTabProps> = ({
                 }
                 onExportWord(reportBookRef.current);
               }}
-              className="w-full py-2.5 px-4 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-sm font-semibold transition-colors whitespace-nowrap flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-2.5 px-4 rounded-xl bg-blue-700 hover:bg-blue-800 disabled:opacity-60 text-white text-sm font-semibold transition-colors whitespace-nowrap flex items-center justify-center gap-2 cursor-pointer"
             >
               <FileText className="w-4 h-4" />
               {t.wordDownloadBtn}
@@ -435,17 +440,32 @@ export const ExportTab: React.FC<ExportTabProps> = ({
             </div>
             <button
               type="button"
+              disabled={!!exportBatch}
               onClick={() => {
                 if (enabledSectionsCount === 0) {onNotify(t.customNoSectionWarning, 'warning');setActiveSection('custom');return;}
                 onExportExcel(reportBookRef.current);
               }}
-              className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors whitespace-nowrap flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-sm font-semibold transition-colors whitespace-nowrap flex items-center justify-center gap-2 cursor-pointer"
             >
               <FileSpreadsheet className="w-4 h-4" />
               {t.excelDownloadBtn}
             </button>
           </div>
         </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button type="button" disabled={!!exportBatch||isExportingPdf} onClick={()=>{
+            if(enabledSectionsCount===0){onNotify(t.customNoSectionWarning,'warning');setActiveSection('custom');return;}
+            onExportAll(reportBookRef.current);
+          }} className="w-full sm:w-auto rounded-xl brand-bg px-5 py-3 text-white text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60">
+            {exportBatch?.all?<Loader2 className="w-4 h-4 animate-spin"/>:<Download className="w-4 h-4"/>}
+            {lang==='en'?'Download all 3 files':'ดาวน์โหลดทั้ง 3 ไฟล์ (PDF / Word / Excel)'}
+          </button>
+          <p className="text-xs text-slate-600">{lang==='en'?'Generated one at a time to reduce memory use. Allow multiple downloads if prompted.':'สร้างทีละไฟล์อัตโนมัติเพื่อลดการใช้หน่วยความจำ หากเบราว์เซอร์ถามให้อนุญาตดาวน์โหลดหลายไฟล์'}</p>
+        </div>
+        {exportBatch&&<div role="status" aria-live="polite" className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+          <div className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin"/>{lang==='en'?'Generating':'กำลังสร้างไฟล์'} {exportBatch.format} {exportBatch.index}/{exportBatch.total}</div>
+          <progress className="mt-2 w-full" value={exportBatch.index-1} max={exportBatch.total}/>
+        </div>}
       </section>
 
       {/* Complete Report Book Data Builder Form (4 Categories) */}
