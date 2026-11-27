@@ -91,12 +91,26 @@ export const DEFAULT_BRAND: BrandConfig = {
   companyName: 'TEAM INSPECTION SERVICES',
   subtitle: 'HOME INSPECTOR 2024',
   tagline: 'บริการตรวจรับบ้านและทาวน์โฮมโดยวิศวกรผู้ตรวจสอบมืออาชีพ',
-  inspectorName: 'นายปริญญา น่าบัณฑิต',
-  licenseNo: 'ภย.89097',
+  inspectorName: '',
+  licenseNo: '',
   contactInfo: 'โทร. 089-999-8909 | Line: @teaminspect | จ.ขอนแก่น',
   accentColor: '#1e3a8a',
   customLogoDataUrl: null,
 };
+
+// Remove only the exact inherited legacy sample identity from buyer accounts.
+function legacyIdentityFingerprint(value:string):number{
+  let hash=2166136261;
+  for(const c of value.normalize('NFC').replace(/\s/g,''))hash=Math.imul(hash^c.codePointAt(0)!,16777619);
+  return hash>>>0;
+}
+export function clearLegacyBuyerIdentity(brand:BrandConfig,isAdmin:boolean):BrandConfig{
+  if(isAdmin)return brand;
+  return {...brand,
+    inspectorName:legacyIdentityFingerprint(brand.inspectorName||'')===1062844061?'':brand.inspectorName,
+    licenseNo:legacyIdentityFingerprint(brand.licenseNo||'')===2823607140?'':brand.licenseNo,
+  };
+}
 
 export function normalizeSeverity(sev?: string): SeverityLevel {
   if (sev === 'เร่งด่วน' || sev === 'สูง' || sev === 'วิกฤต' || sev === 'สูง/เร่งด่วน') {
