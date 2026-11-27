@@ -151,6 +151,9 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
  const [link,setLink]=useState<Identity|null>(readLink);
  const [cloud,setCloud]=useState<CloudSummary|null>(()=>readLink()?.lastCloud||null);
  const [checkedAt,setCheckedAt]=useState('');
+ const [localSummary,setLocalSummary]=useState<{projects:number;defects:number}|null>(null);
+ const [advanced,setAdvanced]=useState(false);
+ useEffect(()=>{if(!visible)return;let done=false;const refresh=()=>{void readSyncRecords().then(records=>{if(!done)setLocalSummary(counts(records));}).catch(()=>{if(!done)setLocalSummary(null);});};refresh();window.addEventListener('tis-workspace-sync-change',refresh);return()=>{done=true;window.removeEventListener('tis-workspace-sync-change',refresh);};},[visible]);
  const active=useRef(true);
  const [auto,setAuto]=useState(readAuto);
  const autoHold=useRef(false);
@@ -225,7 +228,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
       const next:Identity={...remembered,id,email};
       live={userId,token:access,expires:Date.now()+Math.max(0,Number(r.expires_in)||0)*1000,identity:next};
       await saveLink(next);check(op);setToken(access);
-      if(action==='connect')setMsg(tr('เชื่อมต่อ '+email+' แล้ว ยังไม่ได้ส่งไฟล์งาน','Connected to '+email+'. No work files sent yet.'));
+      if(action==='connect')setMsg(tr('ยืนยัน Google สำเร็จ เลือกส่งหรือโหลด JSON ได้เลย','Google authorized. Choose send or load JSON.'));
       else if(action==='export')await exportFiles(access,op);
       else if(action==='recover')await recoverBackup(access,op);
       else if(action==='browse')await browseBackups(access,op);
@@ -254,7 +257,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   setMsg(tr('ส่งไฟล์ไป Google Drive สำเร็จ','Visible Drive export completed'));
  }
  async function browseBackups(token:string,op:AbortController,autoPreview=false){
-  autoHold.current=true;setRecoveryOpen(true);setSources([]);setSelectedSource(null);setRecoveryData(null);setPreview([]);
+  autoHold.current=true;setAdvanced(true);setRecoveryOpen(true);setSources([]);setSelectedSource(null);setRecoveryData(null);setPreview([]);
   setMsg(tr('กำลังค้นหาสำรอง Workspace และข้อมูลโครงการใน Drive…','Finding workspace and project backups…'));
   const result=await listRecoverySources(token,userId,op.signal);check(op);setSources(result);
   setMsg(result.length?tr('พบไฟล์สำรอง '+result.length+' ไฟล์ เลือกฉบับเพื่อตรวจจำนวน Defect','Found '+result.length+' backups. Select a version to compare defect counts.'):tr('ไม่พบไฟล์สำรอง JSON ของบัญชีนี้ ตรวจบัญชีโปรแกรมและบัญชี Google ทั้งสองเครื่อง','No JSON backups for this account. Check both app and Google accounts on both devices.'));
@@ -419,7 +422,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   const run=()=>{
    if(disposed||autoHold.current||operation.current||document.visibilityState!=='visible'||!navigator.onLine)return;
    const access=validToken(userId);
-   if(!access){setMsg(tr('ซิงค์อัตโนมัติรอยืนยัน Google — เปิดหน้าซิงค์แล้วกดปุ่มสีเขียว','Auto sync needs Google authorization. Open sync and press the green button.'));return;}
+   if(!access){setMsg(tr('สิทธิ์ Google หมดอายุ · เปิด Drive แล้วกดยืนยัน Google หรือส่ง/โหลด JSON','Google authorization expired. Open Drive and authorize or send/load JSON.'));return;}
    const op=new AbortController();operation.current=op;setBusy(true);setAutoRunning(true);setCancelling(false);
    void sync(false,access,op,true).catch(e=>handleError(e,op)).finally(()=>end(op));
   };
@@ -446,28 +449,28 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
  {applyingRestore&&<div role="status" aria-live="polite" className="fixed inset-0 z-[9999] bg-slate-900/60 flex items-center justify-center p-4"><div className="rounded-xl bg-white text-slate-900 p-5 font-semibold">{tr('กำลังบันทึกข้อมูลที่รับจาก Drive ลงเครื่อง กรุณารอให้เสร็จก่อนแก้ไขแฟ้ม','Applying restored Drive data. Editing will resume when complete.')}</div></div>}
  </>;
  return <div className="fixed inset-0 z-[80] bg-slate-900/60 flex items-center justify-center p-4"><section role="dialog" aria-modal="true" className="bg-white rounded-2xl p-5 max-w-lg w-full max-h-[90vh] overflow-auto space-y-4">
- <div className="sticky top-0 z-10 -mx-1 bg-white px-1 pb-2 space-y-2"><div className="flex justify-between items-center"><h2 className="font-bold text-slate-900">Google Drive Sync · {tr('ทดลอง','Beta')}</h2><button type="button" disabled={applyingRestore} onClick={()=>{if(!busy)setRecoveryOpen(false);onClose();}} className="border border-slate-300 rounded px-3 py-1 text-slate-800 font-semibold disabled:opacity-50">{busy?tr('ซ่อนหน้าต่าง','Minimize'):tr('ปิด','Close')}</button></div>
+ <div className="sticky top-0 z-10 -mx-1 bg-white px-1 pb-2 space-y-2"><div className="flex justify-between items-center"><h2 className="font-bold text-slate-900">{tr('Google Drive · สำรองข้อมูล','Google Drive · Backup')}</h2><button type="button" disabled={applyingRestore} onClick={()=>{if(!busy){setRecoveryOpen(false);setAdvanced(false);}onClose();}} className="border border-slate-300 rounded px-3 py-1 text-slate-800 font-semibold disabled:opacity-50">{busy?tr('ซ่อนหน้าต่าง','Minimize'):tr('ปิด','Close')}</button></div>
  {msg&&<div role="status" aria-live="polite" className="rounded-lg border border-slate-300 bg-slate-50 p-2 text-sm text-slate-900 break-words">{busy&&<span className="inline-block mr-2 w-3 h-3 rounded-full border-2 border-current border-r-transparent animate-spin"/>}{msg}</div>}
  {busy&&!applyingRestore&&<button type="button" disabled={cancelling} onClick={cancel} className="text-sm font-semibold text-red-700 underline">{tr('ยกเลิกการดำเนินการ','Cancel operation')}</button>}
  </div>
- <p className="text-sm text-slate-600">{tr('ซิงค์งานระหว่างอุปกรณ์ หรือเลือกส่งสำเนาไฟล์ไป My Drive แยกกัน ไม่ส่งรหัสผ่านหรือ Gemini API Key','Sync between devices or export visible copies to My Drive separately. Passwords and Gemini API keys are excluded.')}</p>
- {link&&<div className="rounded-lg bg-emerald-50 p-3 text-sm break-all"><strong>{tr('จดจำบัญชี Google แล้ว','Google account remembered')}</strong><div>{link.email}</div>{link.lastSync&&<div className="text-xs mt-1">{tr('ซิงค์ล่าสุด: ','Last sync: ')}{new Date(link.lastSync).toLocaleString(lang==='th'?'th-TH':'en-GB')}</div>}</div>}
- {!link&&<button disabled={!ready||busy} onClick={()=>connect('connect',true)} className="w-full rounded bg-blue-800 text-white p-3 disabled:opacity-50">{tr('เชื่อม Google Drive','Connect Google Drive')}</button>}
- <h3 className="font-semibold text-sm border-t pt-3">{tr('1. JSON ล่าสุดบน Google Drive','1. Latest JSON on Google Drive')}</h3>
- <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-1 text-sm">
-  <strong>{tr('ข้อมูลล่าสุดใน Drive','Latest data on Drive')}</strong>
-  {cloud?<><div className="font-bold text-emerald-700">{describe(cloud)}</div><div>{tr('เวลาบันทึกไฟล์: ','File saved: ')}{showTime(cloud.date)}</div><div className="text-xs text-slate-500">{cloud.legacy?tr('ไฟล์ซิงค์เดิม','Legacy sync file'):'TIS_FullBackup JSON'}</div></>:<p className="text-xs text-slate-500">{tr('ยังไม่มีข้อมูลยืนยันจาก Drive กรุณากดโหลด JSON แล้วตรวจข้อความผลด้านบน','Not verified yet. Sync or load JSON.')}</p>}
-  {cloud&&!cloud.legacy&&<a href={'https://drive.google.com/open?id='+encodeURIComponent(cloud.id)} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-blue-700 underline">{tr('เปิดไฟล์ JSON ที่ยืนยันบน Drive','Open confirmed JSON on Drive')}</a>}
-  {checkedAt&&<div className="text-xs text-slate-500">{tr('ตรวจ Drive ล่าสุด: ','Last checked: ')}{showTime(checkedAt)}</div>}
+ <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2 text-sm">
+ {link?<><div className="font-semibold break-all">{link.email}</div><div className={'text-xs font-semibold '+(validToken(userId)?'text-emerald-700':'text-amber-700')}>{validToken(userId)?tr('Google พร้อมใช้งาน','Google authorized'):tr('จดจำบัญชีแล้ว แต่ต้องยืนยันสิทธิ์ Google','Account remembered; Google authorization required')}</div></>:<div className="text-xs">{tr('ยังไม่ได้เชื่อม Google Drive','Google Drive not connected')}</div>}
+ {(!link||!validToken(userId))&&<button type="button" disabled={!ready||busy} onClick={()=>connect('connect',!link)} className="rounded-lg bg-blue-700 text-white px-3 py-2 text-sm font-semibold disabled:opacity-50">{tr('ยืนยัน Google','Authorize Google')}</button>}
  </div>
- <button data-tour="drive-json-send" disabled={!ready||busy||!link} onClick={()=>connect('publish')} className="w-full rounded bg-emerald-700 text-white p-3 font-bold disabled:opacity-50">{tr('ส่ง JSON ล่าสุดขึ้น Google Drive','Publish latest JSON to Google Drive')}</button>
- <div className="rounded-lg border border-slate-200 p-3 space-y-1">{switchControl}<p className="text-xs text-slate-500">{tr('ตรวจ JSON ล่าสุดทุก 20 วินาทีขณะเปิดเว็บ ซิงค์หลังบันทึกเมื่อข้อมูลไม่ขัดแย้ง รับข้อมูลที่หน้าแฟ้มโครงการ และต้องยืนยัน Google ใหม่เมื่อสิทธิ์หมดอายุ','Check the latest JSON every 20 seconds while open, sync saved changes when conflict-free, receive on the idle project list, and renew Google authorization when expired.')}</p></div>
- <button disabled={!ready||busy||!link} onClick={()=>connect('sync')} className="w-full rounded bg-emerald-700 text-white p-3 disabled:opacity-50">{busy?tr('กำลังดำเนินการ…','Working…'):tr('ซิงค์ข้อมูลล่าสุด (ตรวจและรวม)','Sync latest (check and merge)')}</button>
- <button disabled={!ready||busy||!link} data-tour="drive-json-load" onClick={()=>connect('download')} className="w-full rounded border border-blue-700 text-blue-800 p-3 font-semibold disabled:opacity-50">{tr('โหลด JSON ล่าสุดจาก Drive ลงเครื่อง','Load latest JSON from Drive')}</button>
- <p className="text-xs text-slate-500">{tr('หากยังไม่พบงานที่ต้องการ ให้ค้นหาและเลือกฉบับสำรองด้านล่าง เปรียบเทียบจำนวนข้อก่อนกู้คืน','If the expected work is missing, search backup versions below and compare counts before restoring.')}</p>
- <button disabled={!ready||busy||!link} onClick={()=>connect('recover')} className="w-full rounded border border-emerald-600 text-emerald-700 p-3 font-semibold disabled:opacity-50">{tr('กู้คืนแฟ้มที่ขาดจากข้อมูลสำรอง Drive','Recover missing projects from Drive backup')}</button>
- <p className="text-xs text-slate-500">{tr('อ่านไฟล์ Workspace JSON ล่าสุดของบัญชีนี้ เพิ่มเฉพาะแฟ้มที่ยังไม่มี ไม่เขียนทับแฟ้มเดิม','Read the latest account-owned Workspace JSON and recover missing projects without overwriting existing ones.')}</p>
- <button data-tour="drive-recover" disabled={!ready||busy||!link} onClick={()=>connect('browse')} className="w-full rounded border border-indigo-500 text-indigo-700 p-3 font-semibold disabled:opacity-50">{tr('ค้นหาและเลือกฉบับสำรองจาก Drive','Find and select a Drive backup version')}</button>
+ <div className="grid grid-cols-2 gap-2 text-sm">
+  <div className="rounded-lg border border-slate-200 p-3"><strong>{tr('ในเครื่องนี้','This device')}</strong><div className="mt-1 font-bold">{localSummary?describe(localSummary):'—'}</div></div>
+  <div className="rounded-lg border border-slate-200 p-3"><strong>Google Drive</strong><div className="mt-1 font-bold text-emerald-700">{cloud?describe(cloud):'—'}</div>{cloud&&<div className="mt-1 text-xs text-slate-500">{showTime(cloud.date)}{!checkedAt&&(' · '+tr('ข้อมูลครั้งก่อน','Last known'))}</div>}</div>
+ </div>
+ <button data-tour="drive-json-send" disabled={!ready||busy} onClick={()=>connect('publish')} className="w-full rounded-lg bg-emerald-700 text-white p-3 font-bold disabled:opacity-50">{tr('ส่ง JSON ล่าสุดขึ้น Drive','Send latest JSON to Drive')}</button>
+ <button data-tour="drive-json-load" disabled={!ready||busy} onClick={()=>connect('download')} className="w-full rounded-lg bg-blue-700 text-white p-3 font-bold disabled:opacity-50">{tr('โหลด JSON ล่าสุดจาก Drive','Load latest JSON from Drive')}</button>
+ <div className="rounded-lg border border-slate-200 p-3 space-y-1">{switchControl}<p className="text-xs text-slate-500">{tr('ตรวจทุก 20 วินาทีเมื่อเปิดเว็บและ Google พร้อมใช้งาน ไม่เขียนทับงานที่ขัดแย้งกัน','Checks every 20 seconds while open and authorized; conflicting work is not overwritten.')}</p></div>
+ <details open={advanced||recoveryOpen} onToggle={e=>{setAdvanced(e.currentTarget.open);if(!e.currentTarget.open&&!busy)setRecoveryOpen(false);}} className="border-t border-slate-200 pt-3 space-y-3">
+ <summary className="cursor-pointer text-sm font-semibold text-slate-700">{tr('เพิ่มเติม · กู้คืน / ตั้งค่า','More · Recovery / settings')}</summary>
+ {checkedAt&&<p className="text-xs text-slate-500">{tr('ตรวจ Drive ล่าสุด: ','Last checked: ')}{showTime(checkedAt)}</p>}
+ {cloud&&!cloud.legacy&&<a href={'https://drive.google.com/open?id='+encodeURIComponent(cloud.id)} target="_blank" rel="noopener noreferrer" className="block text-xs text-blue-700 underline">{tr('เปิดไฟล์ JSON บน Drive','Open JSON on Drive')}</a>}
+ <button disabled={!ready||busy||!link} onClick={()=>connect('sync')} className="w-full rounded border border-emerald-600 text-emerald-700 p-2 text-sm disabled:opacity-50">{tr('ตรวจและรวมข้อมูล','Check and merge')}</button>
+ <button disabled={!ready||busy||!link} onClick={()=>connect('recover')} className="w-full rounded border border-slate-300 p-2 text-sm disabled:opacity-50">{tr('กู้คืนแฟ้มที่ขาด','Recover missing projects')}</button>
+ <button data-tour="drive-recover" disabled={!ready||busy||!link} onClick={()=>connect('browse')} className="w-full rounded border border-indigo-500 text-indigo-700 p-2 text-sm disabled:opacity-50">{tr('เลือก JSON สำรองย้อนหลัง','Choose previous JSON backup')}</button>
  {recoveryOpen&&<section className="rounded-xl border border-indigo-300 p-3 space-y-3">
   <div className="flex justify-between items-center gap-2"><strong>{tr('เลือกฉบับสำรอง','Select backup version')}</strong><button type="button" disabled={busy} onClick={()=>{setRecoveryOpen(false);setRecoveryData(null);setPreview([]);}} className="text-xs underline">{tr('ปิดรายการ','Close list')}</button></div>
   <p className="text-xs text-slate-600">{tr('เลือก TIS FullBackup JSON หรือ Workspace เพื่อกู้แฟ้มพร้อมข้อมูลรายงาน หรือเลือกไฟล์ข้อมูลโครงการแยก หากฉบับล่าสุดไม่ใช่ที่ต้องการให้ลองฉบับก่อนหน้า','Choose TIS FullBackup JSON or Workspace for projects with report settings, or a single project backup. If the latest is not correct, inspect earlier versions.')}</p>
@@ -478,11 +481,11 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
  <h3 className="font-semibold text-sm border-t pt-3">{tr('2. ส่งไฟล์ไปยัง Google Drive','2. Export files to Google Drive')}</h3>
  <button disabled={!ready||busy||!link} onClick={()=>connect('export')} className="w-full rounded bg-blue-800 text-white p-3 disabled:opacity-50">{tr('ส่งไฟล์ไปยัง Google Drive','Export files to Google Drive')}</button>
  {link?.lastExport&&<p className="text-xs text-slate-500">{tr('ส่งไฟล์ล่าสุด: ','Last export: ')}{new Date(link.lastExport).toLocaleString(lang==='th'?'th-TH':'en-GB')}</p>}
- {busy&&<button type="button" disabled={cancelling} onClick={cancel} className="w-full rounded border border-red-600 text-red-700 p-3 font-bold disabled:opacity-50">{cancelling?tr('กำลังยกเลิก…','Cancelling…'):tr('ยกเลิกการดำเนินการ','Cancel operation')}</button>}
+
  {link?.folder&&/^[A-Za-z0-9_-]+$/.test(link.folder)&&<a className="block text-center rounded border border-slate-300 p-3 font-semibold text-blue-800" href={'https://drive.google.com/drive/folders/'+link.folder} target="_blank" rel="noopener noreferrer">{tr('เปิดโฟลเดอร์ Google Drive','Open Google Drive folder')}</a>}
- {link&&<div className="flex justify-between gap-2"><button disabled={!ready||busy} onClick={()=>connect('connect',true)} className="text-xs underline">{tr('ยืนยันบัญชี Google ใหม่','Reconnect Google account')}</button><button disabled={busy} onClick={async()=>{if(!window.confirm(tr('ยกเลิกการจดจำบัญชีบนเครื่องนี้? ไฟล์ Drive และแฟ้มงานจะไม่ถูกลบ','Forget this Google account on this device? No Drive or local files will be deleted.')))return;clearDriveSession();setToken('');try{workspaceStorage.removeItem(LINK);workspaceStorage.setItem(AUTO,'0');if(!await flushWorkspace())throw Error('Local save failed');setLink(null);setCloud(null);setCheckedAt('');setAuto(false);setMsg(tr('ยกเลิกการจดจำบัญชีแล้ว','Account link forgotten'));}catch(e){setMsg(String(e));}}} className="text-xs text-red-700 underline">{tr('ยกเลิกการเชื่อมต่อ','Disconnect')}</button></div>}
- {msg&&<div role="status" className="text-sm bg-slate-100 rounded p-3 break-words"><p>{msg}</p>{busy&&progress&&<progress aria-label={tr('ความคืบหน้าการส่งไฟล์','File export progress')} value={progress.done} max={progress.total} className="mt-2 w-full h-2 accent-emerald-600"/>}</div>}
+ {link&&<div className="flex justify-between gap-2"><button disabled={!ready||busy} onClick={()=>connect('connect',false)} className="text-xs underline">{tr('ยืนยันสิทธิ์อีกครั้ง','Renew authorization')}</button><button disabled={busy} onClick={async()=>{if(!window.confirm(tr('ยกเลิกการจดจำบัญชีบนเครื่องนี้? ไฟล์ Drive และแฟ้มงานจะไม่ถูกลบ','Forget this Google account on this device? No Drive or local files will be deleted.')))return;clearDriveSession();setToken('');try{workspaceStorage.removeItem(LINK);workspaceStorage.setItem(AUTO,'0');if(!await flushWorkspace())throw Error('Local save failed');setLink(null);setCloud(null);setCheckedAt('');setAuto(false);setMsg(tr('ยกเลิกการจดจำบัญชีแล้ว','Account link forgotten'));}catch(e){setMsg(String(e));}}} className="text-xs text-red-700 underline">{tr('ยกเลิกการเชื่อมต่อ','Disconnect')}</button></div>}
+ </details>
  {busy&&!applyingRestore&&<p className="text-xs text-slate-600">{tr('กดซ่อนหน้าต่างเพื่อทำงานอื่นต่อได้ โดยงานจะทำต่อขณะเปิดเว็บนี้ไว้','Minimize to continue other work. Keep this app open until the operation finishes.')}</p>}
- <p className="text-xs text-slate-500">{tr('กดซิงค์หลังบันทึกงาน ใช้บัญชีเดิมทั้งสองเครื่อง หาก Google หมดอายุสิทธิ์อาจเปิดหน้าขออนุญาตอีกครั้ง สำเนาใน My Drive เก็บรุ่นเก่าไว้และใช้กู้คืนแฟ้มที่ขาดได้ผ่านปุ่มกู้คืน','Sync after saving. Use the same accounts on both devices. Google may request authorization again when access expires. Visible copies retain older versions; use Recover missing projects to restore from a workspace backup.')}</p>
+
  </section></div>;
 }
