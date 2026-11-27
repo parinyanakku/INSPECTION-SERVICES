@@ -214,6 +214,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
       const currentFlId = activeFloorIdRef.current;
       if (zoneDragRef.current && currentFlId) {
         const zi = zoneDragRef.current;
+        if(Math.hypot(e.clientX-zi.startX,e.clientY-zi.startY)<=4)return;
         const rect = stage.getBoundingClientRect();
         const dxPct = ((e.clientX - zi.startX) / rect.width) * 100;
         const dyPct = ((e.clientY - zi.startY) / rect.height) * 100;
@@ -813,18 +814,18 @@ export const StudioTab: React.FC<StudioTabProps> = ({
             <button type="button" aria-pressed={panMode} onClick={()=>setPanMode(v=>!v)} className={'border rounded px-2 py-1 '+(panMode?'bg-blue-700 text-white':'bg-white')}>{lang==='en'?'Pan':'เลื่อนแปลน'}</button>
           </div>
           <div ref={planViewport} className={'relative w-full aspect-[4/3] overflow-auto rounded-xl border border-slate-300 bg-slate-50 '+(panMode?'cursor-grab active:cursor-grabbing touch-none':'')}
-            onPointerDownCapture={ev=>{if(!panMode||ev.button!==0)return;const vp=ev.currentTarget;ev.preventDefault();ev.stopPropagation();vp.setPointerCapture(ev.pointerId);panStart.current={x:ev.clientX,y:ev.clientY,left:vp.scrollLeft,top:vp.scrollTop,id:ev.pointerId};}}
+            {...context.bind}
+            onPointerDownCapture={ev=>{context.bind.onPointerDownCapture(ev);if(!panMode||ev.button!==0||!ev.isPrimary)return;const vp=ev.currentTarget;ev.preventDefault();ev.stopPropagation();vp.setPointerCapture(ev.pointerId);panStart.current={x:ev.clientX,y:ev.clientY,left:vp.scrollLeft,top:vp.scrollTop,id:ev.pointerId};}}
             onPointerMove={ev=>{const p=panStart.current;if(!p||p.id!==ev.pointerId)return;ev.currentTarget.scrollLeft=p.left-(ev.clientX-p.x);ev.currentTarget.scrollTop=p.top-(ev.clientY-p.y);}}
             onPointerUp={ev=>{panStart.current=null;if(ev.currentTarget.hasPointerCapture(ev.pointerId))ev.currentTarget.releasePointerCapture(ev.pointerId);}}
             onPointerCancel={()=>{panStart.current=null;}}
-            onClickCapture={ev=>{if(panMode){ev.preventDefault();ev.stopPropagation();}}}>
+            onClickCapture={ev=>{context.bind.onClickCapture(ev);if(panMode){ev.preventDefault();ev.stopPropagation();}}}>
         <div
           id="floorStage"
           ref={floorStageRef}
           tabIndex={0}
           onKeyDown={handlePlanKeys}
-          {...context.bind}
-          onPointerDownCapture={e=>{e.currentTarget.focus({preventScroll:true});context.bind.onPointerDownCapture(e);}}
+          onPointerDownCapture={e=>{e.currentTarget.focus({preventScroll:true});}}
           onClick={handleFloorStageClick}
           onDragOver={(e) => {
             e.preventDefault();
@@ -1296,6 +1297,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({
                 <button
                   type="button"
                   onClick={() => {
+                    setPinPlacement(null);
                     setIsZoneSetupMode(false);
                     setEditingFloorId(null);
                     const next =
