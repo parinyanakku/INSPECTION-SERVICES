@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.189",
+  "latest": "v1.0.194",
   "releases": [
+    {
+      "version": "v1.0.194",
+      "build": 194,
+      "storageSchema": 2,
+      "date": "2026-11-27T09:26:02.743Z",
+      "notes": "Update guide for two-way mobile JSON and release highlights",
+      "commit": "a6d9751b789e65bab11b103f58817653a9e8fb50"
+    },
     {
       "version": "v1.0.189",
       "build": 189,
