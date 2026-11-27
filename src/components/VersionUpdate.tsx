@@ -41,7 +41,7 @@ function highlightsFor(releases:Release[],en:boolean){
      const first=members[members.length-1].version.toUpperCase(),last=members[0].version.toUpperCase();
      groups.push({version:first===last?last:first+' – '+last,date:r.date.slice(0,10),items:en?h.en:h.th});
    }else{
-     const items=/Add expandable user-facing release history/i.test(r.notes||'')?[en?'Expand previous updates and read major user-facing changes.':'เพิ่มประวัติการอัปเดตย้อนหลังแบบกดขยาย พร้อมสรุปเฉพาะหัวข้อสำคัญ']:en&&r.notesEn?[r.notesEn]:!en&&r.notesTh?[r.notesTh]:[];
+     const items=/Improve Drive sync frequency|account-verified visible Drive backup recovery|Keep buyer onboarding current|Highlight Google Drive sync|Maintain release and guide/i.test(r.notes||'')?[en?'Check Drive more frequently, recover missing projects without overwrite, and refresh the buyer guide when lessons change.':'ตรวจ Drive ถี่ขึ้น กู้คืนแฟ้มที่ขาดโดยไม่ทับแฟ้มเดิม และปรับบทแนะนำผู้ซื้อเมื่อขั้นตอนเปลี่ยน']: /Add expandable user-facing release history/i.test(r.notes||'')?[en?'Expand previous updates and read major user-facing changes.':'เพิ่มประวัติการอัปเดตย้อนหลังแบบกดขยาย พร้อมสรุปเฉพาะหัวข้อสำคัญ']:en&&r.notesEn?[r.notesEn]:!en&&r.notesTh?[r.notesTh]:[];
      if(items.length){const key=items.join('|');if(seen.has(key))continue;seen.add(key);groups.push({version:r.version.toUpperCase(),date:r.date.slice(0,10),items});}
    }
  }
