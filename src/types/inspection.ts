@@ -6,7 +6,7 @@ export type DefectStatus = 'รอแก้ไข' | 'กำลังแก้�
 
 export type ProjectStatus = 'กำลังดำเนินการ' | 'ตรวจเสร็จสิ้น';
 
-export type MarkupTool = 'pen' | 'circle' | 'arrow' | 'rect' | 'text';
+export type MarkupTool = 'pen' | 'circle' | 'arrow' | 'rect' | 'text' | 'line';
 
 export type WorkspaceTab = 'studio' | 'list' | 'export';
 
