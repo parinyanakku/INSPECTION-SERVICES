@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.57",
+  "latest": "v1.0.58",
   "releases": [
+    {
+      "version": "v1.0.58",
+      "build": 58,
+      "storageSchema": 2,
+      "date": "2026-11-27T01:45:28.717Z",
+      "notes": "Fix PDF Thai and English word spacing by unifying host canvas and iframe Sarabun fonts",
+      "commit": "96536cc8b2157da54445ad99c992561acceab52d"
+    },
     {
       "version": "v1.0.57",
       "build": 57,
