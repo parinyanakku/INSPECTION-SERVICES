@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.161",
+  "latest": "v1.0.164",
   "releases": [
+    {
+      "version": "v1.0.164",
+      "build": 164,
+      "storageSchema": 2,
+      "date": "2026-11-27T08:04:38.714Z",
+      "notes": "Update buyer guide for Drive backup version selection and release highlights",
+      "commit": "ac12914e5d7b3b5d31c4969f44df1344f458089d"
+    },
     {
       "version": "v1.0.161",
       "build": 161,
