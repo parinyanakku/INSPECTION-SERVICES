@@ -8,7 +8,7 @@ export type ProjectStatus = 'กำลังดำเนินการ' | 'ต�
 
 export type MarkupTool = 'pen' | 'circle' | 'arrow' | 'rect' | 'text' | 'line';
 
-export type WorkspaceTab = 'studio' | 'list' | 'export';
+export type WorkspaceTab = 'studio' | 'list' | 'export' | 'client';
 
 export interface BrandConfig {
   companyName: string;
