@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.122",
+  "latest": "v1.0.123",
   "releases": [
+    {
+      "version": "v1.0.123",
+      "build": 123,
+      "storageSchema": 2,
+      "date": "2026-11-27T06:42:53.386Z",
+      "notes": "Add download all three reports button and sequential progress indicator",
+      "commit": "4ee442f519edf150821ef12337231146de8d4c60"
+    },
     {
       "version": "v1.0.122",
       "build": 122,
