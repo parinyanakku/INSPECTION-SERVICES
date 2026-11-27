@@ -1485,42 +1485,53 @@ function verifyPdfFontMetrics(doc:Document):void{
 export function isWordPdfConverterConfigured():boolean {
   return Boolean(String((import.meta as ImportMeta & {env?:Record<string,string|undefined>}).env?.VITE_REPORT_PDF_CONVERTER_URL||'').trim());
 }
-async function convertReportWordToPDF(pages:BuiltReportPage[],filename:string):Promise<void>{
+async function convertReportWordToPDF(pages:BuiltReportPage[],filename:string,signal?:AbortSignal):Promise<void>{
   const configured=String((import.meta as ImportMeta & {env?:Record<string,string|undefined>}).env?.VITE_REPORT_PDF_CONVERTER_URL||'').trim();
   const endpoint=new URL(configured,location.href);
   if(endpoint.protocol!=='https:' && !(endpoint.protocol==='http:'&&['localhost','127.0.0.1'].includes(endpoint.hostname)))throw Error('PDF converter must use HTTPS');
   if(endpoint.username||endpoint.password)throw Error('Invalid PDF converter URL');
+  signal?.throwIfAborted();
   const docx=await buildNativeWordReport(pages);
+  signal?.throwIfAborted();
   const controller=new AbortController();
+  const cancel=()=>controller.abort();
+  signal?.addEventListener('abort',cancel,{once:true});
+  if(signal?.aborted)cancel();
   const timer=setTimeout(()=>controller.abort(),150000);
   try{
     const response=await fetch(endpoint.href,{method:'POST',headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.wordprocessingml.document'},body:docx,signal:controller.signal,credentials:'same-origin',cache:'no-store',redirect:'error'});
     if(!response.ok)throw Error('Word to PDF conversion failed ('+response.status+')');
     const pdf=await response.blob();
     if(await pdf.slice(0,5).text()!=='%PDF-')throw Error('Converter did not return a PDF');
+    signal?.throwIfAborted();
     const url=URL.createObjectURL(new Blob([pdf],{type:'application/pdf'}));
     const link=document.createElement('a');
     link.href=url;link.download=filename;document.body.appendChild(link);link.click();link.remove();
     setTimeout(()=>URL.revokeObjectURL(url),30000);
-  }finally{clearTimeout(timer);}
+  }finally{clearTimeout(timer);signal?.removeEventListener('abort',cancel);}
 }
 
 export async function exportProjectPDF(
   proj: ProjectFile,
   brand: BrandConfig,
   lang: AppLanguage = 'th',
-  reportBookInput?: ReportBookData
+  reportBookInput?: ReportBookData,
+  signal?: AbortSignal,
+  onProgress?: (done:number,total:number)=>void
 ): Promise<string> {
+  signal?.throwIfAborted();
   const safeSlug = (proj.houseNo || 'Report').replace(/[^a-zA-Z0-9ก-๙_-]/g, '_');
   const fileName = `Inspection_Report_${safeSlug}.pdf`;
   const rb = reportBookInput || loadReportBookData(proj, lang);
   const assets = await prepareSharedReportAssets(proj, brand);
+  signal?.throwIfAborted();
   const pages = buildSharedReportPages(proj, brand, lang, assets, rb);
   if (!pages.length) throw Error('No report pages generated');
+  onProgress?.(0,pages.length);
 
   if(isWordPdfConverterConfigured()){
     // Same native DOCX as the blue Word download button.
-    await convertReportWordToPDF(pages,fileName);
+    await convertReportWordToPDF(pages,fileName,signal);
     return fileName;
   }
 
@@ -1549,6 +1560,8 @@ export async function exportProjectPDF(
     });
 
     for (let i = 0; i < pages.length; i++) {
+      signal?.throwIfAborted();
+      onProgress?.(i,pages.length);
       // Only one A4 page is mounted at once; avoid very tall mobile Safari
       // documents, excessive image decoding and large scroll coordinates.
       iframeDoc.body.innerHTML=pages[i].html;
@@ -1562,6 +1575,7 @@ export async function exportProjectPDF(
         el.style.letterSpacing='0px';
       }
       await waitForImagesInDoc(iframeDoc);
+      signal?.throwIfAborted();
       await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
       const landscape=node.dataset.orientation==='landscape';
       const pageWidthPx=landscape?1123:794, pageHeightPx=landscape?794:1123;
@@ -1590,7 +1604,7 @@ export async function exportProjectPDF(
         scale: 3.125,
         useCORS: true,
         allowTaint: true,
-        imageTimeout: 0,
+        imageTimeout: 15000,
         backgroundColor: '#ffffff',
         scrollX: 0,
         scrollY: 0,
@@ -1619,6 +1633,7 @@ export async function exportProjectPDF(
         },
       });
 
+      if(signal?.aborted){canvas.width=0;canvas.height=0;signal.throwIfAborted();}
       if (i > 0) {
         pdf.addPage('a4', landscape?'landscape':'portrait');
       }
@@ -1653,8 +1668,12 @@ export async function exportProjectPDF(
           finally{if(nativeCanvas){nativeCanvas.width=0;nativeCanvas.height=0;}}
         }
       }finally{canvas.width=0;canvas.height=0;}
+      onProgress?.(i+1,pages.length);
+      // Yield between pages so mobile browsers can process cancellation.
+      await new Promise<void>(resolve=>setTimeout(resolve,0));
     }
 
+    signal?.throwIfAborted();
     pdf.save(fileName);
     return fileName;
   } finally {
