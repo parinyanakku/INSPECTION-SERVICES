@@ -28,7 +28,7 @@ type TokenClient={requestAccessToken:(options:{prompt:string})=>void};
 type GIS={accounts:{oauth2:{initTokenClient:(options:{client_id:string;scope:string;login_hint?:string;callback:(response:{access_token?:string;error?:string;scope?:string;expires_in?:number|string})=>void;error_callback:()=>void})=>TokenClient}}};
 function gis(){return (window as unknown as {google?:GIS}).google;}
 async function hash(records:Records){
- const str=JSON.stringify(Object.entries(records).sort(([a],[b])=>a.localeCompare(b)));
+ const str=JSON.stringify(Object.entries(records).map(([key,value])=>[key,JSON.stringify(JSON.parse(value))]).sort(([a],[b])=>a.localeCompare(b)));
  return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str)))).map(n=>n.toString(16).padStart(2,'0')).join('');
 }
 async function api(token:string,url:string,init:RequestInit={}){
@@ -56,6 +56,7 @@ async function files(token:string,userId:string,signal?:AbortSignal){
    if(next)q.set('pageToken',next);
    const json=await (await api(token,ROOT+'?'+q,{signal})).json();
    all.push(...(json.files||[]));next=json.nextPageToken||'';
+   if(space==='drive'&&all.length)break;
   }while(next);
   if(!all.length)continue;
   if(space==='drive'){
@@ -76,7 +77,7 @@ async function readSnapshot(token:string,userId:string,id:string,signal?:AbortSi
  if(data.format!=='TIS_HOME_INSPECTION_BACKUP_V10'||!Array.isArray(data.projects)||!data.reportBooks||typeof data.reportBooks!=='object')throw Error('Invalid JSON backup');
  const records:Records={[PROJECTS]:JSON.stringify(data.projects)};
  if(data.brand&&typeof data.brand==='object')records[BRAND]=JSON.stringify(data.brand);
- for(const p of data.projects)if(typeof p.id==='string'&&Object.prototype.hasOwnProperty.call(data.reportBooks,p.id))records[REPORT+p.id]=JSON.stringify(data.reportBooks[p.id]);
+ for(const [id,report] of Object.entries(data.reportBooks))records[REPORT+id]=JSON.stringify(report);
  validateDriveRecords(records);
  if(data.contentHash!==await hash(records))throw Error('JSON backup integrity check failed');
  return {format:'TIS_DRIVE_V1',userId,records};
@@ -92,7 +93,7 @@ async function upload(token:string,userId:string,records:Records,parent:string,s
  validateDriveRecords(records);
  const folder=await jsonFolder(token,userId,signal);
  const projects=JSON.parse(records[PROJECTS]),reportBooks:Record<string,unknown>={};
- for(const p of projects)if(records[REPORT+p.id])reportBooks[p.id]=JSON.parse(records[REPORT+p.id]);
+ for(const [key,value] of Object.entries(records))if(key.startsWith(REPORT))Object.defineProperty(reportBooks,key.slice(REPORT.length),{value:JSON.parse(value),enumerable:true});
  const exportedAt=new Date().toISOString(),contentHash=await hash(records),c=counts(records);
  const snapshot={format:'TIS_HOME_INSPECTION_BACKUP_V10',exportedAt,userId,contentHash,brand:records[BRAND]?JSON.parse(records[BRAND]):undefined,projects,reportBooks};
  const boundary='tis_'+crypto.randomUUID().replace(/-/g,'');
@@ -272,7 +273,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   const records=await readSyncRecords();check(op);const c=counts(records);
   if(!c.projects)throw Error(tr('ไม่ส่งข้อมูลว่างขึ้น Drive','Cannot publish an empty workspace'));
   const remote=await files(token,userId,op.signal);check(op);
-  const prior=remote?cloudInfo(remote):null;
+  const prior=remote?(cloudInfo(remote)||cloudInfo(remote,(await readSnapshot(token,userId,remote.id,op.signal)).records)):null;check(op);
   if(!window.confirm(tr('ส่ง JSON จากเครื่องนี้เป็นฉบับล่าสุดบน Drive: ','Publish this device as the latest Drive JSON: ')+describe(c)+(prior?'\nDrive: '+describe(prior)+' · '+showTime(prior.date):'')+'\n'+tr('ฉบับก่อนหน้าจะยังอยู่ใน Drive ไม่ลบไฟล์เดิม ยืนยันเฉพาะเมื่อเครื่องนี้มีงานล่าสุดจริง','Previous versions are retained. Confirm only if this device has the intended latest work.')))return;
   check(op);if((await files(token,userId,op.signal))?.id!==remote?.id)throw Error('CONFLICT');
   const current=await readSyncRecords();if(await hash(current)!==await hash(records))throw Error(tr('งานเปลี่ยนระหว่างยืนยัน กรุณากดส่งอีกครั้ง','Work changed during confirmation; publish again.'));
@@ -340,7 +341,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
    }
    if(!remoteProjects.length&&localProjects.length){setMsg(tr('แฟ้มบน Drive ว่าง แต่เครื่องนี้มีงาน ระบบไม่โหลดทับ','Cloud workspace is empty but this device has work. Restore stopped.'));return;}
    if(!safeRestoreRef.current()){setMsg(tr('มีข้อมูลใหม่บน Drive '+remoteProjects.length+' แฟ้ม จะรับเมื่อกลับหน้าแฟ้มโครงการ','New cloud data: '+remoteProjects.length+' projects. Download deferred until the project list is idle.'));return;}
-   if(!automatic&&!window.confirm(tr('ข้อมูลในเครื่อง: ','Local: ')+describe(counts(records))+'\nDrive: '+describe(counts(data.records))+' · '+showTime(remote.createdTime||new Date().toISOString())+'\n'+tr(downloadOnly?'ใช้ JSON ล่าสุดบน Drive แทนข้อมูลในเครื่องหรือไม่? ระบบเก็บข้อมูลก่อนโหลดไว้ในเครื่อง':'รับและรวมข้อมูลจาก Drive หรือไม่? ระบบเก็บข้อมูลก่อนโหลดไว้ในเครื่อง',downloadOnly?'Replace local data with latest Drive JSON? The previous local snapshot is retained.':'Receive and merge Drive data? The previous local snapshot is retained.')))return;
+   if(!automatic&&!window.confirm(tr('ข้อมูลในเครื่อง: ','Local: ')+describe(counts(records))+'\nDrive: '+describe(counts(data.records))+' · '+(remote.createdTime?showTime(remote.createdTime):tr('ไม่ทราบเวลาไฟล์','Unknown file time'))+'\n'+tr(downloadOnly?'ใช้ JSON ล่าสุดบน Drive แทนข้อมูลในเครื่องหรือไม่? ระบบเก็บข้อมูลก่อนโหลดไว้ในเครื่อง':'รับและรวมข้อมูลจาก Drive หรือไม่? ระบบเก็บข้อมูลก่อนโหลดไว้ในเครื่อง',downloadOnly?'Replace local data with latest Drive JSON? The previous local snapshot is retained.':'Receive and merge Drive data? The previous local snapshot is retained.')))return;
    if((await files(token,userId,op.signal))?.id!==remote.id)throw Error('CONFLICT');check(op);
    if(!active.current)return;
    check(op);if(!safeRestoreRef.current()){setMsg(tr('พบข้อมูลใหม่บน Drive กรุณากลับหน้าแฟ้มโครงการแล้วกดซิงค์อีกครั้ง','New cloud data found. Return to the project list and sync again.'));return;}
@@ -407,8 +408,8 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   {checkedAt&&<div className="text-xs text-slate-500">{tr('ตรวจ Drive ล่าสุด: ','Last checked: ')}{showTime(checkedAt)}</div>}
  </div>
  <button data-tour="drive-json-send" disabled={!ready||busy||!link} onClick={()=>connect('publish')} className="w-full rounded bg-emerald-700 text-white p-3 font-bold disabled:opacity-50">{tr('ส่ง JSON ล่าสุดขึ้น Google Drive','Publish latest JSON to Google Drive')}</button>
- <div className="rounded-lg border border-slate-200 p-3 space-y-1">{switchControl}<p className="text-xs text-slate-500">{tr('เปิดเพื่อซิงค์หลังบันทึกและตรวจข้อมูลใหม่ขณะเปิดเว็บ รับข้อมูลเมื่ออยู่หน้าแฟ้มโครงการ ไม่ส่งสำเนารูปแยก และไม่ขอสิทธิ์ Google เองเมื่อหมดอายุ','Sync saved changes and check updates while the app is open. Receive on the idle project list. No visible file export or automatic Google authorization.')}</p></div>
- <button disabled={!ready||busy||!link} onClick={()=>connect('sync')} className="w-full rounded bg-emerald-700 text-white p-3 disabled:opacity-50">{busy?tr('กำลังดำเนินการ…','Working…'):tr('ซิงค์อัตโนมัติ / ตรวจและรวมข้อมูล','Sync / check and merge')}</button>
+ <div className="rounded-lg border border-slate-200 p-3 space-y-1">{switchControl}<p className="text-xs text-slate-500">{tr('ตรวจ JSON ล่าสุดทุก 20 วินาทีขณะเปิดเว็บ ซิงค์หลังบันทึกเมื่อข้อมูลไม่ขัดแย้ง รับข้อมูลที่หน้าแฟ้มโครงการ และต้องยืนยัน Google ใหม่เมื่อสิทธิ์หมดอายุ','Check the latest JSON every 20 seconds while open, sync saved changes when conflict-free, receive on the idle project list, and renew Google authorization when expired.')}</p></div>
+ <button disabled={!ready||busy||!link} onClick={()=>connect('sync')} className="w-full rounded bg-emerald-700 text-white p-3 disabled:opacity-50">{busy?tr('กำลังดำเนินการ…','Working…'):tr('ซิงค์ข้อมูลล่าสุด (ตรวจและรวม)','Sync latest (check and merge)')}</button>
  <button disabled={!ready||busy||!link} data-tour="drive-json-load" onClick={()=>connect('download')} className="w-full rounded border border-blue-700 text-blue-800 p-3 font-semibold disabled:opacity-50">{tr('โหลด JSON ล่าสุดจาก Drive ลงเครื่อง','Load latest JSON from Drive')}</button>
  <button disabled={!ready||busy||!link} onClick={()=>connect('recover')} className="w-full rounded border border-emerald-600 text-emerald-700 p-3 font-semibold disabled:opacity-50">{tr('กู้คืนแฟ้มที่ขาดจากข้อมูลสำรอง Drive','Recover missing projects from Drive backup')}</button>
  <p className="text-xs text-slate-500">{tr('อ่านไฟล์ Workspace JSON ล่าสุดของบัญชีนี้ เพิ่มเฉพาะแฟ้มที่ยังไม่มี ไม่เขียนทับแฟ้มเดิม','Read the latest account-owned Workspace JSON and recover missing projects without overwriting existing ones.')}</p>
