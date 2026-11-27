@@ -2,6 +2,24 @@
 // a second complete JSON object plus a second complete serialized copy of its photos.
 // The caller checks the original content hash before committing any local records.
 type Records=Record<string,string>;
+export function originalBackupBlob(records:Records,userId:string,exportedAt:string,contentHash:string){
+ const metadata={format:'TIS_HOME_INSPECTION_BACKUP_V10',exportedAt,userId,contentHash};
+ // Records already contain JSON. Preserve their exact bytes for verification
+ // and avoid parsing and serializing all embedded photos again for upload.
+ const parts:BlobPart[]=[JSON.stringify(metadata).slice(0,-1)];
+ if(records.tis_wl_brand_v10)parts.push(',"brand":',records.tis_wl_brand_v10);
+ parts.push(',"projects":',records.tis_wl_projects_v10,',"reportBooks":{');
+ const prefix='tis_report_book_v1_';
+ let separator='';
+ for(const [key,value] of Object.entries(records)){
+  if(!key.startsWith(prefix))continue;
+  parts.push(separator,JSON.stringify(key.slice(prefix.length)),':',value);
+  separator=',';
+ }
+ parts.push('}}');
+ return new Blob(parts,{type:'application/json'});
+}
+
 export async function streamOriginal(response:Response,signal?:AbortSignal,progress?:(received:number,total:number)=>void){
  if(!response.body)throw Error('Streaming download not supported; update Safari');
  const reader=response.body.getReader(),decoder=new TextDecoder('utf-8',{fatal:true});

@@ -2,7 +2,8 @@ import React,{useEffect,useRef,useState} from 'react';
 import {flushSync} from 'react-dom';
 import type {AppLanguage} from '../types/inspection';
 import {retryDriveRead} from '../utils/driveRetry.mjs';
-import {streamOriginal} from '../utils/driveStreamOriginal';
+import {originalBackupBlob,streamOriginal} from '../utils/driveStreamOriginal';
+import {downloadDriveRevision} from '../utils/driveRangeDownload';
 import {withDriveDownload} from '../utils/driveDownload';
 import {applyMobileRecords} from '../utils/driveMobileCopy';
 import {hashWorkspaceRecords} from '../utils/driveRecordHash';
@@ -75,7 +76,7 @@ async function files(token:string,userId:string,signal?:AbortSignal,explicitChoi
  for(const space of ['drive','appDataFolder']){
   const all:FileMeta[]=[];let next='';
   do{
-   const q=new URLSearchParams({spaces:space,q:"trashed = false and appProperties has { key='tisUser' and value='"+userId+"' }"+(space==='drive'?" and appProperties has { key='tisJson' and value='1' }":''),fields:'nextPageToken,files(id,name,createdTime,appProperties)',pageSize:'100',orderBy:'createdTime desc'});
+   const q=new URLSearchParams({spaces:space,q:"trashed = false and appProperties has { key='tisUser' and value='"+userId+"' }"+(space==='drive'?" and appProperties has { key='tisJson' and value='1' }":''),fields:'nextPageToken,files(id,name,size,createdTime,appProperties)',pageSize:'100',orderBy:'createdTime desc'});
    if(next)q.set('pageToken',next);
    const json=await (await api(token,ROOT+'?'+q,{signal})).json();
    all.push(...(json.files||[]));next=json.nextPageToken||'';
@@ -125,8 +126,9 @@ async function readSnapshot(token:string,userId:string,id:string,signal?:AbortSi
  if(expectedHash!==await hash(records))throw Error('JSON backup integrity check failed');
  return {format:'TIS_DRIVE_V1',userId,records};
 }
-async function readOriginalStream(token:string,userId:string,id:string,signal:AbortSignal,progress:(received:number,total:number)=>void,verifying:()=>void):Promise<Snapshot>{
- const response=await api(token,ROOT+'/'+encodeURIComponent(id)+'?alt=media',{signal});
+async function readOriginalStream(token:string,userId:string,file:FileMeta,signal:AbortSignal,progress:(received:number,total:number)=>void,verifying:()=>void):Promise<Snapshot>{
+ const url=ROOT+'/'+encodeURIComponent(file.id)+'?alt=media';
+ const response=await downloadDriveRevision(Number(file.size),range=>api(token,url,{signal,headers:range?{Range:range}:undefined}),signal);
  const data=await streamOriginal(response,signal,progress);
  if(data.userId!==userId)throw Error('Backup account mismatch');
  verifying();
@@ -143,12 +145,9 @@ async function jsonFolder(token:string,userId:string,signal?:AbortSignal){
 async function upload(token:string,userId:string,records:Records,parent:string,signal?:AbortSignal,progress?:(sent:number,total:number)=>void,variant?:{kind:'mobile'|'edit'|'full';source?:string;base?:string;ack?:string}){
  validateDriveRecords(records);
  const folder=await jsonFolder(token,userId,signal);
- const projects=JSON.parse(records[PROJECTS]),reportBooks:Record<string,unknown>={};
- for(const [key,value] of Object.entries(records))if(key.startsWith(REPORT))Object.defineProperty(reportBooks,key.slice(REPORT.length),{value:JSON.parse(value),enumerable:true});
  const exportedAt=new Date().toISOString(),contentHash=await hash(records),c=counts(records);
- const snapshot={format:'TIS_HOME_INSPECTION_BACKUP_V10',exportedAt,userId,contentHash,brand:records[BRAND]?JSON.parse(records[BRAND]):undefined,projects,reportBooks};
  const variantProps:Record<string,string>=variant?.kind==='mobile'?{tisMobile:'1',source:variant.source!,lossless:'1'}:variant?.kind==='edit'?{tisMobileEdit:'1',source:variant.source!,base:variant.base!}:{tisJson:'1',...(variant?.ack?{mobileAck:variant.ack}:{})};
- const raw=new Blob([JSON.stringify(snapshot)],{type:'application/json'});
+ const raw=originalBackupBlob(records,userId,exportedAt,contentHash);
  const compressed=!!variant&&(variant.kind==='mobile'||variant.kind==='edit')&&typeof CompressionStream!=='undefined'&&typeof DecompressionStream!=='undefined';
  const payload=compressed?await new Response(raw.stream().pipeThrough(new CompressionStream('gzip'))).blob():raw;
  if(signal?.aborted)throw Error('CANCELLED');
@@ -482,9 +481,13 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
     await rememberCloud(file,records);
     await originalReady(token,file,records,op,true);await finish(records,tr('อัปโหลดข้อมูลล่าสุดแล้ว','Latest saved work uploaded'));return;
    }
+   if(automatic&&!safeRestoreRef.current()){
+    setMsg(tr('มีข้อมูลใหม่บน Drive จะรับเมื่อกลับหน้าแฟ้มโครงการ','New Drive data is available. Return to the project list to receive it.'));
+    return;
+   }
    setMsg(tr('กำลังดาวน์โหลด JSON จาก Drive…','Downloading JSON from Drive…'));
    const downloadProgress=(received:number,total:number)=>{if(active.current&&!op.signal.aborted)setMsg(tr('ดาวน์โหลด JSON ','Downloading JSON ')+(received/1048576).toFixed(1)+' MB'+(total?' / '+(total/1048576).toFixed(1)+' MB':''));};
-   const data=remote.appProperties?.tisJson==='1'?await readOriginalStream(token,userId,remote.id,op.signal,downloadProgress,()=>setMsg(tr('กำลังตรวจสอบไฟล์ JSON…','Verifying JSON…'))):await readSnapshot(token,userId,remote.id,op.signal,downloadProgress);
+   const data=remote.appProperties?.tisJson==='1'?await readOriginalStream(token,userId,remote,op.signal,downloadProgress,()=>setMsg(tr('กำลังตรวจสอบไฟล์ JSON…','Verifying JSON…'))):await readSnapshot(token,userId,remote.id,op.signal,downloadProgress);
    setMsg(tr('กำลังตรวจสอบไฟล์ JSON…','Verifying JSON…'));
    if(data.format!=='TIS_DRIVE_V1'||data.userId!==userId||!data.records||typeof data.records!=='object')throw Error('Invalid snapshot');
    const remoteHash=await hash(data.records);check(op);
@@ -535,7 +538,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   }catch(e){setMsg(String(e));}
  }
  useEffect(()=>{
-  if(!auto||!link||paused||visible||recoveryOpen)return;
+  if(!auto||!link||paused||recoveryOpen)return;
   let disposed=false;let timer:number|undefined;
   const run=()=>{
    if(disposed||autoHold.current||operation.current||document.visibilityState!=='visible'||!navigator.onLine)return;
@@ -553,7 +556,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   const poll=window.setInterval(run,20000);
   schedule();
   return()=>{disposed=true;if(timer!==undefined)window.clearTimeout(timer);window.clearInterval(poll);window.removeEventListener('tis-workspace-sync-change',schedule);window.removeEventListener('online',schedule);window.removeEventListener('focus',schedule);document.removeEventListener('visibilitychange',focus);};
- },[auto,link?.id,paused,visible,userId,lang,recoveryOpen]);
+ },[auto,link?.id,paused,userId,lang,recoveryOpen]);
  const switchControl=<button type="button" role="switch" aria-checked={auto} disabled={!link||busy} onClick={()=>void toggleAuto()} className="flex items-center gap-2 text-sm font-semibold disabled:opacity-50"><span className={'inline-flex w-11 h-6 rounded-full p-0.5 transition-colors '+(auto?'bg-emerald-600 justify-end':'bg-slate-400 justify-start')}><span className="w-5 h-5 bg-white rounded-full shadow"/></span>{tr('ซิงค์อัตโนมัติ','Auto sync')} · {auto?tr('เปิด','On'):tr('ปิด','Off')}</button>;
  const match=msg.match(/(\d+)\s*\/\s*(\d+)\s*$/);
  const progress=match&&Number(match[2])>0?{done:Math.min(Number(match[1]),Number(match[2])),total:Number(match[2])}:null;

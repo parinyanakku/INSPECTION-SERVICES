@@ -2,6 +2,7 @@
 type RecordValue = { key:string; value:string };
 let db: IDBDatabase | null = null;
 let cache = new Map<string,string>();
+let syncSnapshot: Readonly<Record<string,string>> | null = null;
 let pending: Promise<void> = Promise.resolve();
 let queued = 0;
 let failures = new Set<string>();
@@ -34,13 +35,14 @@ export async function openWorkspace(userId:string){
      tx.oncomplete=()=>resolve(req.result as RecordValue[]);
      tx.onabort=tx.onerror=()=>reject(tx.error||Error('Cannot read local workspace'));
    });
-   cache=new Map(records.map(r=>[r.key,r.value]));failures=new Set();pending=Promise.resolve();queued=0;status();
+   cache=new Map(records.map(r=>[r.key,r.value]));syncSnapshot=null;failures=new Set();pending=Promise.resolve();queued=0;status();
  }catch(e){db?.close();db=null;cache.clear();releaseLock?.();releaseLock=null;throw e;}
 }
 function change(key:string,value:string|null){
  const connection=db;
  if(!connection)throw Error('Local workspace is not open');
  const changed=(cache.get(key)??null)!==value;
+ if(changed&&syncKey(key))syncSnapshot=null;
  if(value===null)cache.delete(key);else cache.set(key,value);
  queued++;status();
  pending=pending.then(()=>new Promise<void>((resolve,reject)=>{
@@ -66,6 +68,7 @@ export async function writeWorkspaceBatch(records:Record<string,string>){
   const objectStore=tx.objectStore('records');for(const [key,value] of Object.entries(records))objectStore.put({key,value});
  });
  const changed=Object.entries(records).some(([key,value])=>syncKey(key)&&cache.get(key)!==value);
+ if(changed)syncSnapshot=null;
  for(const [key,value] of Object.entries(records))cache.set(key,value);
  status();if(changed)window.dispatchEvent(new Event('tis-workspace-sync-change'));
 }
@@ -73,7 +76,7 @@ export async function flushWorkspace(){await pending;return failures.size===0;}
 export async function closeWorkspace(){
  await pending;
  if(failures.size)throw Error('บันทึกข้อมูลไม่สำเร็จ กรุณาสำรองงานก่อนออกจากระบบ');
- db?.close();db=null;cache.clear();releaseLock?.();releaseLock=null;status();
+ db?.close();db=null;cache.clear();syncSnapshot=null;releaseLock?.();releaseLock=null;status();
 }
 window.addEventListener('beforeunload',e=>{if(queued||failures.size){e.preventDefault();e.returnValue='';}});
 
@@ -81,9 +84,11 @@ const SYNC_PROJECTS='tis_wl_projects_v10',SYNC_BRAND='tis_wl_brand_v10';
 function syncKey(key:string){return key===SYNC_PROJECTS||key===SYNC_BRAND||key.startsWith('tis_report_book_v1_');}
 export async function readSyncRecords():Promise<Record<string,string>>{
  if(!db||!await flushWorkspace())throw Error('Local storage not ready');
+ if(syncSnapshot)return syncSnapshot;
  const records=Object.fromEntries([...cache].filter(([key])=>syncKey(key)).sort(([a],[b])=>a.localeCompare(b)));
  if(!records[SYNC_PROJECTS])records[SYNC_PROJECTS]='[]';
- return records;
+ // Reuse the verified digest and counts while polling an unchanged workspace.
+ return syncSnapshot=Object.freeze(records);
 }
 export async function restoreSyncRecords(records:Record<string,string>,expected:Record<string,string>,marker:string){
  const connection=db;if(!connection||!await flushWorkspace()||db!==connection)throw Error('Local storage not ready');
@@ -107,5 +112,7 @@ export async function restoreSyncRecords(records:Record<string,string>,expected:
  });
  for(const key of oldKeys)cache.delete(key);
  for(const [key,value] of Object.entries({...records,...extras}))cache.set(key,value);
+ syncSnapshot=null;
  status();
+ window.dispatchEvent(new Event('tis-workspace-sync-change'));
 }
