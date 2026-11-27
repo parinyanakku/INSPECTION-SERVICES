@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.198",
+  "latest": "v1.0.203",
   "releases": [
+    {
+      "version": "v1.0.203",
+      "build": 203,
+      "storageSchema": 2,
+      "date": "2026-11-27T09:32:20.874Z",
+      "notes": "Update guide for compact mobile layout and release highlights",
+      "commit": "186b3893975e3d169af7de6b8ce7d4731f75412e"
+    },
     {
       "version": "v1.0.198",
       "build": 198,
