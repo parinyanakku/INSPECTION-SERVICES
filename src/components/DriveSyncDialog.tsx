@@ -291,7 +291,32 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   if(message==='CONFLICT'){autoHold.current=true;setMsg(tr('พบข้อมูลคนละชุดหรือแก้ไขทั้งสองเครื่อง ระบบหยุดซิงค์เพื่อไม่เขียนทับ กรุณาสำรอง JSON และติดต่อผู้ดูแล','Different or concurrent changes detected. Sync stopped to prevent overwriting. Export JSON and contact support.'));}
   else{if(message.includes('401')){live=null;setToken('');}setMsg(tr('ดำเนินการไม่สำเร็จ: ','Operation failed: ')+message);}
  }
-  async function previewOriginal(token:string,op:AbortController){
+   async function openPreparedIndex(file:File){
+  if(operation.current||paused)return;
+  const token=validToken(userId);
+  if(!token){setMsg(tr('กรุณายืนยัน Google ก่อนเลือกไฟล์ดัชนี','Authorize Google before choosing the index'));return;}
+  if(file.size>8*1024*1024){setMsg(tr('เลือกไฟล์ดัชนีขนาดเล็ก ไม่ใช่ JSON ต้นฉบับ','Choose the small index, not the full backup'));return;}
+  autoHold.current=true;
+  const op=new AbortController();operation.current=op;setBusy(true);setCancelling(false);setMobilePreview(null);
+  setMsg(tr('กำลังตรวจสอบดัชนีกับ Drive…','Checking index against Drive…'));
+  try{
+   const data=JSON.parse(await file.text());check(op);
+   const remote=await files(token,userId,op.signal,true);check(op);
+   if(!remote||remote.appProperties?.tisJson!=='1'||remote.appProperties?.tisUser!==userId)throw Error('No authorized original backup');
+   const summary=cloudInfo(remote);
+   if(!summary||data.format!=='TIS_READONLY_INDEX_V1'||data.userId!==userId||data.fileId!==remote.id||data.hash!==remote.appProperties?.hash)throw Error(tr('ดัชนีไม่ตรงกับบัญชีหรือ JSON ล่าสุดบน Drive','Index does not match account or latest Drive revision'));
+   const info=await (await api(token,ROOT+'/'+encodeURIComponent(remote.id)+'?fields=id,size,appProperties,trashed',{signal:op.signal})).json();check(op);
+   if(info.id!==remote.id||info.trashed||info.appProperties?.tisUser!==userId||info.appProperties?.hash!==data.hash||!Number.isSafeInteger(data.total)||data.total!==Number(info.size))throw Error('Original file metadata mismatch');
+   const projects=data.projects as DrivePreviewIndex['projects'],ranges=data.ranges as ImageRange[];
+   if(!Array.isArray(projects)||!Array.isArray(ranges)||ranges.length>100000||projects.some(p=>!p||typeof p.id!=='string'||!Array.isArray(p.floors)||!Array.isArray(p.defects)||p.defects.some(d=>!d||typeof d.id!=='string'))||new Set(projects.map(p=>p.id)).size!==projects.length||projects.length!==summary.projects||projects.reduce((n,p)=>n+p.defects.length,0)!==summary.defects)throw Error('Project count or structure mismatch');
+   let end=-1;for(const range of ranges){if(!range||!Number.isSafeInteger(range.start)||!Number.isSafeInteger(range.end)||range.start<=end||range.end<range.start||range.end>=data.total)throw Error('Invalid image offsets');end=range.end;}
+   const next:DrivePreviewIndex={fileId:remote.id,hash:data.hash,date:summary.date,projects,ranges,total:data.total};
+   if((await files(token,userId,op.signal,true))?.id!==remote.id)throw Error('CONFLICT');check(op);
+   workspaceStorage.setItem('tis_drive_readonly_index_v1',JSON.stringify(next));if(!await flushWorkspace())throw Error('Could not save index');
+   check(op);setCloud(summary);setCheckedAt(new Date().toISOString());setMobilePreview(next);setMsg(tr('เปิดดัชนีสำเร็จ · อ่านอย่างเดียว · ','Prepared index opened · Read only · ')+describe(summary));
+  }catch(e){handleError(e,op);}finally{end(op);}
+ }
+ async function previewOriginal(token:string,op:AbortController){
   autoHold.current=true;setMobilePreview(null);
   const remote=await files(token,userId,op.signal,true);check(op);
   if(!remote||remote.appProperties?.tisJson!=='1')throw Error(tr('ไม่พบ JSON ต้นฉบับ','No original JSON found'));
@@ -657,6 +682,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
  <button data-tour="drive-json-send" disabled={!ready||busy} onClick={()=>connect('publish')} className="w-full rounded-lg bg-emerald-700 text-white p-3 font-bold disabled:opacity-50">{tr('ส่ง JSON ล่าสุดขึ้น Drive','Send latest JSON to Drive')}</button>
  <button data-tour="drive-json-load" disabled={!ready||busy} onClick={()=>connect('download')} className="w-full rounded-lg bg-blue-700 text-white p-3 font-bold disabled:opacity-50">{tr('โหลด JSON ล่าสุดจาก Drive','Load latest JSON from Drive')}</button>
  <button disabled={!ready||busy} onClick={()=>connect('preview')} className="w-full rounded-lg border-2 border-indigo-600 text-indigo-800 p-3 font-bold disabled:opacity-50">{tr('ดูแฟ้มจาก Drive แบบเบา (อ่านอย่างเดียว)','Lightweight Drive viewer (read only)')}</button>
+  <label className="block text-xs font-semibold text-slate-700">{tr('เปิดไฟล์ดัชนีที่ตรวจสอบไว้ (ไม่โหลด JSON ใหญ่)','Open prepared index (skip large JSON download)')}<input type="file" accept=".json,application/json" disabled={!validToken(userId)||busy||paused} onChange={e=>{const file=e.currentTarget.files?.[0];e.currentTarget.value='';if(file)void openPreparedIndex(file);}} className="block w-full mt-1 rounded border p-2 bg-white"/></label>
   {mobilePreview&&<DriveReadOnlyPreview key={mobilePreview.fileId} index={mobilePreview} lang={lang} loadPhoto={previewPhoto} onClose={()=>setMobilePreview(null)}/>}
   <div className="rounded-lg border border-slate-200 p-3 space-y-1">{switchControl}<p className="text-xs text-slate-500">{tr('ตรวจทุก 20 วินาทีเมื่อเปิดเว็บและ Google พร้อมใช้งาน ไม่เขียนทับงานที่ขัดแย้งกัน','Checks every 20 seconds while open and authorized; conflicting work is not overwritten.')}</p></div>
  <details open={advanced||recoveryOpen} onToggle={e=>{setAdvanced(e.currentTarget.open);if(!e.currentTarget.open&&!busy)setRecoveryOpen(false);}} className="border-t border-slate-200 pt-3 space-y-3">
