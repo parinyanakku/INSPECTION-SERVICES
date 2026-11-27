@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.194",
+  "latest": "v1.0.198",
   "releases": [
+    {
+      "version": "v1.0.198",
+      "build": 198,
+      "storageSchema": 2,
+      "date": "2026-11-27T09:29:18.584Z",
+      "notes": "Update guide for lossless image sync and release highlights",
+      "commit": "49804c16f8eb7d71c2102e2f58876e58d3180d42"
+    },
     {
       "version": "v1.0.194",
       "build": 194,
