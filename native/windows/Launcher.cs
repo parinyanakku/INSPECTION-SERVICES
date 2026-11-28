@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
@@ -21,6 +22,28 @@ internal static class Launcher
     private sealed class WorkspaceWindow : Form
     {
         private readonly WebView2 view = new WebView2();
+        private CancellationTokenSource driveAuthorization;
+        private string driveRequest;
+        private async void HandleDriveMessage(CoreWebView2 core, CoreWebView2WebMessageReceivedEventArgs e)
+        {
+            if (!WorkspaceUri(e.Source)) return;
+            string message; try { message=e.TryGetWebMessageAsString(); } catch { return; }
+            var match=Regex.Match(message, @"\Aproelite-drive-(start|cancel|ping):([a-f0-9]{32})\z");
+            if (!match.Success) return;
+            string id=match.Groups[2].Value;
+            if (match.Groups[1].Value=="ping") { core.PostWebMessageAsString("proelite-drive-pong:"+id); return; }
+            if (match.Groups[1].Value=="cancel") { if (driveRequest==id && driveAuthorization!=null) driveAuthorization.Cancel(); return; }
+            if (driveAuthorization!=null) { core.PostWebMessageAsString("proelite-drive-error:"+id+":BUSY"); return; }
+            string source=e.Source;
+            var cts=new CancellationTokenSource(TimeSpan.FromMinutes(3)); driveAuthorization=cts; driveRequest=id;
+            try {
+                string json=await GoogleDriveOAuth.AuthorizeAsync(this,cts.Token);
+                if (!cts.IsCancellationRequested && !IsDisposed && core.Source==source) core.PostWebMessageAsString("proelite-drive-result:"+id+":"+json);
+            } catch (GoogleDriveOAuth.OAuthFailure error) { if (!IsDisposed && core.Source==source) core.PostWebMessageAsString("proelite-drive-error:"+id+":"+error.Message); }
+            catch (OperationCanceledException) { if (!IsDisposed && core.Source==source) core.PostWebMessageAsString("proelite-drive-error:"+id+":CANCELLED"); }
+            catch { if (!IsDisposed && core.Source==source) core.PostWebMessageAsString("proelite-drive-error:"+id+":FAILED"); }
+            finally { driveRequest=null;driveAuthorization=null;cts.Dispose(); }
+        }
         private readonly Label status = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, Text = "Opening ProElite Inspection..." };
         internal WorkspaceWindow()
         {
@@ -88,9 +111,10 @@ internal static class Launcher
                 core.Settings.AreDefaultContextMenusEnabled = false;
                 core.Settings.IsStatusBarEnabled = false;
                 core.Settings.AreBrowserAcceleratorKeysEnabled = false;
-                core.NavigationStarting += (s,e) => { if (!WorkspaceUri(e.Uri)) e.Cancel = true; };
+                core.NavigationStarting += (s,e) => { if (!WorkspaceUri(e.Uri)) e.Cancel = true; else if(driveAuthorization!=null) driveAuthorization.Cancel(); };
                 core.NewWindowRequested += (s,e) => { e.Handled = true; };
-                core.WebMessageReceived += (s,e) => DeviceProof(core,e);
+                core.WebMessageReceived += (s,e) => { DeviceProof(core,e); HandleDriveMessage(core,e); };
+                FormClosed += (s,e) => { if (driveAuthorization!=null) driveAuthorization.Cancel(); };
                 core.NavigationCompleted += (s,e) => {
                     if (!e.IsSuccess && e.WebErrorStatus != CoreWebView2WebErrorStatus.OperationCanceled) {
                         status.Text = "Cannot load ProElite. Check the internet connection and restart the app.\nไม่สามารถเปิดโปรแกรม กรุณาตรวจอินเทอร์เน็ตและเปิดใหม่";

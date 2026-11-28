@@ -1,3 +1,4 @@
+import {hasNativeDriveBridge,authorizeNativeDrive,type DriveOAuthResult} from '../utils/nativeDriveOAuth';
 import React,{useEffect,useRef,useState} from 'react';
 import {flushSync} from 'react-dom';
 import type {AppLanguage} from '../types/inspection';
@@ -245,6 +246,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
  useEffect(()=>{onBusyChange(busy);return()=>onBusyChange(false);},[busy,onBusyChange]);
  useEffect(()=>{
   if(!visible)return;
+  if(hasNativeDriveBridge()){setReady(true);return;}
   let script=document.querySelector<HTMLScriptElement>('script[src="https://accounts.google.com/gsi/client"]');
   const loaded=()=>{if(active.current)setReady(!!gis());};
   const failed=()=>{if(active.current)setMsg('Google Identity Services could not load');};
@@ -264,7 +266,8 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
  function connect(action:'connect'|'sync'|'download'|'export'|'recover'|'browse'|'publish'='connect',choose=false){
   if(operation.current){setMsg(tr('กำลังทำงานอยู่ กรุณารอหรือกดยกเลิก','An operation is already running. Wait or cancel it.'));return;}
   if(paused){setMsg(tr('ปิดหน้าต่างจัดการบัญชีก่อนซิงค์','Close account management before syncing.'));return;}
-  if(!gis()){setMsg(tr('Google ยังโหลดไม่สำเร็จ กรุณาเปิดหน้าซิงค์ใหม่','Google sign-in is not ready. Reopen sync settings.'));return;}
+  const native=hasNativeDriveBridge();
+  if(!native&&!gis()){setMsg(tr('Google ยังโหลดไม่สำเร็จ กรุณาเปิดหน้าซิงค์ใหม่','Google sign-in is not ready. Reopen sync settings.'));return;}
   autoHold.current=false;
   const op=new AbortController();operation.current=op;setBusy(true);setCancelling(false);setMsg(tr('กำลังตรวจสิทธิ์ Google Drive…','Checking Google Drive authorization…'));
   const run=async(access:string)=>{
@@ -278,7 +281,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
   let authorizing=true;
   op.signal.addEventListener('abort',()=>{if(authorizing){cancelled(op);end(op);}},{once:true});
   try{
-   gis()!.accounts.oauth2.initTokenClient({client_id:CLIENT_ID,scope:SCOPE,...(!choose&&remembered?{login_hint:remembered.email}:{}),callback:async r=>{
+   const callback=async (r:DriveOAuthResult)=>{
     if(!active.current||operation.current!==op||op.signal.aborted)return;
     authorizing=false;
     try{
@@ -303,7 +306,11 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
       else if(action==='publish')await publishLatest(access,op);
       else await sync(action==='download',access,op);
     }catch(e){handleError(e,op);}finally{end(op);}
-   },error_callback:()=>{if(active.current&&operation.current===op){setMsg(tr('ยกเลิกหรือเปิดหน้าต่าง Google ไม่สำเร็จ','Google connection cancelled or popup failed'));end(op);}}}).requestAccessToken({prompt:!choose&&remembered?'':'select_account'});
+   };
+   if(native){
+     setMsg(tr('Windows: ยืนยัน Google ในเบราว์เซอร์แล้วกลับเข้าโปรแกรม ครั้งแรกอาจต้องเลือกไฟล์ OAuth Desktop JSON','Windows: authorize Google in your browser, then return to ProElite. First setup may require a Desktop OAuth JSON.'));
+     void authorizeNativeDrive(op.signal).then(callback).catch(e=>{if(!active.current||operation.current!==op)return;const code=e instanceof Error?e.message:'';if(code==='CONFIG_REQUIRED'||code==='CONFIG_INVALID')setMsg(tr('ต้องตั้งค่า Google OAuth แบบ Desktop app จากโปรเจกต์ Google Cloud เดิมก่อน กรุณาติดต่อผู้ดูแล','Desktop OAuth credentials from the original Google Cloud project are required. Contact your administrator.'));else if(code==='NATIVE_UPDATE_REQUIRED'||code==='NATIVE_TIMEOUT')setMsg(tr('กรุณาติดตั้ง MSI รุ่นล่าสุดเพื่อยืนยัน Google ในโปรแกรม Windows','Install the latest MSI to authorize Google in native Windows.'));else if(code==='TOKEN_EXCHANGE')setMsg(tr('แลกรหัส Google ไม่สำเร็จ ตรวจ OAuth Desktop client และสิทธิ์ Google Cloud','Google token exchange failed. Check Desktop OAuth client and Google Cloud access.'));else if(code==='CANCELLED')setMsg(tr('ยกเลิกการยืนยัน Google','Google authorization cancelled'));else handleError(e,op);end(op);});
+   }else gis()!.accounts.oauth2.initTokenClient({client_id:CLIENT_ID,scope:SCOPE,...(!choose&&remembered?{login_hint:remembered.email}:{}),callback,error_callback:()=>{if(active.current&&operation.current===op){setMsg(tr('ยกเลิกหรือเปิดหน้าต่าง Google ไม่สำเร็จ','Google connection cancelled or popup failed'));end(op);}}}).requestAccessToken({prompt:!choose&&remembered?'':'select_account'});
   }catch(e){handleError(e,op);end(op);}
  }
  function handleError(e:unknown,op:AbortController){

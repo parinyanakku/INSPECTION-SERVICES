@@ -16,7 +16,7 @@ try {
   $loader=Join-Path $WebViewBin 'build/native/x64/WebView2Loader.dll'
   if (!(Test-Path $loader)) { $loader=Join-Path $WebViewBin 'runtimes/win-x64/native/WebView2Loader.dll' }
   foreach ($file in @($core,$forms,$loader)) { if (!(Test-Path $file)) { throw "Missing WebView2 dependency: $file" }; Copy-Item $file $out -Force }
-  & "$env:WINDIR/Microsoft.NET/Framework64/v4.0.30319/csc.exe" /nologo /target:winexe /platform:x64 /optimize+ /win32icon:home.ico "/out:$launcher" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll "/reference:$core" "/reference:$forms" Launcher.cs
+  & "$env:WINDIR/Microsoft.NET/Framework64/v4.0.30319/csc.exe" /nologo /target:winexe /platform:x64 /optimize+ /win32icon:home.ico "/out:$launcher" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll "/reference:$core" "/reference:$forms" /reference:System.Net.Http.dll /reference:System.Web.dll /reference:System.Web.Extensions.dll /reference:System.Security.dll Launcher.cs GoogleDriveOAuth.cs
   if ($LASTEXITCODE) { throw 'Launcher compilation failed' }
   & "$WixBin/candle.exe" -nologo "-dPackageVersion=1.0.$BuildNumber" "-dLauncherFile=$launcher" "-dNativeDir=$out" -out $obj Product.wxs
   if ($LASTEXITCODE) { throw 'WiX compilation failed' }

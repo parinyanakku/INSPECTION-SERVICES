@@ -152,3 +152,15 @@ test('Windows proof pilot only signs domain-prefixed challenges and server requi
  assert.match(sql,/delete from inspection_private.native_device_challenges where user_id=p_uid and nonce=p_nonce and expires_at>now\(\)/);
  assert.match(sql,/from public,anon,authenticated/);
 });
+
+test('native Google OAuth keeps browser authorization separate from workspace navigation',()=>{
+ const native=readFileSync('native/windows/GoogleDriveOAuth.cs','utf8'),ui=readFileSync('src/components/DriveSyncDialog.tsx','utf8');
+ assert.match(native,/https:\/\/accounts\.google\.com\/o\/oauth2\/v2\/auth/);
+ assert.match(native,/new TcpListener\(IPAddress\.Loopback,0\)/);
+ assert.match(native,/code_challenge_method","S256"/);
+ assert.match(native,/q\["state"\]!=state/);
+ assert.match(native,/AllowAutoRedirect=false/);
+ assert.match(native,/ProtectedData\.Protect/);
+ assert.match(ui,/authorizeNativeDrive\(op.signal\).then\(callback\)/);
+ assert.match(ui,/remembered&&remembered.id!==id/);
+});
