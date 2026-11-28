@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.240",
+  "latest": "v1.0.241",
   "releases": [
+    {
+      "version": "v1.0.241",
+      "build": 241,
+      "storageSchema": 2,
+      "date": "2026-11-28T10:12:55.795Z",
+      "notes": "Enforce least privilege and report AI quota",
+      "commit": "b9fdb221861b81b32ea65fe3dd8023d903ea84ad",
+      "notesTh": "ลดสิทธิ์ตรวจ License และจำกัดคำขอ AI รายงานผ่านเซิร์ฟเวอร์ ไม่สลับค่ายเมื่อถึงขีดจำกัด"
+    },
     {
       "version": "v1.0.240",
       "build": 240,
