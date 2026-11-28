@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.233",
+  "latest": "v1.0.234",
   "releases": [
+    {
+      "version": "v1.0.234",
+      "build": 234,
+      "storageSchema": 2,
+      "date": "2026-11-28T09:31:00.932Z",
+      "notes": "Fix native pilot compiler and SDK discovery",
+      "commit": "1545e0dcded1523166e843e7aa21395481c15b74"
+    },
     {
       "version": "v1.0.233",
       "build": 233,
