@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.238",
+  "latest": "v1.0.239",
   "releases": [
+    {
+      "version": "v1.0.239",
+      "build": 239,
+      "storageSchema": 2,
+      "date": "2026-11-28T09:58:16.631Z",
+      "notes": "Add Windows setup wizard with native desktop shortcut",
+      "commit": "0052fc91ef7d42c342bb94d9d177e828c647de95",
+      "notesTh": "เพิ่มหน้าติดตั้ง Windows เลือกโฟลเดอร์ ไอคอน Desktop และเปิดโปรแกรมหลังติดตั้ง"
+    },
     {
       "version": "v1.0.238",
       "build": 238,
