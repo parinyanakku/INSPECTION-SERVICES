@@ -1,5 +1,5 @@
 import React, {useState} from 'react';
-import {publishReportParts,partPath,MAX_PARTS} from '../utils/customerReportParts';
+import {publishLazyReport,partPath,MAX_PARTS} from '../utils/customerReportParts';
 import {Download, Globe, Loader2, Link2, Copy, Share2, Trash2} from 'lucide-react';
 import {workspaceStorage} from '../utils/workspaceStorage';
 import type {AppLanguage, BrandConfig, ProjectFile, DefectItem} from '../types/inspection';
@@ -113,7 +113,7 @@ async function publishSharedReport(html:string,days:number,onProgress:(sent:numb
  const key=crypto.getRandomValues(new Uint8Array(32)),aes=await crypto.subtle.importKey('raw',key,'AES-GCM',false,['encrypt']);
  const attempted:string[]=[];
  try{
-   const count=await publishReportParts(new Blob([html],{type:'text/html;charset=utf-8'}),path,aes,async(p,payload)=>{
+   const count=await publishLazyReport(html,path,aes,async(p,payload)=>{
     attempted.push(p);await storageRequest('object/'+REPORT_BUCKET+'/'+p,'POST',payload,'application/octet-stream');
    },onProgress);
    const link=await registerShortLink(path,key,Date.now()+days*86400000);
@@ -180,7 +180,7 @@ export function ClientWebsiteTab({project,brand,lang}:{project:ProjectFile;brand
        <button data-tour="client" type="button" onClick={publish} disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy?<Loader2 className="w-4 h-4 animate-spin"/>:<Link2 className="w-4 h-4"/>}{busy&&upload?tr('กำลังอัปโหลด ','Uploading ')+Math.floor(upload.sent/upload.total*100)+'%':tr('สร้างลิงก์เว็บไซต์ลูกค้า','Create customer link')}</button>
      </div>
      {busy&&upload&&<div role="status" className="text-xs text-slate-600"><progress className="w-full" max={upload.total} value={upload.sent}/>{(upload.sent/1048576).toFixed(1)} / {(upload.total/1048576).toFixed(1)} MB</div>}
-     <p className="text-xs text-slate-600">{tr('ลิงก์สั้นแบบเดิม รองรับรายงานออนไลน์เกิน 45 MiB ด้วยการแบ่งไฟล์เข้ารหัส สูงสุด 512 MiB ต่อรายงาน ไม่ลดขนาดหรือบีบอัดรูปที่บันทึกไว้เพิ่ม ขึ้นกับพื้นที่จัดเก็บและหน่วยความจำเครื่อง','Same short link; encrypted parts support reports above 45 MiB, up to 512 MiB. Saved photos are not resized or recompressed. Storage and device memory limits still apply.')}</p>
+     <p className="text-xs text-slate-600">{tr('ลิงก์สั้นแบบเดิม เปิดข้อมูล Defect ก่อนแล้วโหลดรูปตามที่เลื่อนดู รองรับรายงานสูงสุด 512 MiB โดยไม่ลดขนาดรูปที่บันทึกไว้','Same short link; open defect data first, then load photos as needed. Reports up to 512 MiB without resizing saved photos.')}</p>
      {links.map(link=><div key={link.path} className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
        <div className="text-xs text-slate-600">{link.expiresAt>Date.now()?tr('หมดอายุ: ','Expires: ')+new Date(link.expiresAt).toLocaleString(lang==='en'?'en-GB':'th-TH'):tr('หมดอายุแล้ว','Expired')}</div>
        <input readOnly value={link.url} onFocus={e=>e.target.select()} aria-label={tr('ลิงก์เว็บไซต์ลูกค้า','Customer link')} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs"/>

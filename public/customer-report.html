@@ -28,11 +28,11 @@
   }catch(e){if(ctrl.signal.aborted)throw Error('TIMEOUT');throw e;}finally{clearTimeout(timer);}
  }
  const mb=n=>(n/1048576).toFixed(1)+' MB';
- async function readPayload(res,signal){
+ async function readPayload(res,signal,onBytes){
   if(!res.ok)throw Error([401,403,404,410].includes(res.status)?'LINK':'NETWORK');
   const expected=Number(res.headers.get('content-length'))||0;
   if(expected>limit)throw Error('SIZE');
-  const update=n=>{detail.textContent=mb(n)+(expected?' / '+mb(expected):'');if(expected){progress.max=expected;progress.value=Math.min(n,expected);}};
+  const update=n=>{if(onBytes){onBytes(n);return;}detail.textContent=mb(n)+(expected?' / '+mb(expected):'');if(expected){progress.max=expected;progress.value=Math.min(n,expected);}};
   if(!res.body||!res.body.getReader){const b=await bounded(res.arrayBuffer(),45000,'TIMEOUT');if(b.byteLength<29||b.byteLength>limit)throw Error('SIZE');update(b.byteLength);return new Uint8Array(b);}
   const reader=res.body.getReader();let size=0,parts=[],complete=false;
   try{
@@ -66,25 +66,43 @@
    plain=await bounded(crypto.subtle.decrypt({name:'AES-GCM',iv:encrypted.subarray(0,12)},cryptoKey,encrypted.subarray(12)),30000,'DECRYPT');
   }catch{throw Error('DECRYPT');}
   encrypted=null;key=null;
-  let bodyParts=[plain];
-  const marker=new TextEncoder().encode(prefix),head=new Uint8Array(plain,0,Math.min(plain.byteLength,marker.length));
-  if(head.length===marker.length&&head.every((b,i)=>b===marker[i])){
+  let bodyParts=[plain],onPhoto=null;
+  const rootPath=url.pathname.slice('/storage/v1/object/sign/inspection-client-reports/'.length);
+  async function fetchPart(i,manifest,onBytes=()=>{}){
+   const signed=await request(origin+'/functions/v1/inspection-report-resolve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hash,part:i})},20000,async r=>{if(!r.ok)throw Error([400,401,403,404,410].includes(r.status)?'LINK':'NETWORK');return new URL((await r.json()).url);});
+   const expectedPath=url.pathname.slice(0,-4)+'.part-'+String(i).padStart(3,'0')+'.bin';
+   if(signed.origin!==origin||signed.pathname!==expectedPath||!signed.searchParams.get('token')||signed.username||signed.password)throw Error('LINK');
+   const expected=Math.min(partSize,manifest.bytes-i*partSize);
+   const bytes=await request(signed.href,{redirect:'error'},180000,(r,s)=>readPayload(r,s,onBytes));
+   if(bytes.length!==expected+28)throw Error('SIZE');
+   let decoded;try{decoded=await bounded(crypto.subtle.decrypt({name:'AES-GCM',iv:bytes.subarray(0,12),additionalData:new TextEncoder().encode('TIS-REPORT-PART-V1:'+rootPath+':'+i)},cryptoKey,bytes.subarray(12)),30000,'DECRYPT');}catch{throw Error('DECRYPT');}
+   if(decoded.byteLength!==expected)throw Error('SIZE');return new Uint8Array(decoded);
+  }
+  const hasPrefix=prefix=>{const marker=new TextEncoder().encode(prefix),head=new Uint8Array(plain,0,Math.min(plain.byteLength,marker.length));return head.length===marker.length&&head.every((b,i)=>b===marker[i]);};
+  const lazyPrefix='TIS-REPORT-LAZY-V2\n';
+  if(hasPrefix(lazyPrefix)){
+   if(!hash||plain.byteLength>limit)throw Error('SIZE');
+   let manifest;try{manifest=JSON.parse(new TextDecoder().decode(plain).slice(lazyPrefix.length));}catch{throw Error('DECRYPT');}
+   if(manifest.v!==2||manifest.partSize!==partSize||!Number.isSafeInteger(manifest.bytes)||manifest.bytes<1||manifest.bytes>maxParts*partSize||manifest.count!==Math.ceil(manifest.bytes/partSize)||typeof manifest.html!=='string'||!Array.isArray(manifest.assets)||manifest.assets.length>10000)throw Error('SIZE');
+   let end=0;for(const a of manifest.assets){if(!a||a.offset!==end||!Number.isSafeInteger(a.size)||a.size<1||a.size>manifest.bytes-end)throw Error('SIZE');end+=a.size;}if(end!==manifest.bytes)throw Error('SIZE');
+   bodyParts=[manifest.html];plain=null;delete manifest.html;
+   // At most three image requests at once; retain a small shared part cache.
+   const cache=new Map(),queue=[],pending=new Set();let active=0;
+   function getPart(i){if(cache.has(i)){const value=cache.get(i);cache.delete(i);cache.set(i,value);return value;}const value=fetchPart(i,manifest);cache.set(i,value);value.catch(()=>{if(cache.get(i)===value)cache.delete(i);});while(cache.size>5)cache.delete(cache.keys().next().value);return value;}
+   async function getPhoto(id){const a=manifest.assets[id],chunks=[];let offset=a.offset,remaining=a.size;while(remaining){const i=Math.floor(offset/partSize),part=await getPart(i),start=offset%partSize,n=Math.min(remaining,part.length-start);if(n<=0)throw Error('SIZE');chunks.push(part.subarray(start,start+n));offset+=n;remaining-=n;}const src=await new Blob(chunks).text();if(!/^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(src))throw Error('DECRYPT');return src;}
+   function drain(){while(active<3&&queue.length){const id=queue.shift();active++;getPhoto(id).then(src=>frame.contentWindow?.postMessage({type:'tis-photo-result',id,src},'*')).catch(()=>frame.contentWindow?.postMessage({type:'tis-photo-result',id},'*')).finally(()=>{active--;pending.delete(id);drain();});}}
+   onPhoto=e=>{if(e.source!==frame.contentWindow||e.data?.type!=='tis-photo-request'||!Number.isInteger(e.data.id)||e.data.id<0||e.data.id>=manifest.assets.length||pending.has(e.data.id))return;pending.add(e.data.id);queue.push(e.data.id);drain();};
+   window.addEventListener('message',onPhoto);
+  }else if(hasPrefix(prefix)){
    if(!hash||plain.byteLength>1024)throw Error('SIZE');
    let manifest;try{manifest=JSON.parse(new TextDecoder().decode(plain).slice(prefix.length));}catch{throw Error('DECRYPT');}
    if(manifest.v!==1||manifest.partSize!==partSize||!Number.isSafeInteger(manifest.bytes)||manifest.bytes<=limit-28||manifest.bytes>maxParts*partSize||manifest.count!==Math.ceil(manifest.bytes/partSize)||manifest.count>maxParts)throw Error('SIZE');
-   bodyParts=[];plain=null;
-   const rootPath=url.pathname.slice('/storage/v1/object/sign/inspection-client-reports/'.length);
-   for(let i=0;i<manifest.count;i++){
-    step('กำลังดาวน์โหลดรายงานส่วน '+(i+1)+'/'+manifest.count,'Downloading report part '+(i+1)+'/'+manifest.count,mb(i*partSize)+' / '+mb(manifest.bytes),mb(i*partSize)+' / '+mb(manifest.bytes));
-    const signed=await request(origin+'/functions/v1/inspection-report-resolve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hash,part:i})},20000,async r=>{if(!r.ok)throw Error([400,401,403,404,410].includes(r.status)?'LINK':'NETWORK');return new URL((await r.json()).url);});
-    const expectedPath=url.pathname.slice(0,-4)+'.part-'+String(i).padStart(3,'0')+'.bin';
-    if(signed.origin!==origin||signed.pathname!==expectedPath||!signed.searchParams.get('token')||signed.username||signed.password)throw Error('LINK');
-    let bytes=await request(signed.href,{redirect:'error'},180000,readPayload);
-    const expected=Math.min(partSize,manifest.bytes-i*partSize);
-    if(bytes.length!==expected+28)throw Error('SIZE');
-    let decoded;try{decoded=await bounded(crypto.subtle.decrypt({name:'AES-GCM',iv:bytes.subarray(0,12),additionalData:new TextEncoder().encode('TIS-REPORT-PART-V1:'+rootPath+':'+i)},cryptoKey,bytes.subarray(12)),30000,'DECRYPT');}catch{throw Error('DECRYPT');}
-    if(decoded.byteLength!==expected)throw Error('SIZE');bodyParts.push(new Blob([decoded]));decoded=null;bytes=null;
-   }
+   bodyParts=new Array(manifest.count);plain=null;
+   const received=new Array(manifest.count).fill(0);let next=0,done=0,stopped=false;
+   function update(){const n=received.reduce((a,b)=>a+b,0);stage.textContent=tr('กำลังดาวน์โหลดรายงาน '+done+'/'+manifest.count+' ส่วน','Downloading report '+done+'/'+manifest.count+' parts');detail.textContent=mb(n)+' / '+mb(manifest.bytes);progress.max=manifest.bytes;progress.value=n;}
+   update();
+   async function worker(){while(!stopped){const i=next++;if(i>=manifest.count)return;try{const expected=Math.min(partSize,manifest.bytes-i*partSize);const decoded=await fetchPart(i,manifest,n=>{received[i]=Math.min(expected,Math.max(0,n-28));update();});bodyParts[i]=new Blob([decoded]);received[i]=expected;done++;update();}catch(e){stopped=true;throw e;}}}
+   await Promise.all(Array.from({length:Math.min(3,manifest.count)},()=>worker()));
   }
   step('กำลังแสดงหน้ารายงาน','Displaying report','กำลังจัดหน้าและรายการ Defect','Preparing report pages and defects');
   // Do not allocate a second giant decoded HTML string for srcdoc on mobile.
@@ -94,7 +112,7 @@
   await bounded(new Promise((resolve,reject)=>{frame.onload=()=>{frame.onload=null;frame.onerror=null;resolve();};frame.onerror=()=>reject(Error('VIEW'));frame.src=objectURL;}),45000,'VIEW');
   frame.hidden=false;status.hidden=true;
   // Keep the blob alive for the iframe session (including Safari lazy photos).
-  window.addEventListener('pagehide',e=>{if(!e.persisted&&objectURL)URL.revokeObjectURL(objectURL);},{once:true});
+  window.addEventListener('pagehide',e=>{if(!e.persisted){if(objectURL)URL.revokeObjectURL(objectURL);if(onPhoto)window.removeEventListener('message',onPhoto);}},{once:true});
  }catch(e){if(objectURL)URL.revokeObjectURL(objectURL);frame.onload=null;frame.onerror=null;frame.removeAttribute('src');fail(e instanceof Error?e.message:'NETWORK');}
 })();
 </script></body></html>
