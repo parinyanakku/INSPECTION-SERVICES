@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.227",
+  "latest": "v1.0.229",
   "releases": [
+    {
+      "version": "v1.0.229",
+      "build": 229,
+      "storageSchema": 2,
+      "date": "2026-11-28T06:48:48.274Z",
+      "notes": "Split encrypted customer reports without resizing saved photos",
+      "commit": "d1d86cad85a6682c116a729068d873875a36e8d3",
+      "notesTh": "รองรับลิงก์ลูกค้ารายงานใหญ่กว่า 45 MiB ไม่ลดรูป และคงลิงก์สั้น"
+    },
     {
       "version": "v1.0.227",
       "build": 227,
