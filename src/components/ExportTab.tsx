@@ -1,3 +1,4 @@
+import {flushWorkspace} from '../utils/workspaceStorage';
 import {TemplateReportStudio} from './TemplateReportStudio';
 import {ReportImportPanel} from './ReportImportPanel';
 import {isDngFile,decodeDngToJpeg,imageUploadError} from '../utils/dngImage';
@@ -479,7 +480,7 @@ export const ExportTab: React.FC<ExportTabProps> = ({
       </section>
 
       <ReportImportPanel key={project.id} lang={lang} book={reportBook} disabled={!!exportBatch||isExportingPdf} onApply={updater=>{updateBook(prev=>{const next=updater(prev);setIsCustomCondition(!PROPERTY_CONDITION_OPTIONS[lang].includes(next.propertyCondition));return next;});}}/>
-      <TemplateReportStudio key={'studio-'+project.id} lang={lang} project={project} brand={brand} book={reportBook} disabled={!!exportBatch||isExportingPdf}/>
+      <TemplateReportStudio key={'studio-'+project.id} lang={lang} project={project} brand={brand} book={reportBook} disabled={!!exportBatch||isExportingPdf} onSaveDraft={async draft=>{updateBook(prev=>({...prev,studioDraft:draft}));if(!await flushWorkspace())throw Error('DRAFT_SAVE_FAILED');}}/>
 
       {/* Complete Report Book Data Builder Form (4 Categories) */}
       <section className="bg-white rounded-2xl border border-slate-200 overflow-hidden">

@@ -56,3 +56,19 @@ export function replaceMarkers(text:string,values:Values){return text.replace(/\
 export function safeRaster(src:string){return /^data:image\/(?:jpeg|png);base64,[A-Za-z0-9+/=\r\n]+$/i.test(src);}
 export function sourceLabel(source:Source,lang:AppLanguage){const th=['ชื่อโครงการ','บ้านเลขที่','เจ้าของบ้าน','ที่ตั้ง','วันที่ตรวจ','รอบตรวจ','สถานะโครงการ','บริษัท','ผู้ตรวจสอบ','ใบอนุญาต','ติดต่อ','หัวข้อรายงาน','สภาพบ้าน','บทนำ','ขั้นตอนตรวจ','สรุป','จำนวน Defect','จำนวนเร่งด่วน','จำนวนแก้ไขแล้ว','รายละเอียด Defect','ตารางสรุป','รูปหน้าปก','รูปหน้าบ้าน','แผนที่','โลโก้'];return lang==='th'?th[sources.indexOf(source)]:source;}
 export function moved<T>(a:T[],from:number,to:number){if(from<0||to<0||from>=a.length||to>=a.length)return a;const copy=a.slice();copy.splice(to,0,copy.splice(from,1)[0]);return copy;}
+
+export type StudioDraft={plan:TemplatePlan;manual:Values;order:string[];removed:string[];sourceName:string; savedAt:string};
+export function validateStudioDraft(value:unknown):StudioDraft|undefined{
+ try{
+ const d=value as StudioDraft;
+ if(!d||typeof d!=='object'||!d.plan||!Array.isArray(d.plan.fields)||d.plan.fields.length>100||!Array.isArray(d.plan.sections)||!d.plan.sections.length||d.plan.sections.length>150)throw Error('INVALID_DRAFT');
+ const seen=new Set<string>(),ids=new Set<string>();
+ const fields=d.plan.fields.map(f=>{if(!f||!validKey(f.key)||seen.has(f.key)||typeof f.label!=='string'||f.label.length>150||!['text','number','date','image'].includes(f.type)||!(f.source===''||sources.includes(f.source))||(f.source!==''&&(f.type==='image')!==imageSources.includes(f.source)))throw Error('INVALID_DRAFT');seen.add(f.key);return {key:f.key,label:f.label,type:f.type,source:f.source};});
+ const sections=d.plan.sections.map(s=>{if(!s||typeof s.id!=='string'||!s.id||s.id.length>120||ids.has(s.id)||!kinds.includes(s.kind)||typeof s.title!=='string'||s.title.length>160||typeof s.body!=='string'||s.body.length>10000)throw Error('INVALID_DRAFT');ids.add(s.id);return {id:s.id,kind:s.kind,title:s.title,body:s.kind==='custom'?s.body:''};});
+ if(!d.manual||typeof d.manual!=='object'||Array.isArray(d.manual))throw Error('INVALID_DRAFT');
+ const entries:[string,string][]=[];let size=0;
+ for(const f of fields){if(!Object.hasOwn(d.manual,f.key))continue;const v=d.manual[f.key];if(typeof v!=='string'||(f.type==='image'?v!==''&&!safeRaster(v):v.length>20000))throw Error('INVALID_DRAFT');size+=v.length;if(size>35*1024*1024)throw Error('DRAFT_TOO_LARGE');entries.push([f.key,v]);}
+ const pageIds=(v:unknown)=>Array.isArray(v)&&v.length<=2000&&v.every(x=>typeof x==='string'&&x.length<=180)?[...new Set(v as string[])]:[];
+ return {plan:{fields,sections},manual:Object.fromEntries(entries),order:pageIds(d.order),removed:pageIds(d.removed),sourceName:typeof d.sourceName==='string'?d.sourceName.slice(0,255):'',savedAt:typeof d.savedAt==='string'?d.savedAt.slice(0,40):''};
+ }catch{return undefined;}
+}

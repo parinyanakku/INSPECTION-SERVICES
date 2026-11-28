@@ -166,5 +166,6 @@ export interface ReportBookData {
   table2Rows: ReportTable2Row[];
   closingSummary: string;
   customExport?: ReportCustomExportSettings;
+  studioDraft?: import('../utils/reportStudioModel').StudioDraft;
 }
 

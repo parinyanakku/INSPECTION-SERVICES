@@ -1,3 +1,4 @@
+import {validateStudioDraft} from './reportStudioModel';
 import { workspaceStorage } from './workspaceStorage';
 import type {
   AppLanguage,
@@ -338,6 +339,7 @@ export function loadReportBookData(
       table2Rows,
       closingSummary: parsed.closingSummary ?? defaults.closingSummary,
       customExport,
+      studioDraft: validateStudioDraft(parsed.studioDraft),
     };
 
     const hadGarbageLocation =

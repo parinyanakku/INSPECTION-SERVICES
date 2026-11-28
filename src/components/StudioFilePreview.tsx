@@ -1,20 +1,26 @@
 import React,{useEffect,useRef,useState} from 'react';
 import type {AppLanguage} from '../types/inspection';
 import type {Format} from '../utils/reportStudioNative';
-export function StudioFilePreview({blob,format,lang}:{blob:Blob;format:Format;lang:AppLanguage}){
+export function StudioFilePreview({blob,format,lang,onPick}:{blob:Blob;format:Format;lang:AppLanguage;onPick?:(page:number,x:number,y:number)=>void}){
  const en=lang==='en',tr=(a:string,b:string)=>en?b:a;
  const canvas=useRef<HTMLCanvasElement>(null),frame=useRef<HTMLIFrameElement>(null);
  const [page,setPage]=useState(1),[count,setCount]=useState(1),[error,setError]=useState(false),[loading,setLoading]=useState(true);
  const [sheets,setSheets]=useState<{name:string;rows:string[][]}[]>([]);
  const [sheet,setSheet]=useState(0);
  useEffect(()=>{setPage(1);setSheet(0);setSheets([]);setError(false);},[blob,format]);
+ const [pdfDoc,setPdfDoc]=useState<any>(null);
  useEffect(()=>{
-  if(format!=='pdf')return;let dead=false;let task:any,render:any;setLoading(true);setError(false);
+  if(format!=='pdf'){setPdfDoc(null);return;}let dead=false,task:any;setPdfDoc(null);setLoading(true);setError(false);
   (async()=>{const pdfjs=await import('pdfjs-dist/legacy/build/pdf.mjs');const worker=await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url');pdfjs.GlobalWorkerOptions.workerSrc=worker.default;
-   if(dead)return;task=pdfjs.getDocument({data:new Uint8Array(await blob.arrayBuffer()),isEvalSupported:false,enableXfa:false});const doc=await task.promise;if(dead)return;setCount(doc.numPages);const p=await doc.getPage(Math.min(page,doc.numPages));const viewport=p.getViewport({scale:1.6});const c=canvas.current;if(!c||dead)return;c.width=Math.ceil(viewport.width);c.height=Math.ceil(viewport.height);render=p.render({canvas:c,canvasContext:c.getContext('2d')!,viewport});await render.promise;if(!dead)setLoading(false);
+   const bytes=new Uint8Array(await blob.arrayBuffer());if(dead)return;task=pdfjs.getDocument({data:bytes,isEvalSupported:false,enableXfa:false});const doc=await task.promise;if(dead)return;setCount(doc.numPages);setPdfDoc(doc);
   })().catch(()=>{if(!dead){setError(true);setLoading(false);}});
-  return ()=>{dead=true;try{render?.cancel();void task?.destroy();}catch{}};
- },[blob,format,page]);
+  return ()=>{dead=true;try{void task?.destroy()?.catch(()=>{});}catch{}};
+ },[blob,format]);
+ useEffect(()=>{
+  if(!pdfDoc||format!=='pdf')return;let dead=false,render:any;setLoading(true);setError(false);
+  (async()=>{const p=await pdfDoc.getPage(Math.min(page,pdfDoc.numPages));if(dead)return;const viewport=p.getViewport({scale:1.6}),c=canvas.current;if(!c)return;c.width=Math.ceil(viewport.width);c.height=Math.ceil(viewport.height);render=p.render({canvas:c,canvasContext:c.getContext('2d')!,viewport});await render.promise;if(!dead)setLoading(false);})().catch(()=>{if(!dead){setError(true);setLoading(false);}});
+  return ()=>{dead=true;try{render?.cancel();}catch{}};
+ },[pdfDoc,format,page]);
  useEffect(()=>{
   if(format==='pdf')return;let dead=false;setLoading(true);setError(false);
   (async()=>{
@@ -36,7 +42,7 @@ export function StudioFilePreview({blob,format,lang}:{blob:Blob;format:Format;la
  return <div className="rounded-xl border border-slate-300 bg-slate-100 p-2 space-y-2">
   {loading&&<p role="status" className="text-sm">{tr('กำลังแสดงไฟล์ที่สร้างจริง…','Rendering generated file…')}</p>}
   {error&&<p role="alert" className="text-sm text-rose-700">{tr('แสดงตัวอย่างไม่ได้ โปรดเปิดไฟล์ที่ดาวน์โหลดในโปรแกรมที่รองรับก่อนนำส่ง','Preview failed. Open the downloaded file in a compatible app before delivery.')}</p>}
-  {format==='pdf'&&<><div className="flex items-center justify-between gap-2 text-xs"><button type="button" className="border rounded px-3 py-2" disabled={page<=1||loading} onClick={()=>setPage(x=>x-1)}>◀</button><span>{tr('หน้า','Page')} {page}/{count}</span><button type="button" className="border rounded px-3 py-2" disabled={page>=count||loading} onClick={()=>setPage(x=>x+1)}>▶</button></div><canvas ref={canvas} className="block max-w-full h-auto mx-auto bg-white" aria-label={tr('พรีวิว PDF ฉบับจริง','Actual PDF preview')}/></>}
+  {format==='pdf'&&<><div className="flex items-center justify-between gap-2 text-xs"><button type="button" className="border rounded px-3 py-2" disabled={page<=1||loading} onClick={()=>setPage(x=>x-1)}>◀</button><span>{tr('หน้า','Page')} {page}/{count}</span><button type="button" className="border rounded px-3 py-2" disabled={page>=count||loading} onClick={()=>setPage(x=>x+1)}>▶</button></div><canvas ref={canvas} onClick={e=>{if(onPick&&!loading&&!error){const r=e.currentTarget.getBoundingClientRect();onPick(page,(e.clientX-r.left)/r.width*100,(e.clientY-r.top)/r.height*100);}}} className={'block max-w-full h-auto mx-auto bg-white '+(onPick?'cursor-crosshair':'')} aria-label={tr('พรีวิว PDF ฉบับจริง','Actual PDF preview')}/></>}
   {format==='docx'&&<><p className="text-xs">{tr('ตัวอย่าง Word จากไฟล์จริง การแบ่งหน้าและฟอนต์อาจต่างจาก Microsoft Word','Actual DOCX browser preview; pagination and fonts may differ from Microsoft Word.')}</p><iframe ref={frame} sandbox="allow-same-origin" title={tr('พรีวิว Word','Word preview')} className="w-full bg-white border rounded" style={{height:620}}/></>}
   {format==='xlsx'&&<><p className="text-xs">{tr('ตัวอย่างค่าในเซลล์จากไฟล์จริง แสดงสูงสุด 200 แถว × 30 คอลัมน์ต่อชีต ไม่ใช่ตัวอย่างก่อนพิมพ์หรือรูปภาพฝัง','Actual cell values, up to 200 rows × 30 columns per sheet. Not a print or embedded-image preview.')}</p><select value={sheet} onChange={e=>setSheet(+e.target.value)} className="w-full border p-2 rounded">{sheets.map((s,i)=><option key={s.name} value={i}>{s.name}</option>)}</select><div className="max-h-[520px] overflow-auto bg-white"><table className="border-collapse text-xs"><tbody>{sheets[sheet]?.rows.map((r,i)=><tr key={i}><th className="border p-1 bg-slate-100">{i+1}</th>{r.map((c,j)=><td key={j} className="border border-slate-300 p-1 min-w-20 whitespace-pre-wrap">{c}</td>)}</tr>)}</tbody></table></div></>}
  </div>;
