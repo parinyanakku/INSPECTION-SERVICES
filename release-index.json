@@ -1,6 +1,16 @@
 {
-  "latest": "v1.0.232",
+  "latest": "v1.0.233",
   "releases": [
+    {
+      "version": "v1.0.233",
+      "build": 233,
+      "storageSchema": 2,
+      "date": "2026-11-28T09:27:09.883Z",
+      "notes": "Admin-only installer distribution and embedded native window pilot",
+      "commit": "7cee8926860db6e3eed26ee559a68c3218c47a1f",
+      "notesTh": "จำกัดไฟล์ติดตั้งเฉพาะผู้ดูแลและส่งไฟล์เองจากมือถือ ตัวโปรแกรม Windows Android แบบฝังอยู่ระหว่างทดสอบ",
+      "notesEn": "Admin-only installer downloads and manual sharing; embedded Windows and Android clients remain experimental."
+    },
     {
       "version": "v1.0.232",
       "build": 232,
