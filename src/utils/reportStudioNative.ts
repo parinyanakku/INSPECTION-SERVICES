@@ -32,6 +32,27 @@ function patchNodes(nodes:Element[],values:Values,edits:TextEdit[]){
  if(changes.length)nodes.forEach((n,i)=>{n.textContent=texts[i];n.setAttributeNS('http://www.w3.org/XML/1998/namespace','xml:space','preserve');});
  return changes.length;
 }
+
+const REL='http://schemas.openxmlformats.org/package/2006/relationships',CT='http://schemas.openxmlformats.org/package/2006/content-types';
+const IMAGE_REL='http://schemas.openxmlformats.org/officeDocument/2006/relationships/image';
+function imageMarker(text:string,images:Values){const m=text.trim().match(/^\{\{([^{}\r\n]{1,120})\}\}$/u),key=m?.[1].trim()||'';return key&&Object.hasOwn(images,key)&&safeRaster(images[key])?images[key]:'';}
+async function imageDimensions(src:string){return await new Promise<{w:number;h:number}>((resolve,reject)=>{const im=new Image();im.onload=()=>im.naturalWidth&&im.naturalHeight?resolve({w:im.naturalWidth,h:im.naturalHeight}):reject(Error('IMAGE_LOAD_FAILED'));im.onerror=()=>reject(Error('IMAGE_LOAD_FAILED'));im.src=src;});}
+async function putWordImage(zip:any,path:string,doc:Document,nodes:Element[],src:string){
+ const p=nodes[0]?.closest('p')||(()=>{let x=nodes[0]?.parentElement;while(x&&x.localName!=='p')x=x.parentElement;return x;})();
+ if(!p||p.namespaceURI!==W||Array.from(p.children).some(n=>!['pPr','r'].includes(n.localName))||Array.from(p.children).filter(n=>n.localName==='r').some(r=>Array.from(r.children).some(n=>!['rPr','t'].includes(n.localName))))throw Error('IMAGE_MARKER_NEEDS_OWN_PARAGRAPH');
+ const dims=await imageDimensions(src),ratio=Math.min(5.5*914400/dims.w,3*914400/dims.h),cx=Math.round(dims.w*ratio),cy=Math.round(dims.h*ratio);
+ const unique=crypto.randomUUID().replace(/-/g,''),ext=/^data:image\/png/i.test(src)?'png':'jpg',media='tis_'+unique+'.'+ext,rid='rIdTis'+unique;
+ zip.file('word/media/'+media,src.split(',')[1],{base64:true});
+ const relPath=path.replace(/\/([^/]+)$/,'/_rels/$1.rels'),parser=new DOMParser(),ser=new XMLSerializer();
+ const relDoc=zip.file(relPath)?await xmlDoc(zip,relPath):parser.parseFromString('<Relationships xmlns="'+REL+'"/>','application/xml');
+ const rel=relDoc.createElementNS(REL,'Relationship');rel.setAttribute('Id',rid);rel.setAttribute('Type',IMAGE_REL);rel.setAttribute('Target','media/'+media);relDoc.documentElement.appendChild(rel);zip.file(relPath,ser.serializeToString(relDoc));
+ const content=await xmlDoc(zip,'[Content_Types].xml');if(!Array.from(content.getElementsByTagNameNS(CT,'Default')).some(n=>n.getAttribute('Extension')?.toLowerCase()===ext)){const el=content.createElementNS(CT,'Default');el.setAttribute('Extension',ext);el.setAttribute('ContentType',ext==='png'?'image/png':'image/jpeg');content.documentElement.appendChild(el);zip.file('[Content_Types].xml',ser.serializeToString(content));}
+ const drawingId=String(100000000+Math.floor(Math.random()*1900000000));
+ const xml='<w:r xmlns:w="'+W+'" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="'+cx+'" cy="'+cy+'"/><wp:docPr id="'+drawingId+'" name="Report image"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="0" name="'+media+'"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="'+rid+'"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="'+cx+'" cy="'+cy+'"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>';
+ const run=parser.parseFromString(xml,'application/xml').documentElement;if(run.localName!=='r')throw Error('INVALID_TEMPLATE');
+ for(const child of Array.from(p.children))if(child.localName==='r')child.remove();p.appendChild(doc.importNode(run,true));
+}
+
 async function openExcel(file:Blob){const {default:ExcelJS}=await import('exceljs');const workbook=new ExcelJS.Workbook();await workbook.xlsx.load(await file.arrayBuffer() as any);if(workbook.worksheets.length>20)throw Error('TOO_MANY_SHEETS');return workbook;}
 export async function inspectNative(file:File):Promise<NativeInfo>{
  const format=formatOf(file.name);
@@ -39,22 +60,23 @@ export async function inspectNative(file:File):Promise<NativeInfo>{
  if(format==='docx'){const zip=await openZip(file);const parts=wordParts(zip);if(!parts.includes('word/document.xml'))throw Error('INVALID_TEMPLATE');const keys=new Set<string>();for(const path of parts){const doc=await xmlDoc(zip,path);for(const nodes of wordParagraphs(doc))for(const k of keysInText(nodes.map(n=>n.textContent||'').join('')))keys.add(k);}return {format,pageCount:0,keys:[...keys].slice(0,100)};}
  const book=await openExcel(file),keys=new Set<string>();for(const s of book.worksheets){if(s.rowCount>2000||s.columnCount>100)throw Error('SOURCE_TOO_LONG');s.eachRow(r=>r.eachCell(c=>{if(typeof c.value==='string'||(c.value&&typeof c.value==='object'&&'richText'in c.value))for(const k of keysInText(c.text))keys.add(k);}));}return {format,pageCount:0,keys:[...keys].slice(0,100)};
 }
-export async function editNative(file:File,info:NativeInfo,values:Values,edits:TextEdit[],pdfOrder:number[],overlays:PdfOverlay[]=[]):Promise<{blob:Blob;changes:number}>{
+export async function editNative(file:File,info:NativeInfo,values:Values,edits:TextEdit[],pdfOrder:number[],overlays:PdfOverlay[]=[],imageValues:Values={}):Promise<{blob:Blob;changes:number}>{
  if(info.format==='docx'){
   const zip=await openZip(file);let changes=0;
-  for(const path of wordParts(zip)){const doc=await xmlDoc(zip,path);let count=0;for(const nodes of wordParagraphs(doc))count+=patchNodes(nodes,values,edits);if(count)zip.file(path,new XMLSerializer().serializeToString(doc));changes+=count;}
+  for(const path of wordParts(zip)){const doc=await xmlDoc(zip,path);let count=0;for(const nodes of wordParagraphs(doc)){const img=imageMarker(nodes.map(n=>n.textContent||'').join(''),imageValues);if(img){await putWordImage(zip,path,doc,nodes,img);count++;}else count+=patchNodes(nodes,values,edits);}if(count)zip.file(path,new XMLSerializer().serializeToString(doc));changes+=count;}
   if(!changes)throw Error('NO_NATIVE_CHANGES');
   return {blob:await zip.generateAsync({type:'blob',mimeType:DOCX,compression:'DEFLATE'}),changes};
  }
  if(info.format==='xlsx'){
-  const book=await openExcel(file);let changes=0;
+  const book=await openExcel(file);let changes=0;const imageCells:{sheet:any;cell:any;src:string}[]=[];
   for(const s of book.worksheets){if(s.rowCount>2000||s.columnCount>100)throw Error('SOURCE_TOO_LONG');s.eachRow(r=>r.eachCell(c=>{
    if(typeof c.value!=='string'&&!(c.value&&typeof c.value==='object'&&'richText'in c.value))return;
-   const original=c.text;const patches=textEdits(original,values,edits);if(!patches.length)return;
+   const original=c.text,img=imageMarker(original,imageValues);if(img){imageCells.push({sheet:s,cell:c,src:img});return;}const patches=textEdits(original,values,edits);if(!patches.length)return;
    let next=original;for(const p of patches)next=next.slice(0,p.start)+p.value+next.slice(p.end);
    // Keep cell style and formulas in untouched cells. Edited rich-text cells become plain strings.
    c.value=next;changes+=patches.length;
   }));}
+  for(const {sheet,cell,src} of imageCells){const d=await imageDimensions(src),w=Math.max(1,(sheet.getColumn(cell.col).width||8.43)*7),h=Math.max(1,(sheet.getRow(cell.row).height||15)*96/72),ratio=Math.min(w/d.w,h/d.h),id=book.addImage({base64:src,extension:/^data:image\/png/i.test(src)?'png':'jpeg'});cell.value='';sheet.addImage(id,{tl:{col:cell.col-1,row:cell.row-1},ext:{width:Math.max(1,d.w*ratio),height:Math.max(1,d.h*ratio)},editAs:'oneCell'});changes++;}
   if(!changes)throw Error('NO_NATIVE_CHANGES');
   return {blob:new Blob([await book.xlsx.writeBuffer() as any],{type:XLSX}),changes};
  }

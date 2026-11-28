@@ -8,7 +8,7 @@ export type TemplatePlan={fields:Field[];sections:Section[]};
 export type Values=Record<string,string>;
 export const kinds:SectionKind[]=['cover','intro','plans','defects','summary','custom'];
 export const imageSources:Source[]=['coverImage','frontHouseImage','locationMap','logo'];
-const validKey=(key:string)=>/^[\p{L}\p{M}\p{N}_ .:/-]{1,120}$/u.test(key)&&!['__proto__','constructor','prototype'].includes(key);
+const validKey=(key:string)=>typeof key==='string'&&/^[\p{L}\p{M}\p{N}_ .:/-]{1,120}$/u.test(key)&&!['__proto__','constructor','prototype'].includes(key);
 export const keysInText=(s:string)=>[...new Set(Array.from(s.matchAll(/\{\{([^{}\r\n]{1,120})\}\}/gu),m=>m[1].trim()).filter(validKey))];
 export function defaultPlan(lang:AppLanguage,keys:string[]=[]):TemplatePlan{
  const en=lang==='en';
