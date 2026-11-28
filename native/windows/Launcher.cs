@@ -28,16 +28,19 @@ internal static class Launcher
         {
             if (!WorkspaceUri(e.Source)) return;
             string message; try { message=e.TryGetWebMessageAsString(); } catch { return; }
-            var match=Regex.Match(message, @"\Aproelite-drive-(start|cancel|ping):([a-f0-9]{32})\z");
+            var match=Regex.Match(message, @"\Aproelite-drive-(start-v2|cancel|ping-v2):([a-f0-9]{32})(?::([A-Za-z0-9_-]{1,1500}))?\z");
             if (!match.Success) return;
             string id=match.Groups[2].Value;
-            if (match.Groups[1].Value=="ping") { core.PostWebMessageAsString("proelite-drive-pong:"+id); return; }
+            if (match.Groups[1].Value=="ping-v2") { core.PostWebMessageAsString("proelite-drive-pong-v2:"+id); return; }
             if (match.Groups[1].Value=="cancel") { if (driveRequest==id && driveAuthorization!=null) driveAuthorization.Cancel(); return; }
             if (driveAuthorization!=null) { core.PostWebMessageAsString("proelite-drive-error:"+id+":BUSY"); return; }
             string source=e.Source;
             var cts=new CancellationTokenSource(TimeSpan.FromMinutes(3)); driveAuthorization=cts; driveRequest=id;
             try {
-                string json=await GoogleDriveOAuth.AuthorizeAsync(this,cts.Token);
+                string encoded=match.Groups[3].Value.Replace('-','+').Replace('_','/');
+                encoded=encoded.PadRight((encoded.Length+3)/4*4,'=');
+                string config=Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
+                string json=await GoogleDriveOAuth.AuthorizeAsync(config,cts.Token);
                 if (!cts.IsCancellationRequested && !IsDisposed && core.Source==source) core.PostWebMessageAsString("proelite-drive-result:"+id+":"+json);
             } catch (GoogleDriveOAuth.OAuthFailure error) { if (!IsDisposed && core.Source==source) core.PostWebMessageAsString("proelite-drive-error:"+id+":"+error.Message); }
             catch (OperationCanceledException) { if (!IsDisposed && core.Source==source) core.PostWebMessageAsString("proelite-drive-error:"+id+":CANCELLED"); }

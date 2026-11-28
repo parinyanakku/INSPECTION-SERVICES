@@ -160,7 +160,19 @@ test('native Google OAuth keeps browser authorization separate from workspace na
  assert.match(native,/code_challenge_method","S256"/);
  assert.match(native,/q\["state"\]!=state/);
  assert.match(native,/AllowAutoRedirect=false/);
- assert.match(native,/ProtectedData\.Protect/);
- assert.match(ui,/authorizeNativeDrive\(op.signal\).then\(callback\)/);
+ assert.doesNotMatch(native,/OpenFileDialog|LoadCredential/);
+ assert.match(ui,/fetchDesktopConfig\(apiUrl,publicKey,sessionToken,op.signal\)/);
+ assert.match(ui,/authorizeNativeDrive\(op.signal,config\)/);
  assert.match(ui,/remembered&&remembered.id!==id/);
+});
+
+test('central desktop OAuth config uses same project, restricted mutation, and versioned native bridge',()=>{
+ const sql=readFileSync('supabase/migrations/20261128122713_proelite_central_google_desktop_config.sql','utf8');
+ const helper=readFileSync('src/utils/nativeDriveOAuth.ts','utf8');
+ assert.match(sql,/not public\.inspection_is_admin\(\)/);
+ assert.match(sql,/not public\.inspection_has_access\(\)/);
+ assert.match(sql,/from public,anon,authenticated/);
+ assert.match(helper,/proelite-drive-start-v2:/);
+ assert.match(helper,/proelite-drive-pong-v2:/);
+ assert.match(readFileSync('native/windows/Launcher.cs','utf8'),/start-v2\|cancel\|ping-v2/);
 });

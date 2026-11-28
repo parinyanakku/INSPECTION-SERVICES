@@ -2,7 +2,20 @@ export type DriveOAuthResult={access_token?:string;error?:string;scope?:string;e
 type Bridge={postMessage:(s:string)=>void;addEventListener:(name:string,fn:(e:{data:unknown})=>void)=>void;removeEventListener:(name:string,fn:(e:{data:unknown})=>void)=>void};
 function bridge():Bridge|undefined{return (window as unknown as {chrome?:{webview?:Bridge}}).chrome?.webview;}
 export function hasNativeDriveBridge(){const b=bridge();return !!b&&typeof b.postMessage==='function'&&typeof b.addEventListener==='function';}
-export async function authorizeNativeDrive(signal:AbortSignal):Promise<DriveOAuthResult>{
+export type DesktopConfig={client_id:string;client_secret:string};
+export function parseDesktopConfig(value:unknown):DesktopConfig{
+ const c=value as Partial<DesktopConfig>|null;
+ if(!c||typeof c.client_id!=='string'||c.client_id.length>256||!/^386487455938-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.test(c.client_id)||c.client_id==='386487455938-nda2mj55c5f3cdr8pvqmq4pu4o775fv2.apps.googleusercontent.com'||typeof c.client_secret!=='string'||c.client_secret.length>256||!/^[A-Za-z0-9_-]+$/.test(c.client_secret))throw Error('CONFIG_INVALID');
+ return {client_id:c.client_id,client_secret:c.client_secret};
+}
+export async function fetchDesktopConfig(api:string,publicKey:string,token:string,signal:AbortSignal):Promise<DesktopConfig>{
+ const r=await fetch(api+'/rest/v1/rpc/inspection_google_desktop_config',{method:'POST',headers:{apikey:publicKey,Authorization:'Bearer '+token,'Content-Type':'application/json'},body:'{}',cache:'no-store',signal});
+ if(!r.ok)throw Error('CONFIG_UNAVAILABLE');
+ const data=await r.json();if(data===null)throw Error('CONFIG_REQUIRED');
+ return parseDesktopConfig(data);
+}
+export async function authorizeNativeDrive(signal:AbortSignal,config:DesktopConfig):Promise<DriveOAuthResult>{
+ const encoded=btoa(JSON.stringify(parseDesktopConfig(config))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
  const b=bridge();if(!b||!hasNativeDriveBridge())throw Error('NATIVE_REQUIRED');
  if(signal.aborted)throw Error('CANCELLED');
  const id=Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,'0')).join('');
@@ -13,7 +26,7 @@ export async function authorizeNativeDrive(signal:AbortSignal):Promise<DriveOAut
   const abort=()=>{clear();stop();reject(Error('CANCELLED'));};
   const listen=(e:{data:unknown})=>{
    if(typeof e.data!=='string')return;
-   if(e.data==='proelite-drive-pong:'+id&&!started){clearTimeout(timer);started=true;timer=setTimeout(()=>{clear();stop();reject(Error('NATIVE_TIMEOUT'));},195000);try{b.postMessage('proelite-drive-start:'+id);}catch{clear();reject(Error('FAILED'));}return;}
+   if(e.data==='proelite-drive-pong-v2:'+id&&!started){clearTimeout(timer);started=true;timer=setTimeout(()=>{clear();stop();reject(Error('NATIVE_TIMEOUT'));},195000);try{b.postMessage('proelite-drive-start-v2:'+id+':'+encoded);}catch{clear();reject(Error('FAILED'));}return;}
    const ok='proelite-drive-result:'+id+':',bad='proelite-drive-error:'+id+':';
    if(!started)return;
    if(e.data.startsWith(ok)){clear();try{resolve(JSON.parse(e.data.slice(ok.length)));}catch{reject(Error('FAILED'));}}
@@ -22,6 +35,6 @@ export async function authorizeNativeDrive(signal:AbortSignal):Promise<DriveOAut
   timer=setTimeout(()=>{clear();reject(Error('NATIVE_UPDATE_REQUIRED'));},2500);
   b.addEventListener('message',listen);signal.addEventListener('abort',abort,{once:true});
   if(signal.aborted){abort();return;}
-  try{b.postMessage('proelite-drive-ping:'+id);}catch(e){clear();reject(e);}
+  try{b.postMessage('proelite-drive-ping-v2:'+id);}catch(e){clear();reject(e);}
  });
 }

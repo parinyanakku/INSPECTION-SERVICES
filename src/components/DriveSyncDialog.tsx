@@ -1,4 +1,4 @@
-import {hasNativeDriveBridge,authorizeNativeDrive,type DriveOAuthResult} from '../utils/nativeDriveOAuth';
+import {hasNativeDriveBridge,authorizeNativeDrive,fetchDesktopConfig,parseDesktopConfig,type DriveOAuthResult} from '../utils/nativeDriveOAuth';
 import React,{useEffect,useRef,useState} from 'react';
 import {flushSync} from 'react-dom';
 import type {AppLanguage} from '../types/inspection';
@@ -205,8 +205,24 @@ async function upload(token:string,userId:string,records:Records,parent:string,s
  progress?.(payload.size,payload.size);data=saved;
  return data;
 }
-export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClose,onRestored,onOpen,onBusyChange}:{userId:string;lang:AppLanguage;visible:boolean;paused:boolean;canAutoRestore:()=>boolean;onClose:()=>void;onRestored:()=>void;onOpen:()=>void;onBusyChange:(busy:boolean)=>void}){
+export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClose,onRestored,onOpen,onBusyChange,apiUrl,publicKey,sessionToken,isAdmin}:{userId:string;lang:AppLanguage;visible:boolean;paused:boolean;apiUrl:string;publicKey:string;sessionToken:string;isAdmin:boolean;canAutoRestore:()=>boolean;onClose:()=>void;onRestored:()=>void;onOpen:()=>void;onBusyChange:(busy:boolean)=>void}){
  const tr=(th:string,en:string)=>lang==='en'?en:th;
+ const [configBusy,setConfigBusy]=useState(false);
+ const [configNotice,setConfigNotice]=useState('');
+ async function configureDesktop(file:File){
+  if(!isAdmin||configBusy||busy)return;
+  setConfigBusy(true);setConfigNotice('');
+  try{
+   if(file.size>65536)throw Error('CONFIG_INVALID');
+   const input=JSON.parse(await file.text());if(!input?.installed)throw Error('CONFIG_INVALID');
+   const c=parseDesktopConfig(input.installed);
+   if(!window.confirm(tr('บันทึก OAuth Desktop ของโปรเจกต์เดิมเป็นการตั้งค่าส่วนกลางสำหรับผู้ซื้อทุกคนหรือไม่? ไม่ใช่รหัสผ่าน Google ของคุณ','Save the original project Desktop OAuth client as the shared configuration for all licensed users? This is not your Google password.')))return;
+   const r=await fetch(apiUrl+'/rest/v1/rpc/inspection_set_google_desktop_config',{method:'POST',headers:{apikey:publicKey,Authorization:'Bearer '+sessionToken,'Content-Type':'application/json'},body:JSON.stringify({p_client_id:c.client_id,p_client_secret:c.client_secret}),cache:'no-store',signal:AbortSignal.timeout(15000)});
+   if(!r.ok||await r.json()!==true)throw Error('SAVE_FAILED');
+   setConfigNotice(tr('บันทึกส่วนกลางแล้ว กดยืนยัน Google ได้เลย ผู้ซื้อไม่ต้องเลือกไฟล์','Shared configuration saved. Authorize Google now; buyers do not select a file.'));
+  }catch{setConfigNotice(tr('บันทึกไม่ได้ ต้องใช้ไฟล์ OAuth Desktop app จาก Google Cloud โปรเจกต์เดิม และบัญชี Admin ที่ยังมีสิทธิ์','Cannot save. Use a Desktop app OAuth JSON from the original Google Cloud project and an active admin account.'));}
+  finally{setConfigBusy(false);}
+ }
  const [ready,setReady]=useState(!!gis()),[,setToken]=useState(()=>validToken(userId)),[busy,setBusy]=useState(false),[msg,setMsg]=useState('');
  const phaseKey='tis-drive-phase:'+userId;
  const pendingKey='tis-drive-resume:'+userId;
@@ -264,6 +280,7 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
    if(active.current){setLink(value);if(live?.userId===userId)live.identity=value;}
  }
  function connect(action:'connect'|'sync'|'download'|'export'|'recover'|'browse'|'publish'='connect',choose=false){
+  if(configBusy)return;
   if(operation.current){setMsg(tr('กำลังทำงานอยู่ กรุณารอหรือกดยกเลิก','An operation is already running. Wait or cancel it.'));return;}
   if(paused){setMsg(tr('ปิดหน้าต่างจัดการบัญชีก่อนซิงค์','Close account management before syncing.'));return;}
   const native=hasNativeDriveBridge();
@@ -308,8 +325,8 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
     }catch(e){handleError(e,op);}finally{end(op);}
    };
    if(native){
-     setMsg(tr('Windows: ยืนยัน Google ในเบราว์เซอร์แล้วกลับเข้าโปรแกรม ครั้งแรกอาจต้องเลือกไฟล์ OAuth Desktop JSON','Windows: authorize Google in your browser, then return to ProElite. First setup may require a Desktop OAuth JSON.'));
-     void authorizeNativeDrive(op.signal).then(callback).catch(e=>{if(!active.current||operation.current!==op)return;const code=e instanceof Error?e.message:'';if(code==='CONFIG_REQUIRED'||code==='CONFIG_INVALID')setMsg(tr('ต้องตั้งค่า Google OAuth แบบ Desktop app จากโปรเจกต์ Google Cloud เดิมก่อน กรุณาติดต่อผู้ดูแล','Desktop OAuth credentials from the original Google Cloud project are required. Contact your administrator.'));else if(code==='NATIVE_UPDATE_REQUIRED'||code==='NATIVE_TIMEOUT')setMsg(tr('กรุณาติดตั้ง MSI รุ่นล่าสุดเพื่อยืนยัน Google ในโปรแกรม Windows','Install the latest MSI to authorize Google in native Windows.'));else if(code==='TOKEN_EXCHANGE')setMsg(tr('แลกรหัส Google ไม่สำเร็จ ตรวจ OAuth Desktop client และสิทธิ์ Google Cloud','Google token exchange failed. Check Desktop OAuth client and Google Cloud access.'));else if(code==='CANCELLED')setMsg(tr('ยกเลิกการยืนยัน Google','Google authorization cancelled'));else handleError(e,op);end(op);});
+     setMsg(tr('กำลังโหลดการตั้งค่า Google ส่วนกลาง จากนั้นยืนยัน Google ในเบราว์เซอร์แล้วกลับเข้าโปรแกรม','Loading shared Google configuration. Authorize in your browser, then return to ProElite.'));
+     void fetchDesktopConfig(apiUrl,publicKey,sessionToken,op.signal).then(config=>{check(op);return authorizeNativeDrive(op.signal,config);}).then(callback).catch(e=>{if(!active.current||operation.current!==op)return;const code=e instanceof Error?e.message:'';if(code==='CONFIG_REQUIRED'||code==='CONFIG_INVALID')setMsg(tr('ยังไม่มีการตั้งค่า Google ส่วนกลาง ให้ Admin ตั้งค่าเพียงครั้งเดียว ผู้ซื้อไม่ต้องเลือกไฟล์','Shared Google setup is missing. An administrator must configure it once; buyers do not select files.'));else if(code==='CONFIG_UNAVAILABLE')setMsg(tr('โหลดการตั้งค่าส่วนกลางไม่สำเร็จ ตรวจอินเทอร์เน็ตและสิทธิ์บัญชี','Cannot load shared configuration. Check connection and license.'));else if(code==='NATIVE_UPDATE_REQUIRED'||code==='NATIVE_TIMEOUT')setMsg(tr('กรุณาติดตั้ง MSI รุ่นล่าสุดเพื่อยืนยัน Google ในโปรแกรม Windows','Install the latest MSI to authorize Google in native Windows.'));else if(code==='TOKEN_EXCHANGE')setMsg(tr('แลกรหัส Google ไม่สำเร็จ ตรวจ OAuth Desktop client และสิทธิ์ Google Cloud','Google token exchange failed. Check Desktop OAuth client and Google Cloud access.'));else if(code==='CANCELLED')setMsg(tr('ยกเลิกการยืนยัน Google','Google authorization cancelled'));else handleError(e,op);end(op);});
    }else gis()!.accounts.oauth2.initTokenClient({client_id:CLIENT_ID,scope:SCOPE,...(!choose&&remembered?{login_hint:remembered.email}:{}),callback,error_callback:()=>{if(active.current&&operation.current===op){setMsg(tr('ยกเลิกหรือเปิดหน้าต่าง Google ไม่สำเร็จ','Google connection cancelled or popup failed'));end(op);}}}).requestAccessToken({prompt:!choose&&remembered?'':'select_account'});
   }catch(e){handleError(e,op);end(op);}
  }
@@ -621,7 +638,13 @@ export function DriveSyncDialog({userId,lang,visible,paused,canAutoRestore,onClo
  </div>
  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2 text-sm">
  {link?<><div className="font-semibold break-all">{link.email}</div><div className={'text-xs font-semibold '+(validToken(userId)?'text-emerald-700':'text-amber-700')}>{validToken(userId)?tr('Google พร้อมใช้งาน','Google authorized'):tr('จดจำบัญชีแล้ว แต่ต้องยืนยันสิทธิ์ Google','Account remembered; Google authorization required')}</div></>:<div className="text-xs">{tr('ยังไม่ได้เชื่อม Google Drive','Google Drive not connected')}</div>}
- {(!link||!validToken(userId))&&<button type="button" disabled={!ready||busy} onClick={()=>connect('connect',!link)} className="rounded-lg bg-blue-700 text-white px-3 py-2 text-sm font-semibold disabled:opacity-50">{tr('ยืนยัน Google','Authorize Google')}</button>}
+ {(!link||!validToken(userId))&&<button type="button" disabled={!ready||busy||configBusy} onClick={()=>connect('connect',!link)} className="rounded-lg bg-blue-700 text-white px-3 py-2 text-sm font-semibold disabled:opacity-50">{tr('ยืนยัน Google','Authorize Google')}</button>}
+ {isAdmin&&<details className="mt-2 text-xs border border-slate-300 rounded p-2">
+  <summary className="cursor-pointer font-semibold">{tr('ตั้งค่า Google ส่วนกลาง (Admin ทำครั้งเดียว)','Shared Google setup (admin, one time)')}</summary>
+  <p className="mt-2">{tr('เลือกไฟล์ OAuth Client แบบ Desktop app จาก Google Cloud โปรเจกต์เดิม ไม่ใช่ JSON แฟ้มงานหรือ service account หลังบันทึก ทุกเครื่อง Windows ที่มี License จะรับการตั้งค่าเอง','Select the Desktop app OAuth client JSON from the original Google Cloud project, not a project backup or service account. Licensed Windows clients receive the configuration automatically.')}</p>
+  <label className="block mt-2 font-semibold">{tr('เลือกไฟล์ OAuth Desktop JSON','Choose Desktop OAuth JSON')}<input type="file" accept=".json,application/json" disabled={busy||configBusy} className="block w-full mt-1" onChange={e=>{const f=e.currentTarget.files?.[0];e.currentTarget.value='';if(f)void configureDesktop(f);}}/></label>
+  {configBusy&&<p role="status">{tr('กำลังบันทึกการตั้งค่า…','Saving configuration…')}</p>}{configNotice&&<p role="status" className="mt-2">{configNotice}</p>}
+ </details>}
  </div>
  <div className="grid grid-cols-2 gap-2 text-sm">
   <div className="rounded-lg border border-slate-200 p-3"><strong>{tr('ในเครื่องนี้','This device')}</strong><div className="mt-1 font-bold">{localSummary?describe(localSummary):'—'}</div></div>

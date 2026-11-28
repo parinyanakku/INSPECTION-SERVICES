@@ -31,48 +31,18 @@ internal static class GoogleDriveOAuth
     {
         object v; return d.TryGetValue(k,out v) ? v as string : null;
     }
-    private static Dictionary<string,object> LoadCredential(IWin32Window parent)
-    {
-        string dir=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"ProElite Inspection Data");
-        Directory.CreateDirectory(dir);
-        string file=Path.Combine(dir,"google-desktop-oauth.dpapi");
-        Dictionary<string,object> config=null;
-        if(File.Exists(file))
-        {
-            try { config=Json.Deserialize<Dictionary<string,object>>(Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(file),null,DataProtectionScope.CurrentUser))); }
-            catch { throw new OAuthFailure("CONFIG_INVALID"); }
-        }
-        else
-        {
-            using(var dialog=new OpenFileDialog { Title="Select Google Desktop OAuth client JSON (first-time setup)",Filter="Google OAuth JSON (*.json)|*.json",CheckFileExists=true,Multiselect=false })
-            {
-                if(dialog.ShowDialog(parent)!=DialogResult.OK)throw new OAuthFailure("CONFIG_REQUIRED");
-                try {
-                    if(new FileInfo(dialog.FileName).Length>65536)throw new OAuthFailure("CONFIG_INVALID");
-                    var root=Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(dialog.FileName));
-                    object obj; if(!root.TryGetValue("installed",out obj))throw new OAuthFailure("CONFIG_INVALID");
-                    config=obj as Dictionary<string,object>;
-                    Validate(config);
-                    var minimal=new Dictionary<string,object>{{"client_id",TextValue(config,"client_id")},{"client_secret",TextValue(config,"client_secret")??""}};
-                    File.WriteAllBytes(file,ProtectedData.Protect(Encoding.UTF8.GetBytes(Json.Serialize(minimal)),null,DataProtectionScope.CurrentUser));
-                    config=minimal;
-                }catch(OAuthFailure){throw;}catch{throw new OAuthFailure("CONFIG_INVALID");}
-            }
-        }
-        Validate(config);return config;
-    }
     private static void Validate(Dictionary<string,object> c)
     {
         string id=c==null?null:TextValue(c,"client_id"), secret=c==null?null:TextValue(c,"client_secret");
-        if(id==null||!Regex.IsMatch(id,@"\A[0-9]+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com\z")||id.Length>256||(secret!=null&&secret.Length>256))throw new OAuthFailure("CONFIG_INVALID");
+        if(id==null||!Regex.IsMatch(id,@"\A386487455938-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com\z")||id.Length>256||String.IsNullOrEmpty(secret)||secret.Length>256||!Regex.IsMatch(secret,@"\A[A-Za-z0-9_-]+\z")||id=="386487455938-nda2mj55c5f3cdr8pvqmq4pu4o775fv2.apps.googleusercontent.com")throw new OAuthFailure("CONFIG_INVALID");
     }
     private static string Query(Dictionary<string,string> d)
     {
         var parts=new List<string>();foreach(var p in d)parts.Add(Uri.EscapeDataString(p.Key)+"="+Uri.EscapeDataString(p.Value));return String.Join("&",parts.ToArray());
     }
-    internal static async Task<string> AuthorizeAsync(IWin32Window parent,CancellationToken ct)
+    internal static async Task<string> AuthorizeAsync(string config,CancellationToken ct)
     {
-        var credential=LoadCredential(parent);ct.ThrowIfCancellationRequested();
+        var credential=Json.Deserialize<Dictionary<string,object>>(config);Validate(credential);ct.ThrowIfCancellationRequested();
         string id=TextValue(credential,"client_id"), secret=TextValue(credential,"client_secret");
         string state=RandomToken(),verifier=RandomToken(),challenge;
         using(var sha=SHA256.Create())challenge=Base64Url(sha.ComputeHash(Encoding.ASCII.GetBytes(verifier)));
