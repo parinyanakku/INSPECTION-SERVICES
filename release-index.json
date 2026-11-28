@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.224",
+  "latest": "v1.0.225",
   "releases": [
+    {
+      "version": "v1.0.225",
+      "build": 225,
+      "storageSchema": 2,
+      "date": "2026-11-28T01:52:19.276Z",
+      "notes": "Add report studio outline and native template editing with dynamic fields, previews and export",
+      "commit": "f652e6408a8e2f1b6e7e331c20f4202baef27fef",
+      "notesTh": "เพิ่ม AI Report Studio แม่แบบ ฟอร์มข้อมูล พรีวิว จัดหน้า ส่งออกและแก้สำเนาไฟล์"
+    },
     {
       "version": "v1.0.224",
       "build": 224,
