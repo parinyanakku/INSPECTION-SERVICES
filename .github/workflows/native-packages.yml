@@ -71,7 +71,7 @@ jobs:
         run: ./native/android/build.ps1 -BuildNumber ${{ github.run_number }}
       - name: Stage admin-only test APK
         if: github.ref == 'refs/heads/main'
-        run: node native/stage-test.mjs android build/native/android/ProElite-Inspection.apk
+        run: node native/stage-test.mjs android build/native/android/ProElite-Inspection-test.apk
       - name: Build release-signed APK and stage privately
         if: inputs.stage && github.ref == 'refs/heads/main'
         shell: pwsh

@@ -97,3 +97,12 @@ test('test packages are staged privately and are not approved releases',()=>{
  assert.match(workflow,/stage-test\.mjs android/);
  assert.doesNotMatch(workflow,/upload-artifact/);
 });
+
+test('Android private test staging uses the actual test build filename, not the release APK',()=>{
+ const build=readFileSync('native/android/build.ps1','utf8');
+ const workflow=readFileSync('.github/workflows/native-packages.yml','utf8');
+ const match=build.match(/else \{[\s\S]*?\$outputName='(ProElite-Inspection-test\.apk)'/);
+ assert.ok(match);
+ assert.ok(workflow.includes('node native/stage-test.mjs android build/native/android/'+match[1]));
+ assert.ok(workflow.includes('node native/stage.mjs android build/native/android/ProElite-Inspection.apk'));
+});
