@@ -4,7 +4,7 @@
 <body><div id="status" role="status" aria-live="polite"><div id="stage">กำลังเปิดรายงานตรวจบ้าน…</div><progress id="progress" aria-label="ความคืบหน้าการดาวน์โหลด"></progress><p id="detail">กำลังตรวจสอบลิงก์</p><button id="retry" type="button" hidden>ลองเปิดใหม่ / Retry</button></div><iframe id="report" title="รายงานตรวจบ้าน" sandbox="allow-scripts" referrerpolicy="no-referrer" hidden></iframe><script>
 (async()=>{
  const status=document.getElementById('status'),stage=document.getElementById('stage'),detail=document.getElementById('detail'),progress=document.getElementById('progress'),retry=document.getElementById('retry'),frame=document.getElementById('report');
- const origin='https://geleptwbxjoumxyxbhqa.supabase.co',limit=47185920;
+ const origin='https://geleptwbxjoumxyxbhqa.supabase.co',limit=47185920,partSize=4194304,maxParts=128,prefix='TIS-REPORT-PARTS-V1\n';
  const en=(navigator.language||'').toLowerCase().startsWith('en');
  const tr=(th,enText)=>en?enText:th;
  if(en){document.documentElement.lang='en';document.title='Home inspection report';}
@@ -43,12 +43,12 @@
  let objectURL='';
  try{
   step('กำลังตรวจสอบลิงก์','Checking report link','ยังไม่ดาวน์โหลดรูปภาพ','Images have not been downloaded yet');
-  const fragment=location.hash.slice(1);let url,key;
+  const fragment=location.hash.slice(1);let url,key,hash;
   if(/^[A-Za-z0-9_-]{43}$/.test(fragment)){
    const raw=Uint8Array.from(atob(fragment.replace(/-/g,'+').replace(/_/g,'/')+'='),c=>c.charCodeAt(0));
    if(raw.length!==32)throw Error('LINK');
    key=raw;
-   const hash=Array.from(new Uint8Array(await bounded(crypto.subtle.digest('SHA-256',raw),10000,'DECRYPT')),v=>v.toString(16).padStart(2,'0')).join('');
+   hash=Array.from(new Uint8Array(await bounded(crypto.subtle.digest('SHA-256',raw),10000,'DECRYPT')),v=>v.toString(16).padStart(2,'0')).join('');
    url=await request(origin+'/functions/v1/inspection-report-resolve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hash})},20000,async r=>{if(!r.ok)throw Error([400,401,403,404,410].includes(r.status)?'LINK':'NETWORK');return new URL((await r.json()).url);});
   }else{
    const p=new URLSearchParams(fragment),hex=p.get('k')||'';
@@ -60,16 +60,36 @@
   step('กำลังดาวน์โหลดรายงาน','Downloading report','กำลังรับข้อมูลและรูปภาพ','Receiving data and photos');
   let encrypted=await request(url.href,{redirect:'error'},180000,readPayload);
   step('กำลังตรวจสอบและถอดรหัส','Verifying and decrypting',mb(encrypted.byteLength),mb(encrypted.byteLength));
-  let plain;
+  let plain,cryptoKey;
   try{
-   const cryptoKey=await bounded(crypto.subtle.importKey('raw',key,'AES-GCM',false,['decrypt']),10000,'DECRYPT');
+   cryptoKey=await bounded(crypto.subtle.importKey('raw',key,'AES-GCM',false,['decrypt']),10000,'DECRYPT');
    plain=await bounded(crypto.subtle.decrypt({name:'AES-GCM',iv:encrypted.subarray(0,12)},cryptoKey,encrypted.subarray(12)),30000,'DECRYPT');
   }catch{throw Error('DECRYPT');}
   encrypted=null;key=null;
+  let bodyParts=[plain];
+  const marker=new TextEncoder().encode(prefix),head=new Uint8Array(plain,0,Math.min(plain.byteLength,marker.length));
+  if(head.length===marker.length&&head.every((b,i)=>b===marker[i])){
+   if(!hash||plain.byteLength>1024)throw Error('SIZE');
+   let manifest;try{manifest=JSON.parse(new TextDecoder().decode(plain).slice(prefix.length));}catch{throw Error('DECRYPT');}
+   if(manifest.v!==1||manifest.partSize!==partSize||!Number.isSafeInteger(manifest.bytes)||manifest.bytes<=limit-28||manifest.bytes>maxParts*partSize||manifest.count!==Math.ceil(manifest.bytes/partSize)||manifest.count>maxParts)throw Error('SIZE');
+   bodyParts=[];plain=null;
+   const rootPath=url.pathname.slice('/storage/v1/object/sign/inspection-client-reports/'.length);
+   for(let i=0;i<manifest.count;i++){
+    step('กำลังดาวน์โหลดรายงานส่วน '+(i+1)+'/'+manifest.count,'Downloading report part '+(i+1)+'/'+manifest.count,mb(i*partSize)+' / '+mb(manifest.bytes),mb(i*partSize)+' / '+mb(manifest.bytes));
+    const signed=await request(origin+'/functions/v1/inspection-report-resolve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hash,part:i})},20000,async r=>{if(!r.ok)throw Error([400,401,403,404,410].includes(r.status)?'LINK':'NETWORK');return new URL((await r.json()).url);});
+    const expectedPath=url.pathname.slice(0,-4)+'.part-'+String(i).padStart(3,'0')+'.bin';
+    if(signed.origin!==origin||signed.pathname!==expectedPath||!signed.searchParams.get('token')||signed.username||signed.password)throw Error('LINK');
+    let bytes=await request(signed.href,{redirect:'error'},180000,readPayload);
+    const expected=Math.min(partSize,manifest.bytes-i*partSize);
+    if(bytes.length!==expected+28)throw Error('SIZE');
+    let decoded;try{decoded=await bounded(crypto.subtle.decrypt({name:'AES-GCM',iv:bytes.subarray(0,12),additionalData:new TextEncoder().encode('TIS-REPORT-PART-V1:'+rootPath+':'+i)},cryptoKey,bytes.subarray(12)),30000,'DECRYPT');}catch{throw Error('DECRYPT');}
+    if(decoded.byteLength!==expected)throw Error('SIZE');bodyParts.push(new Blob([decoded]));decoded=null;bytes=null;
+   }
+  }
   step('กำลังแสดงหน้ารายงาน','Displaying report','กำลังจัดหน้าและรายการ Defect','Preparing report pages and defects');
   // Do not allocate a second giant decoded HTML string for srcdoc on mobile.
   // The same encrypted HTML is loaded in a sandbox with no same-origin access.
-  const blob=new Blob([plain],{type:'text/html;charset=utf-8'});plain=null;
+  const blob=new Blob(bodyParts,{type:'text/html;charset=utf-8'});plain=null;bodyParts=[];
   objectURL=URL.createObjectURL(blob);
   await bounded(new Promise((resolve,reject)=>{frame.onload=()=>{frame.onload=null;frame.onerror=null;resolve();};frame.onerror=()=>reject(Error('VIEW'));frame.src=objectURL;}),45000,'VIEW');
   frame.hidden=false;status.hidden=true;

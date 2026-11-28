@@ -1,4 +1,5 @@
 import React, {useState} from 'react';
+import {publishReportParts,partPath,MAX_PARTS} from '../utils/customerReportParts';
 import {Download, Globe, Loader2, Link2, Copy, Share2, Trash2} from 'lucide-react';
 import {workspaceStorage} from '../utils/workspaceStorage';
 import type {AppLanguage, BrandConfig, ProjectFile, DefectItem} from '../types/inspection';
@@ -7,9 +8,10 @@ import {renderFloorplanZonesToPng,inspectionDownloadName} from '../utils/imageUt
 
 const esc=(v:unknown)=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 const raster=(v:string|null|undefined)=>typeof v==='string'&&/^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(v);
-async function photoCopy(src:string|null|undefined):Promise<string>{
+async function photoCopy(src:string|null|undefined,preserve=false):Promise<string>{
   if(!src)return '';
   if(!raster(src))throw Error('Unsupported embedded photo format');
+  if(preserve)return src;
   const im=new Image();
   await new Promise<void>((resolve,reject)=>{im.onload=()=>resolve();im.onerror=()=>reject(Error('Cannot decode photo'));im.src=src;});
   const scale=Math.min(1,1600/Math.max(im.naturalWidth,im.naturalHeight));
@@ -21,7 +23,7 @@ function photoSource(d:DefectItem,side:'before'|'after'){
   const old=d as DefectItem&{annotatedBeforeImg?:string;annotatedAfterImg?:string;annotatedImage?:string;originalImage?:string};
   return side==='before'?old.annotatedBeforeImg||old.annotatedImage||d.beforeImg||d.photoDataUrl||old.originalImage:old.annotatedAfterImg||d.afterImg;
 }
-async function buildClientWebsite(project:ProjectFile,brand:BrandConfig,lang:AppLanguage,onProgress:(n:number)=>void){
+async function buildClientWebsite(project:ProjectFile,brand:BrandConfig,lang:AppLanguage,onProgress:(n:number)=>void,preserve=false){
  const tr=(th:string,en:string)=>lang==='en'?en:th;
  const rows=[...project.defects].sort((a,b)=>a.number-b.number);
  const floors=new Map<string,{name:string;index:number;src:string}>();
@@ -36,8 +38,8 @@ async function buildClientWebsite(project:ProjectFile,brand:BrandConfig,lang:App
  for(let i=0;i<rows.length;i++){
    const d=rows[i],fl=floors.get(d.floorId),zone=d.zone||tr('ไม่ระบุโซน','Unspecified zone');zones.add(zone);
    let before='',after='';
-   try{before=await photoCopy(photoSource(d,'before'));}catch{missing.push('#'+d.number+' Before');}
-   try{after=await photoCopy(photoSource(d,'after'));}catch{missing.push('#'+d.number+' After');}
+   try{before=await photoCopy(photoSource(d,'before'),preserve);}catch{missing.push('#'+d.number+' Before');}
+   try{after=await photoCopy(photoSource(d,'after'),preserve);}catch{missing.push('#'+d.number+' After');}
    const status=d.status==='แก้ไขแล้ว'?'fixed':d.status==='กำลังแก้ไข'?'partial':'pending';
    const sev=d.severity==='เร่งด่วน'?'urgent':d.severity==='ปานกลาง'?'moderate':'minor';
    const x=Number.isFinite(d.x)?Math.max(3,Math.min(97,d.x)):50,y=Number.isFinite(d.y)?Math.max(4,Math.min(96,d.y)):50;
@@ -67,7 +69,7 @@ async function buildClientWebsite(project:ProjectFile,brand:BrandConfig,lang:App
 const REPORT_API='https://geleptwbxjoumxyxbhqa.supabase.co';
 const REPORT_PUBLIC_KEY='sb_publishable_v-AeQKI2OT9QRGVP1HVHbQ_STCiFAnk';
 const REPORT_BUCKET='inspection-client-reports';
-type SharedLink={path:string;url:string;expiresAt:number};
+type SharedLink={path:string;url:string;expiresAt:number;parts?:number};
 function reportSession(){
  const s=JSON.parse(sessionStorage.getItem('tis_auth_tab_session_v1')||'null');
  if(!s?.access_token||!/^([0-9a-f-]{36})$/.test(s?.user?.id||'')||s.expires_at*1000<=Date.now())throw Error('กรุณาเข้าสู่ระบบใหม่ก่อนสร้างหรือยกเลิกลิงก์');
@@ -75,7 +77,7 @@ function reportSession(){
 }
 async function storageRequest(path:string,method:string,body:BodyInit,contentType:string){
  const session=reportSession();
- const res=await fetch(REPORT_API+'/storage/v1/'+path,{method,headers:{...session.headers,'Content-Type':contentType,...(contentType==='application/octet-stream'?{'Cache-Control':'max-age=0'}:{})},body,cache:'no-store'});
+ const res=await fetch(REPORT_API+'/storage/v1/'+path,{method,headers:{...session.headers,'Content-Type':contentType,...(contentType==='application/octet-stream'?{'Cache-Control':'max-age=0'}:{})},body,cache:'no-store',signal:AbortSignal.timeout(180000)});
  if(!res.ok)throw Error('ระบบจัดเก็บออนไลน์ตอบกลับ '+res.status+' '+(await res.text()).slice(0,220));
  return res;
 }
@@ -99,46 +101,50 @@ async function registerShortLink(path:string,key:Uint8Array,expiresAt:number){
  viewer.hash=btoa(String.fromCharCode(...key)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
  return {path,url:viewer.href,expiresAt};
 }
-async function removeSharedReport(path:string){
- await storageRequest('object/'+REPORT_BUCKET,'DELETE',JSON.stringify({prefixes:[path]}),'application/json');
+async function removeSharedReport(path:string,parts=0){
+ // Revoke access first, then remove the root and all encrypted parts.
  await shortLinkRequest('DELETE','?object_path=eq.'+encodeURIComponent(path));
+ const count=Number.isInteger(parts)&&parts>=0&&parts<=MAX_PARTS?parts:0;
+ const paths=[path,...Array.from({length:count},(_,i)=>partPath(path,i))];
+ for(let i=0;i<paths.length;i+=20)await storageRequest('object/'+REPORT_BUCKET,'DELETE',JSON.stringify({prefixes:paths.slice(i,i+20)}),'application/json');
 }
-async function publishSharedReport(html:string,days:number):Promise<SharedLink>{
- const {id}=reportSession();
- const path=id+'/'+crypto.randomUUID()+'.bin';
- const key=crypto.getRandomValues(new Uint8Array(32)),iv=crypto.getRandomValues(new Uint8Array(12));
- const aes=await crypto.subtle.importKey('raw',key,'AES-GCM',false,['encrypt']);
- const encrypted=await crypto.subtle.encrypt({name:'AES-GCM',iv},aes,new TextEncoder().encode(html));
- const payload=new Blob([iv,encrypted],{type:'application/octet-stream'});
- if(payload.size>47185920)throw Error('รายงานเกิน 45 MiB กรุณาลดขนาดรูปหรือส่งเป็น HTML/PDF');
- const fullPath=REPORT_BUCKET+'/'+path;
- let uploaded=false;
+async function publishSharedReport(html:string,days:number,onProgress:(sent:number,total:number)=>void):Promise<SharedLink>{
+ const {id}=reportSession(),path=id+'/'+crypto.randomUUID()+'.bin';
+ const key=crypto.getRandomValues(new Uint8Array(32)),aes=await crypto.subtle.importKey('raw',key,'AES-GCM',false,['encrypt']);
+ const attempted:string[]=[];
  try{
-   await storageRequest('object/'+fullPath,'POST',payload,'application/octet-stream');uploaded=true;
-   const expiresAt=Date.now()+days*86400000;
-   return await registerShortLink(path,key,expiresAt);
- }catch(e){if(uploaded)try{await removeSharedReport(path);}catch{}throw e;}
+   const count=await publishReportParts(new Blob([html],{type:'text/html;charset=utf-8'}),path,aes,async(p,payload)=>{
+    attempted.push(p);await storageRequest('object/'+REPORT_BUCKET+'/'+p,'POST',payload,'application/octet-stream');
+   },onProgress);
+   const link=await registerShortLink(path,key,Date.now()+days*86400000);
+   return {...link,parts:count};
+ }catch(e){
+   // Attempt cleanup including a request whose response was lost.
+   try{await shortLinkRequest('DELETE','?object_path=eq.'+encodeURIComponent(path));for(let i=0;i<attempted.length;i+=20)await storageRequest('object/'+REPORT_BUCKET,'DELETE',JSON.stringify({prefixes:attempted.slice(i,i+20)}),'application/json');}catch{}
+   throw e;
+ }
 }
 
 export function ClientWebsiteTab({project,brand,lang}:{project:ProjectFile;brand:BrandConfig;lang:AppLanguage}){
  const [busy,setBusy]=useState(false),[done,setDone]=useState(0),[message,setMessage]=useState('');
  const [days,setDays]=useState(7);
+ const [upload,setUpload]=useState<{sent:number;total:number}|null>(null);
  const shareKey='tis_client_report_links_v1_'+project.id;
  const [links,setLinks]=useState<SharedLink[]>(()=>{try{const stored=JSON.parse(workspaceStorage.getItem(shareKey)||'[]');return Array.isArray(stored)?stored:[];}catch{return [];}});
  function saveLinks(next:SharedLink[]){workspaceStorage.setItem(shareKey,JSON.stringify(next));setLinks(next);}
  async function publish(){
    if(busy)return;
    if(!window.confirm(tr('สร้างลิงก์ออนไลน์สำหรับโครงการนี้? ผู้ที่ได้รับลิงก์สามารถดูและส่งต่อรายงานได้ โปรดยืนยันว่าคุณได้รับอนุญาตให้แชร์ข้อมูล','Publish this project snapshot? Anyone with the link can view and forward it. Confirm you are authorized to share.')))return;
-   setBusy(true);setDone(0);setMessage('');
-   try{reportSession();const {html,missing}=await buildClientWebsite(project,brand,lang,setDone);
+   setBusy(true);setDone(0);setMessage('');setUpload(null);
+   try{reportSession();const {html,missing}=await buildClientWebsite(project,brand,lang,setDone,true);
      if(missing.length)throw Error(tr('มีรูปที่อ่านไม่ได้ กรุณาตรวจสอบ: ','Unavailable photos: ')+missing.join(', '));
-     const link=await publishSharedReport(html,days);saveLinks([link,...links]);setMessage(tr('สร้างลิงก์สำเร็จ','Link created'));
+     const link=await publishSharedReport(html,days,(sent,total)=>setUpload({sent,total}));saveLinks([link,...links]);setMessage(tr('สร้างลิงก์สำเร็จ','Link created'));
    }catch(e){setMessage(tr('สร้างลิงก์ไม่สำเร็จ: ','Publish failed: ')+(e instanceof Error?e.message:String(e)));}
    finally{setBusy(false);}
  }
  async function revoke(link:SharedLink){
    if(busy||!window.confirm(tr('ยกเลิกลิงก์นี้? ลูกค้าจะไม่สามารถโหลดรายงานจากลิงก์เดิมได้อีก','Revoke this link? It will no longer load the report.')))return;
-   setBusy(true);try{await removeSharedReport(link.path);saveLinks(links.filter(x=>x.path!==link.path));setMessage(tr('ยกเลิกลิงก์แล้ว','Link revoked'));}
+   setBusy(true);try{await removeSharedReport(link.path,link.parts);saveLinks(links.filter(x=>x.path!==link.path));setMessage(tr('ยกเลิกลิงก์แล้ว','Link revoked'));}
    catch(e){setMessage(tr('ยกเลิกไม่สำเร็จ: ','Revoke failed: ')+(e instanceof Error?e.message:String(e)));}finally{setBusy(false);}
  }
  async function shortenExisting(link:SharedLink){
@@ -171,8 +177,10 @@ export function ClientWebsiteTab({project,brand,lang}:{project:ProjectFile;brand
      <p className="text-xs text-slate-600">{tr('รายงานแบบอ่านอย่างเดียว ณ เวลาส่งออก จัดเก็บแบบเข้ารหัส ผู้มีลิงก์สามารถเปิดดูหรือส่งต่อได้ ไม่ต้องเข้าสู่ระบบ ไม่อัปเดตข้อมูลสด','Encrypted read-only snapshot. Anyone with the link can view or forward it. No sign-in or live sync.')}</p>
      <div className="flex flex-wrap items-center gap-2">
        <label className="text-sm text-slate-700">{tr('อายุลิงก์','Expires in')} <select value={days} onChange={e=>setDays(Number(e.target.value))} disabled={busy} className="rounded-lg border border-slate-300 px-2 py-2">{[1,7,30].map(n=><option key={n} value={n}>{n} {tr('วัน','days')}</option>)}</select></label>
-       <button data-tour="client" type="button" onClick={publish} disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy?<Loader2 className="w-4 h-4 animate-spin"/>:<Link2 className="w-4 h-4"/>}{tr('สร้างลิงก์เว็บไซต์ลูกค้า','Create customer link')}</button>
+       <button data-tour="client" type="button" onClick={publish} disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy?<Loader2 className="w-4 h-4 animate-spin"/>:<Link2 className="w-4 h-4"/>}{busy&&upload?tr('กำลังอัปโหลด ','Uploading ')+Math.floor(upload.sent/upload.total*100)+'%':tr('สร้างลิงก์เว็บไซต์ลูกค้า','Create customer link')}</button>
      </div>
+     {busy&&upload&&<div role="status" className="text-xs text-slate-600"><progress className="w-full" max={upload.total} value={upload.sent}/>{(upload.sent/1048576).toFixed(1)} / {(upload.total/1048576).toFixed(1)} MB</div>}
+     <p className="text-xs text-slate-600">{tr('ลิงก์สั้นแบบเดิม รองรับรายงานออนไลน์เกิน 45 MiB ด้วยการแบ่งไฟล์เข้ารหัส สูงสุด 512 MiB ต่อรายงาน ไม่ลดขนาดหรือบีบอัดรูปที่บันทึกไว้เพิ่ม ขึ้นกับพื้นที่จัดเก็บและหน่วยความจำเครื่อง','Same short link; encrypted parts support reports above 45 MiB, up to 512 MiB. Saved photos are not resized or recompressed. Storage and device memory limits still apply.')}</p>
      {links.map(link=><div key={link.path} className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
        <div className="text-xs text-slate-600">{link.expiresAt>Date.now()?tr('หมดอายุ: ','Expires: ')+new Date(link.expiresAt).toLocaleString(lang==='en'?'en-GB':'th-TH'):tr('หมดอายุแล้ว','Expired')}</div>
        <input readOnly value={link.url} onFocus={e=>e.target.select()} aria-label={tr('ลิงก์เว็บไซต์ลูกค้า','Customer link')} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs"/>
