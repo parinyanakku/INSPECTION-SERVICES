@@ -1,0 +1,9 @@
+import type {TemplatePlan} from './reportStudioModel';
+export type LibraryItem={id:string;name:string;file:Blob;plan:TemplatePlan;created:number};
+function account(){try{const s=JSON.parse(sessionStorage.getItem('tis_auth_tab_session_v1')||'null');if(typeof s?.user?.id==='string'&&s.user.id)return s.user.id;}catch{}throw Error('SESSION_REQUIRED');}
+async function db(){const id=account();return new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open('tis-report-template-library:'+id,1);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains('templates'))r.result.createObjectStore('templates',{keyPath:'id'});};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error||Error('LIBRARY_UNAVAILABLE'));r.onblocked=()=>reject(Error('LIBRARY_UNAVAILABLE'));});}
+async function run<T>(mode:IDBTransactionMode,op:(s:IDBObjectStore)=>IDBRequest<T>):Promise<T>{const connection=await db();try{return await new Promise<T>((resolve,reject)=>{const t=connection.transaction('templates',mode),r=op(t.objectStore('templates'));t.oncomplete=()=>resolve(r.result);t.onabort=t.onerror=()=>reject(t.error||Error('LIBRARY_SAVE_FAILED'));});}finally{connection.close();}}
+export async function listTemplates(){const list=await run('readonly',s=>s.getAll()) as LibraryItem[];return list.map(({id,name,created})=>({id,name,created})).sort((a,b)=>b.created-a.created);}
+export async function readTemplate(id:string){return await run('readonly',s=>s.get(id)) as LibraryItem|undefined;}
+export async function storeTemplate(file:File,plan:TemplatePlan){const list=await listTemplates();if(list.length>=5)throw Error('LIBRARY_FULL');if(file.size>25*1024*1024)throw Error('FILE_SIZE');await run('readwrite',s=>s.add({id:crypto.randomUUID(),name:file.name,file,plan,created:Date.now()}));}
+export async function deleteTemplate(id:string){await run('readwrite',s=>s.delete(id));}
