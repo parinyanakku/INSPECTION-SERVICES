@@ -60,3 +60,14 @@ test('archive publication preserves version pins, stable install identity and cu
     assert.ok(existsSync(path.join(archive,'versions/v1.0.1/index.html')));
   } finally { rmSync(cwd,{recursive:true,force:true}); }
 });
+
+test('installer distribution is admin-only and native pilot has no external browser workspace fallback',()=>{
+ const sql=readFileSync('supabase/migrations/20261128092459_proelite_admin_only_installer_download.sql','utf8');
+ assert.match(sql,/select public\.inspection_is_admin\(\)/);
+ const account=readFileSync('src/components/AccountWorkspace.tsx','utf8');
+ assert.match(account,/isAdmin&&canDownload&&!blocked&&<button type="button" data-tour="downloads"/);
+ assert.match(account,/isAdmin&&canDownload&&!blocked&&!busy&&downloadsOpen/);
+ const windows=readFileSync('native/windows/Launcher.cs','utf8'),android=readFileSync('native/android/Launcher.java','utf8');
+ assert.match(windows,/CoreWebView2/);assert.doesNotMatch(windows,/Process\.Start|msedge\.exe/);
+ assert.match(android,/new WebView\(this\)/);assert.doesNotMatch(android,/Intent\.ACTION_VIEW|startActivity\(browser\)/);
+});

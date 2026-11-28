@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.teaminspectionproelite.inspection">
-  <application android:label="ProElite Inspection" android:icon="@drawable/home" android:allowBackup="false">
+  <uses-permission android:name="android.permission.INTERNET" />
+  <application android:label="ProElite Inspection" android:icon="@drawable/home" android:allowBackup="false" android:usesCleartextTraffic="false">
     <activity android:name=".Launcher" android:exported="true" android:theme="@android:style/Theme.Material.Light.NoActionBar">
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />

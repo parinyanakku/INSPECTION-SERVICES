@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: 'Stage candidates in private storage (requires configured signing and upload secrets)'
+        description: 'Stage experimental candidates privately only (requires signing and upload secrets)'
         type: boolean
         default: false
 permissions:
@@ -24,7 +24,11 @@ jobs:
           if ((Get-FileHash $zip).Hash -ne '15D50463C73DCE31FBEA5440AC33AF47E92D54D4188166D207E9E39577B8FE0F') { throw 'WiX checksum mismatch' }
           $dir = Join-Path $env:RUNNER_TEMP wix
           Expand-Archive $zip $dir
-          ./native/windows/build.ps1 -WixBin "$dir/tools" -BuildNumber ${{ github.run_number }}
+          $wvZip=Join-Path $env:RUNNER_TEMP webview2.zip
+          Invoke-WebRequest https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.4370.26/microsoft.web.webview2.1.0.4370.26.nupkg -OutFile $wvZip
+          $wv=Join-Path $env:RUNNER_TEMP webview2
+          Expand-Archive $wvZip $wv
+          ./native/windows/build.ps1 -WixBin "$dir/tools" -WebViewBin $wv -BuildNumber ${{ github.run_number }}
       - name: Verify install and uninstall on the disposable runner
         shell: pwsh
         run: |
@@ -46,6 +50,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - uses: android-actions/setup-android@v3
       - name: Prepare Android SDK
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
       - name: Build and verify test APK

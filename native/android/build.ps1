@@ -25,7 +25,9 @@ $script=if ($IsWindows) {'.bat'} else {''}
 Run-Tool "$tools/aapt2$exe" @('compile','--dir',$res,'-o',$resources)
 Run-Tool "$tools/aapt2$exe" @('link','-o',$unsigned,'-I',$platform,'--manifest',"$PSScriptRoot/AndroidManifest.xml",'--min-sdk-version','23','--target-sdk-version','35','--version-code',"$BuildNumber",'--version-name',"1.0.$BuildNumber",$resources)
 Run-Tool javac @('--release','8','-classpath',$platform,'-d',$classes,"$PSScriptRoot/Launcher.java")
-Run-Tool "$tools/d8$script" @('--lib',$platform,'--min-api','23','--output',$dex,"$classes/com/teaminspectionproelite/inspection/Launcher.class")
+$classJar=Join-Path $work 'classes.jar'
+Run-Tool jar @('cf',$classJar,'-C',$classes,'.')
+Run-Tool "$tools/d8$script" @('--lib',$platform,'--min-api','23','--output',$dex,$classJar)
 Run-Tool jar @('uf',$unsigned,'-C',$dex,'classes.dex')
 Run-Tool "$tools/zipalign$exe" @('-f','4',$unsigned,$aligned)
 if ($Release) {
