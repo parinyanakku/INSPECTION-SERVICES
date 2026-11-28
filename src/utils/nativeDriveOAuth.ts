@@ -9,10 +9,29 @@ export function parseDesktopConfig(value:unknown):DesktopConfig{
  return {client_id:c.client_id,client_secret:c.client_secret};
 }
 export async function fetchDesktopConfig(api:string,publicKey:string,token:string,signal:AbortSignal):Promise<DesktopConfig>{
- const r=await fetch(api+'/rest/v1/rpc/inspection_google_desktop_config',{method:'POST',headers:{apikey:publicKey,Authorization:'Bearer '+token,'Content-Type':'application/json'},body:'{}',cache:'no-store',signal});
- if(!r.ok)throw Error('CONFIG_UNAVAILABLE');
- const data=await r.json();if(data===null)throw Error('CONFIG_REQUIRED');
- return parseDesktopConfig(data);
+ if(signal.aborted)throw Error('CANCELLED');
+ const request=new AbortController();
+ const cancel=()=>request.abort();
+ signal.addEventListener('abort',cancel,{once:true});
+ const timeout=setTimeout(()=>request.abort(),15000);
+ try{
+  if(signal.aborted)cancel();
+  const r=await fetch(api+'/rest/v1/rpc/inspection_google_desktop_config',{method:'POST',headers:{apikey:publicKey,Authorization:'Bearer '+token,'Content-Type':'application/json'},body:'{}',cache:'no-store',signal:request.signal});
+  if(!r.ok)throw Error('CONFIG_UNAVAILABLE');
+  const data=await r.json();
+  if(signal.aborted)throw Error('CANCELLED');
+  if(request.signal.aborted)throw Error('CONFIG_UNAVAILABLE');
+  if(data===null)throw Error('CONFIG_REQUIRED');
+  return parseDesktopConfig(data);
+ }catch(e){
+  if(signal.aborted)throw Error('CANCELLED');
+  if(request.signal.aborted)throw Error('CONFIG_UNAVAILABLE');
+  if(e instanceof Error&&(e.message==='CONFIG_REQUIRED'||e.message==='CONFIG_INVALID'))throw e;
+  throw Error('CONFIG_UNAVAILABLE');
+ }finally{
+  clearTimeout(timeout);
+  signal.removeEventListener('abort',cancel);
+ }
 }
 export async function authorizeNativeDrive(signal:AbortSignal,config:DesktopConfig):Promise<DriveOAuthResult>{
  const encoded=btoa(JSON.stringify(parseDesktopConfig(config))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
