@@ -9,6 +9,7 @@ type Props = {lang:AppLanguage; api:string; publicKey:string; token:string; onCl
 export function DownloadCenter({lang, api, publicKey, token, onClose}: Props) {
   const tr = (th:string, en:string) => lang === 'en' ? en : th;
   const dialog = useRef<HTMLDialogElement>(null);
+  const closing = useRef(false);
   const [available, setAvailable] = useState<string[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -20,9 +21,23 @@ export function DownloadCenter({lang, api, publicKey, token, onClose}: Props) {
   const storage = api + '/storage/v1/object/';
   const headers = {apikey: publicKey, Authorization: 'Bearer ' + token};
   useEffect(() => {
-    dialog.current?.showModal();
-    return () => { download.current?.abort(); };
+    const element = dialog.current;
+    closing.current = false;
+    if (element && !element.open) element.showModal();
+    return () => {
+      closing.current = true;
+      download.current?.abort();
+      if (element?.open) element.close();
+    };
   }, []);
+  function dismiss() {
+    if (closing.current) return;
+    closing.current = true;
+    download.current?.abort();
+    // Close the native top-layer modal before unmounting the React component.
+    try { if (dialog.current?.open) dialog.current.close(); }
+    finally { onClose(); }
+  }
   useEffect(() => {
     const controller = new AbortController();
     setFailed(false); setAvailable(null); setBusy(''); setReady(null); setShareError(false);
@@ -63,10 +78,11 @@ export function DownloadCenter({lang, api, publicKey, token, onClose}: Props) {
     try{if(!navigator.share||!navigator.canShare?.({files:[ready]}))throw Error();await navigator.share({files:[ready],title:'ProElite Inspection'});}
     catch(e){if(!(e instanceof DOMException&&e.name==='AbortError'))setShareError(true);}
   }
-  return <dialog ref={dialog} onClose={onClose} aria-labelledby="downloads-title" className="m-auto max-h-[90dvh] w-[min(94vw,30rem)] overflow-auto rounded-2xl p-5 text-slate-900 shadow-xl backdrop:bg-slate-950/60">
+  return <dialog ref={dialog} onClose={dismiss} onCancel={event=>{event.preventDefault();dismiss();}} aria-labelledby="downloads-title" className="m-auto max-h-[90dvh] w-[min(94vw,30rem)] overflow-auto rounded-2xl p-5 text-slate-900 shadow-xl backdrop:bg-slate-950/60">
     <header className="flex items-center gap-3">
       <img width="48" height="48" className="rounded-xl" src={new URL('product-icons/home-192.png',appRoot).href} alt="" />
-      <div><p className="text-xs font-semibold text-blue-800">ProElite Inspection</p><h2 id="downloads-title" className="text-xl font-bold">{tr('ไฟล์ติดตั้งสำหรับผู้ดูแล','Admin installers')}</h2></div>
+      <div className="flex-1 min-w-0"><p className="text-xs font-semibold text-blue-800">ProElite Inspection</p><h2 id="downloads-title" className="text-xl font-bold">{tr('ไฟล์ติดตั้งสำหรับผู้ดูแล','Admin installers')}</h2></div>
+      <button type="button" aria-label={tr('ปิดหน้าต่าง','Close dialog')} className="shrink-0 cursor-pointer min-w-11 min-h-11 rounded-lg border border-slate-300 text-xl" onClick={event=>{event.stopPropagation();dismiss();}}>×</button>
     </header>
     <section className="my-5 space-y-2 text-sm">
       <p className="font-semibold text-blue-900">{tr('เฉพาะ Admin — ผู้ซื้อดาวน์โหลดเองไม่ได้','Admin only — buyers cannot download installers')}</p>
@@ -83,6 +99,6 @@ export function DownloadCenter({lang, api, publicKey, token, onClose}: Props) {
     </section>
     {ready&&<div className="mt-3 rounded-lg border p-3 text-sm space-y-2"><p className="font-semibold break-all">{ready.name}</p><p>{(ready.size/1048576).toFixed(1)} MB</p><div className="flex flex-wrap gap-2"><button type="button" className={buttonStyle} onClick={saveReady}>{tr('บันทึกลงเครื่อง','Save file')}</button><button type="button" className={buttonStyle} onClick={()=>void shareReady()}>{tr('แชร์ไฟล์จากมือถือ','Share file')}</button></div>{shareError&&<p role="status">{tr('เครื่องนี้แชร์ไฟล์โดยตรงไม่ได้ ให้บันทึกลงเครื่องแล้วแนบไฟล์ใน LINE หรือแอปส่งไฟล์เอง','Direct file sharing is unavailable on this device. Save the file and attach it manually in your messaging app.')}</p>}</div>}
     {error && <p role="alert" className="mt-3 text-sm text-red-700">{tr('ดำเนินการไม่สำเร็จ กรุณาตรวจการเชื่อมต่อและสิทธิ์บัญชีแล้วลองอีกครั้ง','Could not complete the request. Check your connection and account access, then try again.')}</p>}
-    <button type="button" autoFocus className={buttonStyle+' mt-5'} onClick={onClose}>{tr('ปิด','Close')}</button>
+    <button type="button" autoFocus className={buttonStyle+' mt-5 min-h-11 w-full cursor-pointer'} onClick={event=>{event.stopPropagation();dismiss();}}>{tr('ปิด','Close')}</button>
   </dialog>;
 }

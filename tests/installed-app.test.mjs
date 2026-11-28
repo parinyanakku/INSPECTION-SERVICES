@@ -71,3 +71,16 @@ test('installer distribution is admin-only and native pilot has no external brow
  assert.match(windows,/CoreWebView2/);assert.doesNotMatch(windows,/Process\.Start|msedge\.exe/);
  assert.match(android,/new WebView\(this\)/);assert.doesNotMatch(android,/Intent\.ACTION_VIEW|startActivity\(browser\)/);
 });
+
+test('admin installer dialog closes its native modal before releasing React state',()=>{
+ const source=readFileSync('src/components/DownloadCenter.tsx','utf8');
+ const body=source.slice(source.indexOf('  function dismiss() {'),source.indexOf('  useEffect(() => {',source.indexOf('  function dismiss() {')));
+ assert.ok(body.includes('dialog.current.close()'));
+ const calls=[],element={open:true,close(){calls.push('native-close');this.open=false;}};
+ const context={closing:{current:false},download:{current:{abort(){calls.push('abort');}}},dialog:{current:element},onClose(){calls.push('react-close');}};
+ vm.runInNewContext(body+'\ndismiss();dismiss();',context);
+ assert.deepEqual(calls,['abort','native-close','react-close']);
+ assert.equal(element.open,false);
+ assert.match(source,/onCancel=\{event=>\{event.preventDefault\(\);dismiss\(\);\}\}/);
+ assert.equal((source.match(/event.stopPropagation\(\);dismiss\(\);/g)||[]).length,2);
+});
