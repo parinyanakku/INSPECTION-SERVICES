@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.222",
+  "latest": "v1.0.223",
   "releases": [
+    {
+      "version": "v1.0.223",
+      "build": 223,
+      "storageSchema": 2,
+      "date": "2026-11-28T01:38:12.863Z",
+      "notes": "Add multi-provider report AI engine with approved routing and BYOK gateway",
+      "commit": "528eb7d21dee102bb253889a8a8edd20892f3513",
+      "notesTh": "เพิ่มตั้งค่า AI หลายค่ายสำหรับรายงาน เลือกโมเดลและ Auto แบบอนุญาต พร้อมคู่มือ"
+    },
     {
       "version": "v1.0.222",
       "build": 222,
