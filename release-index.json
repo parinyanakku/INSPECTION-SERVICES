@@ -1,6 +1,16 @@
 {
-  "latest": "v1.0.231",
+  "latest": "v1.0.232",
   "releases": [
+    {
+      "version": "v1.0.232",
+      "build": 232,
+      "storageSchema": 2,
+      "date": "2026-11-28T09:06:11.481Z",
+      "notes": "Installable ProElite Inspection and private buyer downloads",
+      "commit": "93ec40c28696dd45cf8f511e60abe28d5c0bd624",
+      "notesTh": "ติดตั้ง ProElite บนหน้าจอหลักหรือเดสก์ท็อป และตรวจไฟล์ติดตั้ง Windows กับ Android ในศูนย์ดาวน์โหลดสำหรับผู้ซื้อ",
+      "notesEn": "Install ProElite on your home screen or desktop and check private Windows and Android downloads in your buyer account."
+    },
     {
       "version": "v1.0.231",
       "build": 231,
