@@ -28,6 +28,8 @@ export default defineConfig(() => {
         },
       },
     ],
+    // The production bundle must never ship original-source debugging maps.
+    build: { sourcemap: false, minify: true, cssMinify: true },
     optimizeDeps: { exclude: ['flashraw'] },
     worker: { format: 'es' },
     resolve: {

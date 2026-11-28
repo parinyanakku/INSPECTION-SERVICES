@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
+import {removeLegacyPrototypes,removePublishedMaps} from './security-build.mjs';
 const archive=process.env.ARCHIVE_DIR;
 const build=Number(process.env.GITHUB_RUN_NUMBER);
 if(!archive||!Number.isSafeInteger(build)||build<1)throw Error('Missing release settings');
@@ -31,6 +32,14 @@ fs.writeFileSync(index,JSON.stringify(manifest,null,2)+'\n');
 fs.rmSync('dist',{recursive:true,force:true});
 fs.cpSync(path.join(versions,manifest.latest),'dist',{recursive:true});
 fs.mkdirSync('dist/versions',{recursive:true});
+// Security exception: remove the two accidentally published, unauthenticated
+// prototypes and debugging maps from historical snapshots too. The app entry,
+// data storage schema, version metadata and report viewers remain unchanged.
+for(const release of releases){
+ const releaseDir=path.join(versions,release.version);
+ if(fs.existsSync(releaseDir)){removeLegacyPrototypes(releaseDir);removePublishedMaps(releaseDir);}
+}
+removeLegacyPrototypes('dist');removePublishedMaps('dist');
 for(const release of compatible)fs.cpSync(path.join(versions,release.version),path.join('dist/versions',release.version),{recursive:true});
 // Retain old unauthenticated builds in the archive, not the public Pages site.
 for(const release of releases.filter(r=>r.storageSchema!==2)){

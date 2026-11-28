@@ -22,11 +22,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Check tracked files for accidental credentials
+        run: node scripts/security-build.mjs source
       - run: npm install --no-package-lock
-      - run: node --import tsx --test src/utils/driveImageIndex.test.mjs src/utils/driveRetry.test.mjs src/utils/driveRangeDownload.test.mjs src/utils/driveReadStage.test.mjs src/utils/verifiedProjects.test.mjs src/utils/sketchLayout.test.mjs src/utils/reportImport.test.mjs src/utils/aiRouterPolicy.test.mjs src/utils/reportStudioModel.test.mjs tests/customer-report-loader.test.mjs tests/customer-report-parts.test.mjs tests/installed-app.test.mjs
+      - run: node --import tsx --test src/utils/driveImageIndex.test.mjs src/utils/driveRetry.test.mjs src/utils/driveRangeDownload.test.mjs src/utils/driveReadStage.test.mjs src/utils/verifiedProjects.test.mjs src/utils/sketchLayout.test.mjs src/utils/reportImport.test.mjs src/utils/aiRouterPolicy.test.mjs src/utils/reportStudioModel.test.mjs tests/customer-report-loader.test.mjs tests/customer-report-parts.test.mjs tests/installed-app.test.mjs tests/security-build.test.mjs
       - run: npm run build -- --base=./
         env:
           VITE_REPORT_PDF_CONVERTER_URL: ${{ vars.REPORT_PDF_CONVERTER_URL }}
+      - name: Verify new production bundle before publication
+        run: node scripts/security-build.mjs build dist
       - name: Archive immutable release and assemble Pages site
         shell: bash
         run: |
@@ -44,6 +48,7 @@ jobs:
             git -C "$ARCHIVE_DIR" rm -r --quiet -- .
           fi
           node scripts/archive-pages.mjs
+          node scripts/security-build.mjs archive dist
           git -C "$ARCHIVE_DIR" add -f versions release-index.json
           if ! git -C "$ARCHIVE_DIR" diff --cached --quiet; then
             git -C "$ARCHIVE_DIR" commit -m "Archive Pages build $GITHUB_RUN_NUMBER"
