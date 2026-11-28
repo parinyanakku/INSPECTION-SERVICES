@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.219",
+  "latest": "v1.0.220",
   "releases": [
+    {
+      "version": "v1.0.220",
+      "build": 220,
+      "storageSchema": 2,
+      "date": "2026-11-28T00:30:56.785Z",
+      "notes": "Add live Thai English language switch in workspace and guide",
+      "commit": "096fdd1e79626580343d81328367b52a58805cb0",
+      "notesTh": "เพิ่มปุ่ม TH/EN มุมบนและในคู่มือ สลับภาษาได้โดยไม่ออกจากระบบ"
+    },
     {
       "version": "v1.0.219",
       "build": 219,
