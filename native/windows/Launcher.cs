@@ -23,7 +23,7 @@ internal static class Launcher
         {
             Text = "ProElite Inspection";
             Width = 1280; Height = 820; MinimumSize = new Size(420, 360);
-            Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             view.Dock = DockStyle.Fill; view.Visible = false;
             Controls.Add(view); Controls.Add(status);
             Shown += async (s, e) => await InitializeAsync();
@@ -57,7 +57,7 @@ internal static class Launcher
                         status.Visible = true; view.Visible = false;
                     } else if (e.IsSuccess) { status.Visible = false; view.Visible = true; }
                 };
-                core.Navigate(Site);
+                core.Navigate(Launcher.Site);
             }
             catch (Exception)
             {

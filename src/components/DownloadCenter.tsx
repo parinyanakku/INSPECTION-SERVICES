@@ -42,7 +42,7 @@ export function DownloadCenter({lang, api, publicKey, token, onClose}: Props) {
   async function save(name:typeof packages[number]) {
     if (download.current) return;
     const controller = new AbortController();
-    download.current = controller; setBusy(name); setError(false);
+    download.current = controller; setBusy(name); setError(false); setReady(null); setShareError(false);
     try {
       const res = await fetch(storage + 'authenticated/proelite-installers/approved/' + name,
         {headers, cache:'no-store', signal:AbortSignal.any([controller.signal, AbortSignal.timeout(120000)])});
