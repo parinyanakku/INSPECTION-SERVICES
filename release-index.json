@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.239",
+  "latest": "v1.0.240",
   "releases": [
+    {
+      "version": "v1.0.240",
+      "build": 240,
+      "storageSchema": 2,
+      "date": "2026-11-28T10:04:51.274Z",
+      "notes": "Harden public release artifacts and remove unauthenticated legacy prototypes",
+      "commit": "f46c786a10de70211d0607d605c9b15577146a7b",
+      "notesTh": "นำต้นแบบเก่าที่ไม่มีระบบสิทธิ์ออกจากเว็บไซต์ เพิ่มการตรวจความปลอดภัยก่อนเผยแพร่"
+    },
     {
       "version": "v1.0.239",
       "build": 239,
