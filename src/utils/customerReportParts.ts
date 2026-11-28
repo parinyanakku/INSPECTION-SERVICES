@@ -15,14 +15,27 @@ export async function encryptPayload(blob:Blob,aes:CryptoKey,aad?:Uint8Array){
  const encrypted=await crypto.subtle.encrypt({name:'AES-GCM',iv,...(aad?{additionalData:aad as BufferSource}:{})},aes,await blob.arrayBuffer());
  return new Blob([iv,encrypted],{type:'application/octet-stream'});
 }
+async function uploadParts(blob:Blob,path:string,aes:CryptoKey,upload:(path:string,payload:Blob)=>Promise<void>,progress:(bytes:number)=>void){
+ const count=Math.ceil(blob.size/PART_SIZE);
+ let next=0,sent=0,stopped=false;
+ async function worker(){
+  try{
+   while(!stopped&&next<count){
+    const i=next++,part=blob.slice(i*PART_SIZE,(i+1)*PART_SIZE);
+    await upload(partPath(path,i),await encryptPayload(part,aes,partAAD(path,i)));
+    sent+=part.size;progress(sent);
+   }
+  }catch(error){stopped=true;throw error;}
+ }
+ // Drain in-flight writes before the caller removes an incomplete report.
+ const results=await Promise.allSettled(Array.from({length:Math.min(3,count)},worker));
+ for(const result of results)if(result.status==='rejected')throw result.reason;
+}
 export async function publishReportParts(blob:Blob,path:string,aes:CryptoKey,upload:(path:string,payload:Blob)=>Promise<void>,progress:(sent:number,total:number)=>void){
  if(!blob.size||blob.size>MAX_REPORT_BYTES)throw Error('รายงานเกิน 512 MiB หรือหน่วยความจำไม่เพียงพอ กรุณาแบ่งโครงการโดยไม่ลดคุณภาพรูป');
  if(blob.size+28<=SINGLE_LIMIT){await upload(path,await encryptPayload(blob,aes));progress(blob.size,blob.size);return 0;}
  const count=Math.ceil(blob.size/PART_SIZE);
- for(let i=0;i<count;i++){
-  const end=Math.min((i+1)*PART_SIZE,blob.size);
-  await upload(partPath(path,i),await encryptPayload(blob.slice(i*PART_SIZE,end),aes,partAAD(path,i)));progress(end,blob.size);
- }
+ await uploadParts(blob,path,aes,upload,sent=>progress(sent,blob.size));
  // Publish manifest last, so a partial upload cannot be opened.
  await upload(path,await encryptPayload(new Blob([MANIFEST_PREFIX+JSON.stringify({v:1,count,bytes:blob.size,partSize:PART_SIZE})]),aes));
  return count;
@@ -67,6 +80,6 @@ export async function publishLazyReport(html:string,path:string,aes:CryptoKey,up
  const count=Math.ceil(split.bytes/PART_SIZE),root=new Blob([LAZY_PREFIX+JSON.stringify({v:2,count,bytes:split.bytes,partSize:PART_SIZE,assets:split.assets,html:shell})]);
  if(count>MAX_PARTS||root.size+28>SINGLE_LIMIT||root.size+split.bytes>MAX_REPORT_BYTES)throw Error('รายงานเกินขีดจำกัด 512 MiB หรือส่วนข้อมูลหลักใหญ่เกิน 45 MiB');
  const total=split.bytes+root.size;
- for(let i=0;i<count;i++){const end=Math.min((i+1)*PART_SIZE,split.bytes);await upload(partPath(path,i),await encryptPayload(split.blob.slice(i*PART_SIZE,end),aes,partAAD(path,i)));progress(end,total);}
+ await uploadParts(split.blob,path,aes,upload,sent=>progress(sent,total));
  await upload(path,await encryptPayload(root,aes));progress(total,total);return count;
 }

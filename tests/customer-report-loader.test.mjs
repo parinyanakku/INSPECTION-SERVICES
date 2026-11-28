@@ -53,3 +53,14 @@ test('new lazy report opens before photos and returns original data URI on deman
  for(let i=0;i<100&&!out.messages.length;i++)await new Promise(r=>setTimeout(r,10));
  assert.deepEqual(calls,[undefined,0]);assert.equal(out.messages[0].src,photo);
 });
+
+test('22-character customer link opens an original encrypted report',async()=>{
+ const raw=webcrypto.getRandomValues(new Uint8Array(16));
+ const token=Buffer.from(raw).toString('base64url');
+ assert.equal(token.length,22);
+ const aes=await webcrypto.subtle.importKey('raw',raw,'AES-GCM',false,['encrypt']);
+ const data=await webcrypto.subtle.encrypt({name:'AES-GCM',iv},aes,new TextEncoder().encode(content));
+ const out=await run('#'+token,async url=>url===signed?new Response(new Blob([iv,data])):new Response(JSON.stringify({url:signed})));
+ assert.equal(out.loaded,true);
+ assert.equal(await out.blob.text(),content);
+});
