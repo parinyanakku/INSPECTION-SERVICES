@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.237",
+  "latest": "v1.0.238",
   "releases": [
+    {
+      "version": "v1.0.238",
+      "build": 238,
+      "storageSchema": 2,
+      "date": "2026-11-28T09:53:13.784Z",
+      "notes": "Add iOS pilot and installer status with small package size display",
+      "commit": "778fc8fb43682a5476799299dc9597dfd9566bbf",
+      "notesTh": "เพิ่มรายการ iPhone iPad สถานะรอลงนาม Apple และตัวแอปทดสอบ iOS Simulator"
+    },
     {
       "version": "v1.0.237",
       "build": 237,
