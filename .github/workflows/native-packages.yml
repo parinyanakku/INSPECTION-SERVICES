@@ -39,8 +39,17 @@ jobs:
           $msi = (Resolve-Path build/native/windows/ProElite-Inspection.msi).Path
           $install = Start-Process msiexec -ArgumentList "/i `"$msi`" /qn /norestart" -Wait -PassThru
           if ($install.ExitCode -ne 0 -or !(Test-Path "$env:LOCALAPPDATA/ProElite Inspection/ProElite.exe")) { throw 'Install failed' }
+          $desktopLink = Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'ProElite Inspection (Native).lnk'
+          if (!(Test-Path $desktopLink)) { throw 'Desktop shortcut missing' }
+          $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($desktopLink)
+          if ($shortcut.TargetPath -ne "$env:LOCALAPPDATA\ProElite Inspection\ProElite.exe") { throw 'Shortcut target mismatch' }
           $remove = Start-Process msiexec -ArgumentList "/x `"$msi`" /qn /norestart" -Wait -PassThru
-          if ($remove.ExitCode -ne 0 -or (Test-Path "$env:LOCALAPPDATA/ProElite Inspection/ProElite.exe")) { throw 'Uninstall failed' }
+          if ($remove.ExitCode -ne 0 -or (Test-Path "$env:LOCALAPPDATA/ProElite Inspection/ProElite.exe") -or (Test-Path $desktopLink)) { throw 'Uninstall failed' }
+          $custom = Join-Path $env:LOCALAPPDATA 'ProElite Custom Test'
+          $install = Start-Process msiexec -ArgumentList "/i `"$msi`" INSTALLDIR=`"$custom`" /qn /norestart" -Wait -PassThru
+          if ($install.ExitCode -ne 0 -or !(Test-Path (Join-Path $custom 'ProElite.exe'))) { throw 'Custom folder install failed' }
+          $remove = Start-Process msiexec -ArgumentList "/x `"$msi`" /qn /norestart" -Wait -PassThru
+          if ($remove.ExitCode -ne 0 -or (Test-Path (Join-Path $custom 'ProElite.exe')) -or (Test-Path $desktopLink)) { throw 'Custom folder uninstall failed' }
       - name: Stage admin-only test MSI
         if: github.ref == 'refs/heads/main'
         run: node native/stage-test.mjs windows build/native/windows/ProElite-Inspection.msi

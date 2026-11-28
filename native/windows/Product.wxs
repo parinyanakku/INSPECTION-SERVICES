@@ -5,6 +5,16 @@
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perUser" Platform="x64" />
     <MajorUpgrade DowngradeErrorMessage="A newer ProElite Inspection launcher is already installed." />
     <MediaTemplate EmbedCab="yes" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch ProElite Inspection" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <Property Id="WixShellExecTarget" Value="[#AppExe]" />
+    <WixVariable Id="WixUILicenseRtf" Value="PilotNotice.rtf" />
+    <CustomAction Id="LaunchApplication" BinaryKey="WixCA" DllEntry="WixShellExec" Impersonate="yes" Return="ignore" />
+    <UI>
+      <UIRef Id="WixUI_InstallDir" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchApplication">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed</Publish>
+    </UI>
     <Icon Id="PackageIcon.ico" SourceFile="package.ico" />
     <Icon Id="AppIcon.ico" SourceFile="home.ico" />
     <Property Id="ARPPRODUCTICON" Value="PackageIcon.ico" />
@@ -24,7 +34,13 @@
         </Directory>
       </Directory>
       <Directory Id="ProgramMenuFolder" />
+      <Directory Id="DesktopFolder">
+        <Component Id="DesktopShortcut" Guid="28EC31CD-7439-4E34-B7FD-90AC255C665E" Win64="yes">
+          <Shortcut Id="DesktopLink" Name="ProElite Inspection (Native)" Target="[#AppExe]" WorkingDirectory="INSTALLDIR" Icon="AppIcon.ico" />
+          <RegistryValue Root="HKCU" Key="Software\Team Inspection Services\ProElite" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+      </Directory>
     </Directory>
-    <Feature Id="ProductFeature" Title="ProElite Inspection" Level="1"><ComponentRef Id="Launcher" /></Feature>
+    <Feature Id="ProductFeature" Title="ProElite Inspection" Level="1"><ComponentRef Id="Launcher" /><ComponentRef Id="DesktopShortcut" /></Feature>
   </Product>
 </Wix>

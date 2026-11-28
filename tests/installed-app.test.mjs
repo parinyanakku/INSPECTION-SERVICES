@@ -117,3 +117,13 @@ test('iOS is visible but unsigned pilot is not offered as a device IPA',()=>{
  assert.match(readFileSync('native/ios/build-simulator.sh','utf8'),/apple-ios15\.0-simulator/);
  assert.doesNotMatch(readFileSync('.github/workflows/ios-pilot.yml','utf8'),/upload-artifact|stage-test/);
 });
+
+test('Windows MSI wizard, desktop link and optional launch are wired to the installed executable',()=>{
+ const x=readFileSync('native/windows/Product.wxs','utf8'), b=readFileSync('native/windows/build.ps1','utf8');
+ assert.match(x,/WIXUI_INSTALLDIR" Value="INSTALLDIR"/);
+ assert.match(x,/UIRef Id="WixUI_InstallDir"/);
+ assert.match(x,/DesktopLink" Name="ProElite Inspection \(Native\)" Target="\[#AppExe\]"/);
+ assert.match(x,/WixShellExecTarget" Value="\[#AppExe\]"/);
+ assert.match(x,/ComponentRef Id="DesktopShortcut"/);
+ assert.match(b,/-ext WixUIExtension -ext WixUtilExtension/);
+});

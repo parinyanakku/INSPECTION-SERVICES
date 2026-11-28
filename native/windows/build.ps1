@@ -20,7 +20,7 @@ try {
   if ($LASTEXITCODE) { throw 'Launcher compilation failed' }
   & "$WixBin/candle.exe" -nologo "-dPackageVersion=1.0.$BuildNumber" "-dLauncherFile=$launcher" "-dNativeDir=$out" -out $obj Product.wxs
   if ($LASTEXITCODE) { throw 'WiX compilation failed' }
-  & "$WixBin/light.exe" -nologo -sval -out $msi $obj
+  & "$WixBin/light.exe" -nologo -sval -ext WixUIExtension -ext WixUtilExtension -out $msi $obj
   if ($LASTEXITCODE) { throw 'MSI linking failed' }
   Get-FileHash $msi
 } finally { Pop-Location }
