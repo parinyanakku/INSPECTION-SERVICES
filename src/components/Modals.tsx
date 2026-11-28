@@ -1,4 +1,5 @@
 import {imageUploadError} from '../utils/dngImage';
+import {AIEngineSettings} from './AIEngineSettings';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ExternalLink,
@@ -1405,7 +1406,7 @@ export const ApiKeySettingsModal: React.FC<ApiKeySettingsModalProps> = ({
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-2">
             <KeyRound className="w-4 h-4 text-amber-400" />
-            <h3 className="font-bold text-sm sm:text-base">{t.apiKeyModalTitle}</h3>
+            <h3 className="font-bold text-sm sm:text-base">{lang==='en'?'AI Engine Settings':'ตั้งค่า AI Engine'}</h3>
           </div>
           <button
             type="button"
@@ -1529,6 +1530,7 @@ export const ApiKeySettingsModal: React.FC<ApiKeySettingsModalProps> = ({
           <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-xl p-3 leading-relaxed">
             {t.apiKeyLocalNote}
           </p>
+          <AIEngineSettings lang={lang}/>
         </div>
 
         <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2">

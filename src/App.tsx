@@ -1111,7 +1111,7 @@ export default function App({isAdmin=false,language,onLanguageChange,autoRestore
                     : 'bg-rose-50 border-rose-200 text-rose-700'
                 }`}
               >
-                {geminiConfig.apiKey ? t.apiKeyStatusReady : t.apiKeyStatusMissing}
+                {geminiConfig.apiKey ? (lang==='en'?'Gemini key configured':'ตั้งค่า Gemini Key แล้ว') : (lang==='en'?'Gemini key not configured':'ยังไม่ได้ตั้งค่า Gemini Key')}
               </span>
               {geminiConfig.apiKey && (
                 <span className="text-[11px] font-mono-num text-slate-500">
@@ -1134,7 +1134,7 @@ export default function App({isAdmin=false,language,onLanguageChange,autoRestore
                  onClick={() => setShowApiKeyModal(true)}
                 className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer"
               >
-                {t.apiKeySettingsBtn}
+                {lang==='en'?'AI Engine settings':'ตั้งค่า AI Engine'}
               </button>
             </div>
           </div>
