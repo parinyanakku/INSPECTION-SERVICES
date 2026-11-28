@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.245",
+  "latest": "v1.0.246",
   "releases": [
+    {
+      "version": "v1.0.246",
+      "build": 246,
+      "storageSchema": 2,
+      "date": "2026-11-28T12:58:53.633Z",
+      "notes": "Bound Windows Drive central configuration request and preserve cancellation",
+      "commit": "d6e80bbf38ca1303139da945117e07d364f756b7",
+      "notesTh": "จำกัดเวลาขอค่าตั้งต้น Google 15 วินาที ยกเลิกได้ ไม่ค้างเมื่อเน็ตหลุด ไม่แตะระบบซิงค์หรือรูปภาพ"
+    },
     {
       "version": "v1.0.245",
       "build": 245,
