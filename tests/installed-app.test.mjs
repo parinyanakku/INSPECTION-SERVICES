@@ -84,3 +84,16 @@ test('admin installer dialog closes its native modal before releasing React stat
  assert.match(source,/onCancel=\{event=>\{event.preventDefault\(\);dismiss\(\);\}\}/);
  assert.equal((source.match(/event.stopPropagation\(\);dismiss\(\);/g)||[]).length,2);
 });
+
+test('test packages are staged privately and are not approved releases',()=>{
+ const edge=readFileSync('supabase/functions/proelite-test-installers/index.ts','utf8');
+ const workflow=readFileSync('.github/workflows/native-packages.yml','utf8');
+ assert.match(edge,/ROOT='candidates\/test\/'/);
+ assert.match(edge,/crypto\.subtle\.verify/);
+ assert.match(edge,/c\.repository_id==='1472573866'/);
+ assert.match(edge,/rest\/v1\/rpc\/inspection_can_download/);
+ assert.match(workflow,/id-token: write/);
+ assert.match(workflow,/stage-test\.mjs windows/);
+ assert.match(workflow,/stage-test\.mjs android/);
+ assert.doesNotMatch(workflow,/upload-artifact/);
+});

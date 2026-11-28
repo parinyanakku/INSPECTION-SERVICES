@@ -1,0 +1,16 @@
+import {readFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+const [platform,file]=process.argv.slice(2);
+if(!['windows','android'].includes(platform)||!file||process.env.GITHUB_REF!=='refs/heads/main')throw Error('Invalid test staging context');
+const url=new URL(process.env.ACTIONS_ID_TOKEN_REQUEST_URL);
+if(url.protocol!=='https:'||!process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN)throw Error('OIDC unavailable');
+url.searchParams.set('audience','proelite-private-test-installers-v1');
+const auth=await fetch(url,{headers:{Authorization:'Bearer '+process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN},redirect:'error'});
+if(!auth.ok)throw Error('OIDC token request failed');
+const {value}=await auth.json();
+if(typeof value!=='string')throw Error('Missing OIDC token');
+const bytes=await readFile(file);
+if(bytes.length>20*1024*1024)throw Error('Test file too large');
+const r=await fetch('https://geleptwbxjoumxyxbhqa.supabase.co/functions/v1/proelite-test-installers?platform='+platform,{method:'POST',headers:{Authorization:'Bearer '+value,'Content-Type':'application/octet-stream'},body:bytes,redirect:'error'});
+if(!r.ok)throw Error('Private test staging failed (HTTP '+r.status+')');
+console.log('Private admin test package staged:',platform,bytes.length,'bytes; SHA256',createHash('sha256').update(bytes).digest('hex'));

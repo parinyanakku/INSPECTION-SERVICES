@@ -3,6 +3,8 @@ import {appRoot} from '../utils/installApp';
 import type {AppLanguage} from '../types/inspection';
 
 const packages = ['ProElite-Inspection.msi', 'ProElite-Inspection.apk'] as const;
+const testPackages = ['ProElite-Inspection-TEST.msi', 'ProElite-Inspection-TEST.apk'] as const;
+type PackageName = typeof packages[number] | typeof testPackages[number];
 const buttonStyle = 'rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-50';
 type Props = {lang:AppLanguage; api:string; publicKey:string; token:string; onClose:()=>void};
 
@@ -11,6 +13,8 @@ export function DownloadCenter({lang, api, publicKey, token, onClose}: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const closing = useRef(false);
   const [available, setAvailable] = useState<string[] | null>(null);
+  const [testAvailable,setTestAvailable]=useState<string[]|null>(null);
+  const [testFailed,setTestFailed]=useState(false);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [busy, setBusy] = useState('');
@@ -20,6 +24,7 @@ export function DownloadCenter({lang, api, publicKey, token, onClose}: Props) {
   const download = useRef<AbortController | null>(null);
   const storage = api + '/storage/v1/object/';
   const headers = {apikey: publicKey, Authorization: 'Bearer ' + token};
+  const testEndpoint=api+'/functions/v1/proelite-test-installers';
   useEffect(() => {
     const element = dialog.current;
     closing.current = false;
@@ -54,12 +59,23 @@ export function DownloadCenter({lang, api, publicKey, token, onClose}: Props) {
     void list().catch(() => { if (!controller.signal.aborted) setFailed(true); });
     return () => { controller.abort(); download.current?.abort(); download.current = null; };
   }, [storage, publicKey, token, attempt]);
-  async function save(name:typeof packages[number]) {
+  useEffect(()=>{
+    const controller=new AbortController();
+    setTestAvailable(null);setTestFailed(false);
+    void (async()=>{
+      const r=await fetch(testEndpoint,{headers:{apikey:publicKey,Authorization:'Bearer '+token},cache:'no-store',signal:AbortSignal.any([controller.signal,AbortSignal.timeout(15000)])});
+      if(!r.ok)throw Error();const list=await r.json() as {name:string}[];
+      if(!controller.signal.aborted)setTestAvailable(list.map(f=>f.name));
+    })().catch(()=>{if(!controller.signal.aborted)setTestFailed(true);});
+    return ()=>controller.abort();
+  },[testEndpoint,publicKey,token,attempt]);
+  async function save(name:PackageName) {
     if (download.current) return;
     const controller = new AbortController();
     download.current = controller; setBusy(name); setError(false); setReady(null); setShareError(false);
     try {
-      const res = await fetch(storage + 'authenticated/proelite-installers/approved/' + name,
+      const url=name.includes('-TEST.')?testEndpoint+'?platform='+(name.endsWith('.msi')?'windows':'android'):storage+'authenticated/proelite-installers/approved/'+name;
+      const res = await fetch(url,
         {headers, cache:'no-store', signal:AbortSignal.any([controller.signal, AbortSignal.timeout(120000)])});
       if (!res.ok) throw Error();
       const file = await res.blob();
@@ -87,7 +103,7 @@ export function DownloadCenter({lang, api, publicKey, token, onClose}: Props) {
     <section className="my-5 space-y-2 text-sm">
       <p className="font-semibold text-blue-900">{tr('เฉพาะ Admin — ผู้ซื้อดาวน์โหลดเองไม่ได้','Admin only — buyers cannot download installers')}</p>
       <p>{tr('เลือกไฟล์ที่อนุมัติแล้ว จากนั้นบันทึกลงเครื่องหรือแชร์ไฟล์จากโทรศัพท์ด้วยตนเอง ระบบจะไม่ส่งให้ลูกค้าอัตโนมัติ','Prepare an approved package, then save it or share the file manually from your phone. Nothing is sent to customers automatically.')}</p>
-      <p className="text-slate-600">{tr('ไฟล์ติดตั้งรุ่นทดลองยังไม่เปิดแจก การปิดสิทธิ์เข้าเว็บเดิมจะทำหลังจากทดสอบแอปใหม่ครบ รวมถึง iOS','Experimental packages are not approved for distribution. The old browser workspace remains enabled until native clients, including iOS, are verified.')}</p>
+      <p className="text-slate-600">{tr('รุ่นทดสอบอยู่ในส่วนแยกสำหรับผู้ดูแลเท่านั้น การปิดสิทธิ์เข้าเว็บเดิมจะทำหลังจากทดสอบแอปใหม่ครบ รวมถึง iOS','Test packages are separate for administrators only. The old browser workspace remains enabled until native clients, including iOS, are verified.')}</p>
     </section>
     <section className="space-y-2 border-t pt-4 text-sm"><h3 className="font-bold">{tr('ไฟล์ติดตั้งที่อนุมัติแล้ว','Approved installer files')}</h3>
       {failed ? <p role="alert">{tr('โหลดรายการไม่ได้','Could not load packages.')} <button className={buttonStyle} onClick={() => setAttempt(n=>n+1)}>{tr('ลองอีกครั้ง','Retry')}</button></p>
@@ -97,7 +113,13 @@ export function DownloadCenter({lang, api, publicKey, token, onClose}: Props) {
         : <span className="text-slate-600">{available ? tr('ยังไม่เปิดดาวน์โหลด','Not released yet') : tr('กำลังตรวจสอบ…','Checking…')}</span>}
       </div>)}
     </section>
-    {ready&&<div className="mt-3 rounded-lg border p-3 text-sm space-y-2"><p className="font-semibold break-all">{ready.name}</p><p>{(ready.size/1048576).toFixed(1)} MB</p><div className="flex flex-wrap gap-2"><button type="button" className={buttonStyle} onClick={saveReady}>{tr('บันทึกลงเครื่อง','Save file')}</button><button type="button" className={buttonStyle} onClick={()=>void shareReady()}>{tr('แชร์ไฟล์จากมือถือ','Share file')}</button></div>{shareError&&<p role="status">{tr('เครื่องนี้แชร์ไฟล์โดยตรงไม่ได้ ให้บันทึกลงเครื่องแล้วแนบไฟล์ใน LINE หรือแอปส่งไฟล์เอง','Direct file sharing is unavailable on this device. Save the file and attach it manually in your messaging app.')}</p>}</div>}
+    <section className="mt-4 space-y-2 border-t pt-4 text-sm">
+      <h3 className="font-bold">{tr('ไฟล์รุ่นทดสอบ — เฉพาะ Admin','Test installers — admin only')}</h3>
+      <p className="text-xs">{tr('สำหรับทดสอบเองเท่านั้น Windows ยังไม่เซ็นรับรอง Android ใช้กุญแจทดสอบที่เปลี่ยนได้ ไม่ควรแจกผู้ซื้อ','For your own tests only. Windows is unsigned; Android uses a temporary test key. Do not distribute to buyers.')}</p>
+      {testFailed?<p role="alert">{tr('ตรวจรายการทดสอบไม่ได้','Cannot check test files')} <button type="button" className={buttonStyle} onClick={()=>setAttempt(n=>n+1)}>{tr('ลองอีกครั้ง','Retry')}</button></p>:testPackages.map((file,i)=><div key={file} className="flex items-center justify-between gap-2"><span>{i===0?'Windows · TEST MSI':'Android · TEST APK'}</span>{testAvailable?.includes(file)?<button type="button" disabled={!!busy} className={buttonStyle} onClick={()=>void save(file)}>{busy===file?tr('กำลังเตรียม…','Preparing…'):tr('ดาวน์โหลดรุ่นทดสอบ','Download test')}</button>:<span className="text-xs">{testAvailable?tr('ยังไม่มีไฟล์','Not built yet'):tr('กำลังตรวจสอบ…','Checking…')}</span>}</div>)}
+      <button type="button" className={buttonStyle} disabled={!!busy} onClick={()=>setAttempt(n=>n+1)}>{tr('ตรวจไฟล์ล่าสุด','Refresh files')}</button>
+    </section>
+    {ready&&<div className="mt-3 rounded-lg border p-3 text-sm space-y-2"><p className="font-semibold break-all">{ready.name}</p><p>{(ready.size/1048576).toFixed(1)} MB</p><div className="flex flex-wrap gap-2"><button type="button" className={buttonStyle} onClick={saveReady}>{tr('บันทึกลงเครื่อง','Save file')}</button>{!ready.name.includes('-TEST.')&&<button type="button" className={buttonStyle} onClick={()=>void shareReady()}>{tr('แชร์ไฟล์จากมือถือ','Share file')}</button>}</div>{shareError&&<p role="status">{tr('เครื่องนี้แชร์ไฟล์โดยตรงไม่ได้ ให้บันทึกลงเครื่องแล้วแนบไฟล์ใน LINE หรือแอปส่งไฟล์เอง','Direct file sharing is unavailable on this device. Save the file and attach it manually in your messaging app.')}</p>}</div>}
     {error && <p role="alert" className="mt-3 text-sm text-red-700">{tr('ดำเนินการไม่สำเร็จ กรุณาตรวจการเชื่อมต่อและสิทธิ์บัญชีแล้วลองอีกครั้ง','Could not complete the request. Check your connection and account access, then try again.')}</p>}
     <button type="button" autoFocus className={buttonStyle+' mt-5 min-h-11 w-full cursor-pointer'} onClick={event=>{event.stopPropagation();dismiss();}}>{tr('ปิด','Close')}</button>
   </dialog>;
