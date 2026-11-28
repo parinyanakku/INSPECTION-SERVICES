@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.241",
+  "latest": "v1.0.242",
   "releases": [
+    {
+      "version": "v1.0.242",
+      "build": 242,
+      "storageSchema": 2,
+      "date": "2026-11-28T10:16:51.364Z",
+      "notes": "Verify installer build integrity and preserve Windows install path",
+      "commit": "d59cda3ba479f84ad472c6590b21a4fdcb32ef2c",
+      "notesTh": "ตรวจ SHA-256 รุ่นทดสอบก่อนบันทึก และจำตำแหน่งติดตั้ง Windows"
+    },
     {
       "version": "v1.0.241",
       "build": 241,
