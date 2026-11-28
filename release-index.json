@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.230",
+  "latest": "v1.0.231",
   "releases": [
+    {
+      "version": "v1.0.231",
+      "build": 231,
+      "storageSchema": 2,
+      "date": "2026-11-28T07:34:56.296Z",
+      "notes": "Speed up customer report publishing and shorten new links",
+      "commit": "4378988cf3664e6247e04009e8e10968be442c50"
+    },
     {
       "version": "v1.0.230",
       "build": 230,
