@@ -35,3 +35,6 @@ for(const release of releases.filter(r=>r.storageSchema!==2)){
 }
 fs.writeFileSync('dist/release-index.json',JSON.stringify({latest:manifest.latest,releases:compatible},null,2)+'\n');
 fs.copyFileSync('scripts/pages-launcher.html','dist/index.html');
+// Customer links are separate from immutable application builds. Serve the current
+// hardened viewer at existing paths too, retaining each URL fragment and expiry.
+for(const release of compatible){for(const viewer of ['r.html','customer-report.html'])fs.copyFileSync(path.join('dist',viewer),path.join('dist/versions',release.version,viewer));}

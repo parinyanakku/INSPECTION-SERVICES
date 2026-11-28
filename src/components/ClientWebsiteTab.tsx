@@ -95,7 +95,7 @@ async function registerShortLink(path:string,key:Uint8Array,expiresAt:number){
    const row=(await existing.json())[0];
    if(!row||row.object_path!==path||Math.abs(Date.parse(row.expires_at)-expiresAt)>1000)throw err;
  }
- const viewer=new URL('r.html',window.location.href);
+ const viewer=new URL(/\/versions\/v1\.0\.\d+\//.test(location.pathname)?'../../r.html':'r.html',window.location.href);
  viewer.hash=btoa(String.fromCharCode(...key)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
  return {path,url:viewer.href,expiresAt};
 }
