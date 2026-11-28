@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.243",
+  "latest": "v1.0.244",
   "releases": [
+    {
+      "version": "v1.0.244",
+      "build": 244,
+      "storageSchema": 2,
+      "date": "2026-11-28T12:18:52.273Z",
+      "notes": "Fix native Windows Google Drive authorization using system browser and PKCE",
+      "commit": "f24af9c7ae1d21e5f4b62534452d3106e9ffb9de",
+      "notesTh": "เพิ่ม OAuth Desktop แยกจากเว็บเดิม ไม่เปลี่ยนระบบซิงค์ JSON"
+    },
     {
       "version": "v1.0.243",
       "build": 243,
