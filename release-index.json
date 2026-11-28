@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.218",
+  "latest": "v1.0.219",
   "releases": [
+    {
+      "version": "v1.0.219",
+      "build": 219,
+      "storageSchema": 2,
+      "date": "2026-11-28T00:27:38.512Z",
+      "notes": "Add practical Drive sync guide for field work and large files",
+      "commit": "51825cfe4eefb6ffd05c57fa45ccd4d7b06cdbfe",
+      "notesTh": "เพิ่มแนะนำการซิงค์ข้ามเครื่อง การเดินตรวจ และการจัดการไฟล์ใหญ่"
+    },
     {
       "version": "v1.0.218",
       "build": 218,
