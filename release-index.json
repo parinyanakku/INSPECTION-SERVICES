@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.217",
+  "latest": "v1.0.218",
   "releases": [
+    {
+      "version": "v1.0.218",
+      "build": 218,
+      "storageSchema": 2,
+      "date": "2026-11-28T00:11:50.161Z",
+      "notes": "Save large Drive restores in bounded local writes",
+      "commit": "e4654d5b1c2601d57b817aa212f9c151c75745f2",
+      "notesTh": "แบ่งบันทึกแฟ้มและรูปขนาดใหญ่ลงเครื่องทีละส่วน พร้อมเก็บงานเดิมไว้หากบันทึกไม่ครบ"
+    },
     {
       "version": "v1.0.217",
       "build": 217,
