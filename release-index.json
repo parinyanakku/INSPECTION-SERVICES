@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.242",
+  "latest": "v1.0.243",
   "releases": [
+    {
+      "version": "v1.0.243",
+      "build": 243,
+      "storageSchema": 2,
+      "date": "2026-11-28T10:22:23.263Z",
+      "notes": "Add Windows device key proof pilot",
+      "commit": "852ea80e36c521cd55c7013b8339235effa3c481",
+      "notesTh": "ทดลองยืนยันกุญแจเครื่อง Windows กับเซิร์ฟเวอร์เฉพาะ Admin ไม่จำกัดสิทธิ์ผู้ซื้อเดิม"
+    },
     {
       "version": "v1.0.242",
       "build": 242,
