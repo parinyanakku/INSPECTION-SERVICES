@@ -1,6 +1,14 @@
 {
-  "latest": "v1.0.236",
+  "latest": "v1.0.237",
   "releases": [
+    {
+      "version": "v1.0.237",
+      "build": 237,
+      "storageSchema": 2,
+      "date": "2026-11-28T09:49:11.221Z",
+      "notes": "Fix Android test APK staging filename and add regression check",
+      "commit": "e389b3369f3ae7377db3f9353e0b2b6db0d079f5"
+    },
     {
       "version": "v1.0.236",
       "build": 236,
