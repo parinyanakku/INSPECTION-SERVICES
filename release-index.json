@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.220",
+  "latest": "v1.0.221",
   "releases": [
+    {
+      "version": "v1.0.221",
+      "build": 221,
+      "storageSchema": 2,
+      "date": "2026-11-28T01:15:58.823Z",
+      "notes": "Trace reference floor plans with validated coordinates and editable room zones",
+      "commit": "20141b6de064792ab89ef17eecdac3da84592d3f",
+      "notesTh": "สเก็ตตามภาพอ้างอิง ตรวจหน่วยพิกัด แสดงกรอบห้องและโซนก่อนนำไปใช้"
+    },
     {
       "version": "v1.0.220",
       "build": 220,
