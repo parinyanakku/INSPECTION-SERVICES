@@ -80,6 +80,10 @@ export function DownloadCenter({lang, api, publicKey, token, onClose}: Props) {
       if (!res.ok) throw Error();
       const file = await res.blob();
       if (controller.signal.aborted) return;
+      const magic = new Uint8Array(await file.slice(0,8).arrayBuffer());
+      const expected = name.endsWith('.msi') ? [208,207,17,224,161,177,26,225] : [80,75,3,4];
+      if (!expected.every((b,i)=>magic[i]===b)) throw Error('Invalid installer');
+      if (controller.signal.aborted) return;
       setReady(new File([file],name,{type:'application/octet-stream'}));
     } catch { if (!controller.signal.aborted) setError(true); }
     finally { if (download.current === controller) { download.current = null; setBusy(''); } }
@@ -112,14 +116,20 @@ export function DownloadCenter({lang, api, publicKey, token, onClose}: Props) {
         {available?.includes(file) ? <button type="button" className={buttonStyle} disabled={!!busy} onClick={() => void save(file)}>{busy===file?tr('กำลังเตรียมไฟล์…','Preparing file…'):tr('เตรียมไฟล์','Prepare file')}</button>
         : <span className="text-slate-600">{available ? tr('ยังไม่เปิดดาวน์โหลด','Not released yet') : tr('กำลังตรวจสอบ…','Checking…')}</span>}
       </div>)}
+      <div className="flex items-center justify-between gap-2"><span>iPhone / iPad · IPA</span><span className="text-xs text-right">{tr('รอลงนาม Apple','Apple signing required')}</span></div>
     </section>
     <section className="mt-4 space-y-2 border-t pt-4 text-sm">
       <h3 className="font-bold">{tr('ไฟล์รุ่นทดสอบ — เฉพาะ Admin','Test installers — admin only')}</h3>
       <p className="text-xs">{tr('สำหรับทดสอบเองเท่านั้น Windows ยังไม่เซ็นรับรอง Android ใช้กุญแจทดสอบที่เปลี่ยนได้ ไม่ควรแจกผู้ซื้อ','For your own tests only. Windows is unsigned; Android uses a temporary test key. Do not distribute to buyers.')}</p>
       {testFailed?<p role="alert">{tr('ตรวจรายการทดสอบไม่ได้','Cannot check test files')} <button type="button" className={buttonStyle} onClick={()=>setAttempt(n=>n+1)}>{tr('ลองอีกครั้ง','Retry')}</button></p>:testPackages.map((file,i)=><div key={file} className="flex items-center justify-between gap-2"><span>{i===0?'Windows · TEST MSI':'Android · TEST APK'}</span>{testAvailable?.includes(file)?<button type="button" disabled={!!busy} className={buttonStyle} onClick={()=>void save(file)}>{busy===file?tr('กำลังเตรียม…','Preparing…'):tr('ดาวน์โหลดรุ่นทดสอบ','Download test')}</button>:<span className="text-xs">{testAvailable?tr('ยังไม่มีไฟล์','Not built yet'):tr('กำลังตรวจสอบ…','Checking…')}</span>}</div>)}
+      <div className="rounded-lg border p-3 space-y-1">
+        <div className="flex items-center justify-between gap-2"><span className="font-semibold">iPhone / iPad</span><span className="text-xs">{tr('ยังไม่มี IPA พร้อมติดตั้ง','No installable IPA yet')}</span></div>
+        <p className="text-xs">{tr('กำลังเตรียมแอป iOS แบบหน้าต่างในตัวโปรแกรม ต้องมีการลงนามและสิทธิ์ติดตั้งจาก Apple ก่อนเปิดไฟล์ดาวน์โหลด','The embedded iOS app pilot requires Apple signing and device distribution approval before downloads can be enabled.')}</p>
+        <details className="text-xs"><summary className="cursor-pointer font-semibold">{tr('ทดลองบน iPhone ฟรีชั่วคราว (PWA)','Temporary free iPhone test (PWA)')}</summary><p className="mt-2">{tr('เปิดโปรแกรมเดิมใน Safari กดแชร์ → เพิ่มไปยังหน้าจอโฮม วิธีนี้ยังเป็นเว็บแอป ไม่ใช่ IPA และยังไม่จำกัดการเข้าผ่านเบราว์เซอร์','Open the existing workspace in Safari, then Share → Add to Home Screen. This is a web app, not an IPA, and does not restrict browser access.')}</p></details>
+      </div>
       <button type="button" className={buttonStyle} disabled={!!busy} onClick={()=>setAttempt(n=>n+1)}>{tr('ตรวจไฟล์ล่าสุด','Refresh files')}</button>
     </section>
-    {ready&&<div className="mt-3 rounded-lg border p-3 text-sm space-y-2"><p className="font-semibold break-all">{ready.name}</p><p>{(ready.size/1048576).toFixed(1)} MB</p><div className="flex flex-wrap gap-2"><button type="button" className={buttonStyle} onClick={saveReady}>{tr('บันทึกลงเครื่อง','Save file')}</button>{!ready.name.includes('-TEST.')&&<button type="button" className={buttonStyle} onClick={()=>void shareReady()}>{tr('แชร์ไฟล์จากมือถือ','Share file')}</button>}</div>{shareError&&<p role="status">{tr('เครื่องนี้แชร์ไฟล์โดยตรงไม่ได้ ให้บันทึกลงเครื่องแล้วแนบไฟล์ใน LINE หรือแอปส่งไฟล์เอง','Direct file sharing is unavailable on this device. Save the file and attach it manually in your messaging app.')}</p>}</div>}
+    {ready&&<div className="mt-3 rounded-lg border p-3 text-sm space-y-2"><p className="font-semibold break-all">{ready.name}</p><p>{ready.size<1048576? (ready.size/1024).toFixed(1)+' KiB':(ready.size/1048576).toFixed(2)+' MiB'}</p><div className="flex flex-wrap gap-2"><button type="button" className={buttonStyle} onClick={saveReady}>{tr('บันทึกลงเครื่อง','Save file')}</button>{!ready.name.includes('-TEST.')&&<button type="button" className={buttonStyle} onClick={()=>void shareReady()}>{tr('แชร์ไฟล์จากมือถือ','Share file')}</button>}</div>{shareError&&<p role="status">{tr('เครื่องนี้แชร์ไฟล์โดยตรงไม่ได้ ให้บันทึกลงเครื่องแล้วแนบไฟล์ใน LINE หรือแอปส่งไฟล์เอง','Direct file sharing is unavailable on this device. Save the file and attach it manually in your messaging app.')}</p>}</div>}
     {error && <p role="alert" className="mt-3 text-sm text-red-700">{tr('ดำเนินการไม่สำเร็จ กรุณาตรวจการเชื่อมต่อและสิทธิ์บัญชีแล้วลองอีกครั้ง','Could not complete the request. Check your connection and account access, then try again.')}</p>}
     <button type="button" autoFocus className={buttonStyle+' mt-5 min-h-11 w-full cursor-pointer'} onClick={event=>{event.stopPropagation();dismiss();}}>{tr('ปิด','Close')}</button>
   </dialog>;

@@ -106,3 +106,14 @@ test('Android private test staging uses the actual test build filename, not the 
  assert.ok(workflow.includes('node native/stage-test.mjs android build/native/android/'+match[1]));
  assert.ok(workflow.includes('node native/stage.mjs android build/native/android/ProElite-Inspection.apk'));
 });
+
+test('iOS is visible but unsigned pilot is not offered as a device IPA',()=>{
+ const ui=readFileSync('src/components/DownloadCenter.tsx','utf8');
+ assert.match(ui,/iPhone \/ iPad · IPA/);
+ assert.match(ui,/Apple signing required/);
+ assert.match(ui,/No installable IPA yet/);
+ assert.match(ui,/Temporary free iPhone test \(PWA\)/);
+ assert.match(readFileSync('native/ios/Launcher.swift','utf8'),/WKWebView/);
+ assert.match(readFileSync('native/ios/build-simulator.sh','utf8'),/apple-ios15\.0-simulator/);
+ assert.doesNotMatch(readFileSync('.github/workflows/ios-pilot.yml','utf8'),/upload-artifact|stage-test/);
+});

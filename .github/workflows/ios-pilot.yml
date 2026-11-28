@@ -1,0 +1,15 @@
+name: Compile iOS simulator pilot
+on:
+  push:
+    branches: [main]
+    paths: ['native/ios/**', 'public/product-icons/**', '.github/workflows/ios-pilot.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ios-simulator:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile unsigned simulator app (no distribution)
+        run: bash native/ios/build-simulator.sh

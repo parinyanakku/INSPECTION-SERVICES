@@ -2,7 +2,7 @@ name: Build private ProElite packages
 on:
   push:
     branches: [main]
-    paths: ['native/**', 'public/product-icons/**', '.github/workflows/native-packages.yml']
+    paths: ['native/windows/**', 'native/android/**', 'native/stage*.mjs', 'public/product-icons/**', '.github/workflows/native-packages.yml']
   workflow_dispatch:
     inputs:
       stage:
