@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.221",
+  "latest": "v1.0.222",
   "releases": [
+    {
+      "version": "v1.0.222",
+      "build": 222,
+      "storageSchema": 2,
+      "date": "2026-11-28T01:21:47.533Z",
+      "notes": "Import documents into report book with reviewed AI changes",
+      "commit": "f4ffb36ce91d9044dc68b5a8784fcbe98bdaa8d3",
+      "notesTh": "นำเข้า PDF Word Excel และเลือกเพิ่มหรือแทนที่เนื้อหาในเล่มรายงานผ่าน AI"
+    },
     {
       "version": "v1.0.221",
       "build": 221,
