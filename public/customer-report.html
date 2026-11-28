@@ -44,9 +44,9 @@
  try{
   step('กำลังตรวจสอบลิงก์','Checking report link','ยังไม่ดาวน์โหลดรูปภาพ','Images have not been downloaded yet');
   const fragment=location.hash.slice(1);let url,key,hash;
-  if(/^[A-Za-z0-9_-]{43}$/.test(fragment)){
-   const raw=Uint8Array.from(atob(fragment.replace(/-/g,'+').replace(/_/g,'/')+'='),c=>c.charCodeAt(0));
-   if(raw.length!==32)throw Error('LINK');
+  if(/^(?:[A-Za-z0-9_-]{22}|[A-Za-z0-9_-]{43})$/.test(fragment)){
+   const raw=Uint8Array.from(atob(fragment.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
+   if(raw.length!==16&&raw.length!==32)throw Error('LINK');
    key=raw;
    hash=Array.from(new Uint8Array(await bounded(crypto.subtle.digest('SHA-256',raw),10000,'DECRYPT')),v=>v.toString(16).padStart(2,'0')).join('');
    url=await request(origin+'/functions/v1/inspection-report-resolve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hash})},20000,async r=>{if(!r.ok)throw Error([400,401,403,404,410].includes(r.status)?'LINK':'NETWORK');return new URL((await r.json()).url);});

@@ -8,22 +8,16 @@ import {renderFloorplanZonesToPng,inspectionDownloadName} from '../utils/imageUt
 
 const esc=(v:unknown)=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 const raster=(v:string|null|undefined)=>typeof v==='string'&&/^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(v);
-async function photoCopy(src:string|null|undefined,preserve=false):Promise<string>{
+function photoCopy(src:string|null|undefined):string{
   if(!src)return '';
   if(!raster(src))throw Error('Unsupported embedded photo format');
-  if(preserve)return src;
-  const im=new Image();
-  await new Promise<void>((resolve,reject)=>{im.onload=()=>resolve();im.onerror=()=>reject(Error('Cannot decode photo'));im.src=src;});
-  const scale=Math.min(1,1600/Math.max(im.naturalWidth,im.naturalHeight));
-  const c=document.createElement('canvas');c.width=Math.max(1,Math.round(im.naturalWidth*scale));c.height=Math.max(1,Math.round(im.naturalHeight*scale));
-  try{const ctx=c.getContext('2d');if(!ctx)throw Error('Canvas unavailable');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(im,0,0,c.width,c.height);return c.toDataURL('image/jpeg',.88);}
-  finally{c.width=0;c.height=0;im.src='';}
+  return src;
 }
 function photoSource(d:DefectItem,side:'before'|'after'){
   const old=d as DefectItem&{annotatedBeforeImg?:string;annotatedAfterImg?:string;annotatedImage?:string;originalImage?:string};
   return side==='before'?old.annotatedBeforeImg||old.annotatedImage||d.beforeImg||d.photoDataUrl||old.originalImage:old.annotatedAfterImg||d.afterImg;
 }
-async function buildClientWebsite(project:ProjectFile,brand:BrandConfig,lang:AppLanguage,onProgress:(n:number)=>void,preserve=false){
+async function buildClientWebsite(project:ProjectFile,brand:BrandConfig,lang:AppLanguage,onProgress:(n:number)=>void){
  const tr=(th:string,en:string)=>lang==='en'?en:th;
  const rows=[...project.defects].sort((a,b)=>a.number-b.number);
  const floors=new Map<string,{name:string;index:number;src:string}>();
@@ -38,8 +32,8 @@ async function buildClientWebsite(project:ProjectFile,brand:BrandConfig,lang:App
  for(let i=0;i<rows.length;i++){
    const d=rows[i],fl=floors.get(d.floorId),zone=d.zone||tr('ไม่ระบุโซน','Unspecified zone');zones.add(zone);
    let before='',after='';
-   try{before=await photoCopy(photoSource(d,'before'),preserve);}catch{missing.push('#'+d.number+' Before');}
-   try{after=await photoCopy(photoSource(d,'after'),preserve);}catch{missing.push('#'+d.number+' After');}
+   try{before=photoCopy(photoSource(d,'before'));}catch{missing.push('#'+d.number+' Before');}
+   try{after=photoCopy(photoSource(d,'after'));}catch{missing.push('#'+d.number+' After');}
    const status=d.status==='แก้ไขแล้ว'?'fixed':d.status==='กำลังแก้ไข'?'partial':'pending';
    const sev=d.severity==='เร่งด่วน'?'urgent':d.severity==='ปานกลาง'?'moderate':'minor';
    const x=Number.isFinite(d.x)?Math.max(3,Math.min(97,d.x)):50,y=Number.isFinite(d.y)?Math.max(4,Math.min(96,d.y)):50;
@@ -110,7 +104,7 @@ async function removeSharedReport(path:string,parts=0){
 }
 async function publishSharedReport(html:string,days:number,onProgress:(sent:number,total:number)=>void):Promise<SharedLink>{
  const {id}=reportSession(),path=id+'/'+crypto.randomUUID()+'.bin';
- const key=crypto.getRandomValues(new Uint8Array(32)),aes=await crypto.subtle.importKey('raw',key,'AES-GCM',false,['encrypt']);
+ const key=crypto.getRandomValues(new Uint8Array(16)),aes=await crypto.subtle.importKey('raw',key,'AES-GCM',false,['encrypt']);
  const attempted:string[]=[];
  try{
    const count=await publishLazyReport(html,path,aes,async(p,payload)=>{
@@ -136,7 +130,7 @@ export function ClientWebsiteTab({project,brand,lang}:{project:ProjectFile;brand
    if(busy)return;
    if(!window.confirm(tr('สร้างลิงก์ออนไลน์สำหรับโครงการนี้? ผู้ที่ได้รับลิงก์สามารถดูและส่งต่อรายงานได้ โปรดยืนยันว่าคุณได้รับอนุญาตให้แชร์ข้อมูล','Publish this project snapshot? Anyone with the link can view and forward it. Confirm you are authorized to share.')))return;
    setBusy(true);setDone(0);setMessage('');setUpload(null);
-   try{reportSession();const {html,missing}=await buildClientWebsite(project,brand,lang,setDone,true);
+   try{reportSession();const {html,missing}=await buildClientWebsite(project,brand,lang,setDone);
      if(missing.length)throw Error(tr('มีรูปที่อ่านไม่ได้ กรุณาตรวจสอบ: ','Unavailable photos: ')+missing.join(', '));
      const link=await publishSharedReport(html,days,(sent,total)=>setUpload({sent,total}));saveLinks([link,...links]);setMessage(tr('สร้างลิงก์สำเร็จ','Link created'));
    }catch(e){setMessage(tr('สร้างลิงก์ไม่สำเร็จ: ','Publish failed: ')+(e instanceof Error?e.message:String(e)));}
@@ -180,7 +174,7 @@ export function ClientWebsiteTab({project,brand,lang}:{project:ProjectFile;brand
        <button data-tour="client" type="button" onClick={publish} disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy?<Loader2 className="w-4 h-4 animate-spin"/>:<Link2 className="w-4 h-4"/>}{busy&&upload?tr('กำลังอัปโหลด ','Uploading ')+Math.floor(upload.sent/upload.total*100)+'%':tr('สร้างลิงก์เว็บไซต์ลูกค้า','Create customer link')}</button>
      </div>
      {busy&&upload&&<div role="status" className="text-xs text-slate-600"><progress className="w-full" max={upload.total} value={upload.sent}/>{(upload.sent/1048576).toFixed(1)} / {(upload.total/1048576).toFixed(1)} MB</div>}
-     <p className="text-xs text-slate-600">{tr('ลิงก์สั้นแบบเดิม เปิดข้อมูล Defect ก่อนแล้วโหลดรูปตามที่เลื่อนดู รองรับรายงานสูงสุด 512 MiB โดยไม่ลดขนาดรูปที่บันทึกไว้','Same short link; open defect data first, then load photos as needed. Reports up to 512 MiB without resizing saved photos.')}</p>
+     <p className="text-xs text-slate-600">{tr('ลิงก์สั้น เปิดข้อมูล Defect ก่อนแล้วโหลดรูปตามที่เลื่อนดู รองรับรายงานสูงสุด 512 MiB โดยไม่ลดขนาดรูปที่บันทึกไว้','Short link; open defect data first, then load photos as needed. Reports up to 512 MiB without resizing saved photos.')}</p>
      {links.map(link=><div key={link.path} className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
        <div className="text-xs text-slate-600">{link.expiresAt>Date.now()?tr('หมดอายุ: ','Expires: ')+new Date(link.expiresAt).toLocaleString(lang==='en'?'en-GB':'th-TH'):tr('หมดอายุแล้ว','Expired')}</div>
        <input readOnly value={link.url} onFocus={e=>e.target.select()} aria-label={tr('ลิงก์เว็บไซต์ลูกค้า','Customer link')} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs"/>
