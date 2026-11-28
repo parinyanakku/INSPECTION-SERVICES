@@ -1,6 +1,9 @@
 using System;
 using System.Drawing;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
@@ -35,6 +38,42 @@ internal static class Launcher
                 u.Host == "teaminspectionproelite.github.io" && u.IsDefaultPort &&
                 u.UserInfo.Length == 0 && u.AbsolutePath.StartsWith("/INSPECTION-SERVICES/", StringComparison.Ordinal);
         }
+        // Pilot: sign only the dedicated protocol's fixed-size server challenge.
+        // No private key material is returned to the WebView.
+        private void DeviceProof(CoreWebView2 core, CoreWebView2WebMessageReceivedEventArgs e)
+        {
+            if (!WorkspaceUri(e.Source)) return;
+            try
+            {
+                string message = e.TryGetWebMessageAsString();
+                if (!Regex.IsMatch(message, @"\Aproelite-device-v1:[a-f0-9]{64}\z")) return;
+                const string name = "ProElite.Inspection.DeviceProof.v1";
+                CngKey key;
+                if (CngKey.Exists(name, CngProvider.MicrosoftSoftwareKeyStorageProvider))
+                    key = CngKey.Open(name, CngProvider.MicrosoftSoftwareKeyStorageProvider);
+                else
+                {
+                    var options = new CngKeyCreationParameters {
+                        Provider = CngProvider.MicrosoftSoftwareKeyStorageProvider,
+                        ExportPolicy = CngExportPolicies.None,
+                        KeyUsage = CngKeyUsages.Signing
+                    };
+                    key = CngKey.Create(CngAlgorithm.ECDsaP256, name, options);
+                }
+                using (key)
+                using (var signer = new ECDsaCng(key))
+                using (var hash = SHA256.Create())
+                {
+                    byte[] blob = key.Export(CngKeyBlobFormat.EccPublicBlob);
+                    if (blob.Length != 72) throw new CryptographicException();
+                    byte[] xy = new byte[64];
+                    Buffer.BlockCopy(blob, 8, xy, 0, 64);
+                    byte[] sig = signer.SignHash(hash.ComputeHash(Encoding.UTF8.GetBytes(message)));
+                    core.PostWebMessageAsString("proelite-device-result:" + message.Substring(19) + ":" + Convert.ToBase64String(xy) + ":" + Convert.ToBase64String(sig));
+                }
+            }
+            catch { core.PostWebMessageAsString("proelite-device-error"); }
+        }
         private async Task InitializeAsync()
         {
             try
@@ -51,6 +90,7 @@ internal static class Launcher
                 core.Settings.AreBrowserAcceleratorKeysEnabled = false;
                 core.NavigationStarting += (s,e) => { if (!WorkspaceUri(e.Uri)) e.Cancel = true; };
                 core.NewWindowRequested += (s,e) => { e.Handled = true; };
+                core.WebMessageReceived += (s,e) => DeviceProof(core,e);
                 core.NavigationCompleted += (s,e) => {
                     if (!e.IsSuccess && e.WebErrorStatus != CoreWebView2WebErrorStatus.OperationCanceled) {
                         status.Text = "Cannot load ProElite. Check the internet connection and restart the app.\nไม่สามารถเปิดโปรแกรม กรุณาตรวจอินเทอร์เน็ตและเปิดใหม่";

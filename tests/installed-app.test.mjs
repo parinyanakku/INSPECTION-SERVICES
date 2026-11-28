@@ -140,3 +140,15 @@ test('private installer digest rejects modified bytes, missing manifest digest a
  assert.match(edge,/Verified build required/);
  assert.match(readFileSync('src/components/DownloadCenter.tsx','utf8'),/!await verifyInstallerDigest\(file,sha256\)/);
 });
+
+test('Windows proof pilot only signs domain-prefixed challenges and server requires admin',()=>{
+ const win=readFileSync('native/windows/Launcher.cs','utf8'),edge=readFileSync('supabase/functions/proelite-device-proof/index.ts','utf8');
+ const sql=readFileSync('supabase/migrations/20261128102052_proelite_native_device_proof_pilot.sql','utf8');
+ assert.match(win,/CngExportPolicies.None/);
+ assert.match(win,/WorkspaceUri\(e.Source\)/);
+ assert.match(win,/proelite-device-v1:\[a-f0-9\]\{64\}/);
+ assert.match(edge,/inspection_is_admin/);
+ assert.match(edge,/crypto\.subtle\.verify/);
+ assert.match(sql,/delete from inspection_private.native_device_challenges where user_id=p_uid and nonce=p_nonce and expires_at>now\(\)/);
+ assert.match(sql,/from public,anon,authenticated/);
+});

@@ -1,6 +1,7 @@
 import {useEffect, useRef, useState} from 'react';
 import {appRoot} from '../utils/installApp';
 import {verifyInstallerDigest} from '../utils/installerIntegrity';
+import {hasWindowsProofBridge,verifyWindowsDevice} from '../utils/nativeDeviceProof';
 import type {AppLanguage} from '../types/inspection';
 
 const packages = ['ProElite-Inspection.msi', 'ProElite-Inspection.apk'] as const;
@@ -23,6 +24,7 @@ export function DownloadCenter({lang, api, publicKey, token, onClose}: Props) {
   const [ready,setReady] = useState<File|null>(null);
   const [integrity,setIntegrity]=useState<{sha256:string;commit:string}|null>(null);
   const [integrityError,setIntegrityError]=useState(false);
+  const [proofBusy,setProofBusy]=useState(false),[proof,setProof]=useState(''),[proofError,setProofError]=useState(false);
   const [shareError,setShareError] = useState(false);
   const download = useRef<AbortController | null>(null);
   const storage = api + '/storage/v1/object/';
@@ -107,6 +109,11 @@ export function DownloadCenter({lang, api, publicKey, token, onClose}: Props) {
     try{if(!navigator.share||!navigator.canShare?.({files:[ready]}))throw Error();await navigator.share({files:[ready],title:'ProElite Inspection'});}
     catch(e){if(!(e instanceof DOMException&&e.name==='AbortError'))setShareError(true);}
   }
+  async function testDevice(){
+    if(proofBusy)return;setProofBusy(true);setProof('');setProofError(false);
+    try{const result=await verifyWindowsDevice(api,publicKey,token);if(!closing.current)setProof(result);}
+    catch{if(!closing.current)setProofError(true);}finally{if(!closing.current)setProofBusy(false);}
+  }
   return <dialog ref={dialog} onClose={dismiss} onCancel={event=>{event.preventDefault();dismiss();}} aria-labelledby="downloads-title" className="m-auto max-h-[90dvh] w-[min(94vw,30rem)] overflow-auto rounded-2xl p-5 text-slate-900 shadow-xl backdrop:bg-slate-950/60">
     <header className="flex items-center gap-3">
       <img width="48" height="48" className="rounded-xl" src={new URL('product-icons/home-192.png',appRoot).href} alt="" />
@@ -138,6 +145,13 @@ export function DownloadCenter({lang, api, publicKey, token, onClose}: Props) {
       </div>
       <button type="button" className={buttonStyle} disabled={!!busy} onClick={()=>setAttempt(n=>n+1)}>{tr('ตรวจไฟล์ล่าสุด','Refresh files')}</button>
     </section>
+    {hasWindowsProofBridge()&&<section className="mt-4 border-t pt-4 text-sm space-y-2">
+      <h3 className="font-bold">{tr('ทดสอบยืนยันกุญแจเครื่อง Windows','Windows device key pilot')}</h3>
+      <p className="text-xs">{tr('ทดสอบเฉพาะ Admin ไม่ได้บังคับสิทธิ์ผู้ซื้อหรือยืนยันว่าโปรแกรมไม่ถูกดัดแปลง','Admin test only. Does not enforce buyer device access or attest an unmodified app.')}</p>
+      <button type="button" className={buttonStyle} disabled={proofBusy} onClick={()=>void testDevice()}>{proofBusy?tr('กำลังตรวจ…','Verifying…'):tr('ทดสอบยืนยันเครื่อง','Test device proof')}</button>
+      {proof&&<p role="status" className="break-all">{tr('เซิร์ฟเวอร์ยืนยันลายเซ็นแล้ว','Server verified signature')} · {proof.slice(0,16)}</p>}
+      {proofError&&<p role="alert">{tr('ยืนยันไม่สำเร็จ ตรวจว่าใช้ MSI รุ่นล่าสุดและลองใหม่','Verification failed. Check that you installed the latest MSI and retry.')}</p>}
+    </section>}
     {ready&&<div className="mt-3 rounded-lg border p-3 text-sm space-y-2"><p className="font-semibold break-all">{ready.name}</p><p>{ready.size<1048576? (ready.size/1024).toFixed(1)+' KiB':(ready.size/1048576).toFixed(2)+' MiB'}</p>{integrity&&<div className="rounded border border-green-500/50 p-2 text-xs"><p className="font-semibold">{tr('SHA-256 ตรงกับไฟล์ที่ Build','SHA-256 matches CI build')}</p><p className="break-all font-mono">{integrity.sha256}</p><p>Commit: {integrity.commit.slice(0,12)}</p><p>{tr('ตรวจความถูกต้องของไฟล์เท่านั้น ไม่ใช่ลายเซ็นดิจิทัล','File integrity only, not a digital signature')}</p></div>}<div className="flex flex-wrap gap-2"><button type="button" className={buttonStyle} onClick={saveReady}>{tr('บันทึกลงเครื่อง','Save file')}</button>{!ready.name.includes('-TEST.')&&<button type="button" className={buttonStyle} onClick={()=>void shareReady()}>{tr('แชร์ไฟล์จากมือถือ','Share file')}</button>}</div>{shareError&&<p role="status">{tr('เครื่องนี้แชร์ไฟล์โดยตรงไม่ได้ ให้บันทึกลงเครื่องแล้วแนบไฟล์ใน LINE หรือแอปส่งไฟล์เอง','Direct file sharing is unavailable on this device. Save the file and attach it manually in your messaging app.')}</p>}</div>}
     {integrityError&&<p role="alert" className="mt-3 text-sm text-red-700">{tr('ไฟล์ยังไม่มีข้อมูลยืนยันจาก Build หรือค่า SHA-256 ไม่ตรง ระบบไม่อนุญาตให้บันทึก กรุณาตรวจไฟล์ล่าสุด','Missing build verification or mismatched SHA-256. Saving is blocked. Refresh files.')}</p>}
     {error && <p role="alert" className="mt-3 text-sm text-red-700">{tr('ดำเนินการไม่สำเร็จ กรุณาตรวจการเชื่อมต่อและสิทธิ์บัญชีแล้วลองอีกครั้ง','Could not complete the request. Check your connection and account access, then try again.')}</p>}
