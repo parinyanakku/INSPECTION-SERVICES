@@ -1,6 +1,16 @@
 {
-  "latest": "v1.0.234",
+  "latest": "v1.0.235",
   "releases": [
+    {
+      "version": "v1.0.235",
+      "build": 235,
+      "storageSchema": 2,
+      "date": "2026-11-28T09:38:03.841Z",
+      "notes": "Fix admin installer dialog dismissal and close controls",
+      "commit": "77e6b1e06ef86e57587e530b30b6643959a298d0",
+      "notesTh": "แก้หน้าต่างไฟล์ติดตั้งผู้ดูแลกดปิดไม่ได้",
+      "notesEn": "Close the native installer dialog explicitly and add accessible close controls."
+    },
     {
       "version": "v1.0.234",
       "build": 234,
