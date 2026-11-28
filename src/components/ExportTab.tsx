@@ -1,3 +1,4 @@
+import {ReportImportPanel} from './ReportImportPanel';
 import {isDngFile,decodeDngToJpeg,imageUploadError} from '../utils/dngImage';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -475,6 +476,8 @@ export const ExportTab: React.FC<ExportTabProps> = ({
           <progress className="mt-2 w-full" value={exportBatch.index-1} max={exportBatch.total}/>
         </div>}
       </section>
+
+      <ReportImportPanel key={project.id} lang={lang} book={reportBook} disabled={!!exportBatch||isExportingPdf} onApply={updater=>{updateBook(prev=>{const next=updater(prev);setIsCustomCondition(!PROPERTY_CONDITION_OPTIONS[lang].includes(next.propertyCondition));return next;});}}/>
 
       {/* Complete Report Book Data Builder Form (4 Categories) */}
       <section className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
