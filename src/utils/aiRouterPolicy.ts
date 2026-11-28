@@ -4,7 +4,7 @@ export const providerNames:Record<Provider,string>={gemini:'Google Gemini',opena
 export type Route={provider:Provider;key:string;model:string};
 export type ProviderSetting={key:string;model:string;enabled:boolean};
 export type EngineSettings={mode:'auto'|'manual';primary:Provider;fallback:boolean;configs:Partial<Record<Provider,ProviderSetting>>};
-export const defaults=():EngineSettings=>({mode:'manual',primary:'gemini',fallback:false,configs:{gemini:{key:'',model:'auto',enabled:true}}});
+export const defaults=():EngineSettings=>({mode:'manual',primary:'gemini',fallback:false,configs:{gemini:{key:'',model:'',enabled:true}}});
 export function normalizeSettings(value:unknown):EngineSettings{
  const s=value as Partial<EngineSettings>|null;const d=defaults();
  if(!s||typeof s!=='object')return d;
