@@ -3,6 +3,7 @@ import {buildSharedReportPages,prepareSharedReportAssets,escapeHtml,type BuiltRe
 import {reportDocument,waitForReportFonts,configureReportFrame} from './reportLayout';
 import {buildNativeWordReport} from './wordReport';
 import {appendPrintableExcelReport} from './excelReport';
+import {createDefaultCustomExportSettings} from './reportBook';
 import {safeRaster,type TemplatePlan,type Values,type Field} from './reportStudioModel';
 const esc=escapeHtml;
 function customBody(body:string,fields:Field[],values:Values){
@@ -18,7 +19,7 @@ function customBody(body:string,fields:Field[],values:Values){
 }
 export async function buildStudioPages(project:ProjectFile,brand:BrandConfig,book:ReportBookData,lang:AppLanguage,plan:TemplatePlan,values:Values,signal?:AbortSignal):Promise<BuiltReportPage[]>{
  const assets=await prepareSharedReportAssets(project,brand,signal);
- const rb={...book,customExport:{...book.customExport!,includeCover:true,includeToc:false,includeIntro:true,includeStepsAndZones:true,includeDefectTable:true,includeSummaryTable2:true,defectStatusFilter:'all' as const,defectSeverityFilter:'all' as const,defectSelectionMode:'filter' as const,selectedDefectIds:[]}};
+ const rb={...book,customExport:{...createDefaultCustomExportSettings(),...book.customExport,includeCover:true,includeToc:false,includeIntro:true,includeStepsAndZones:true,includeDefectTable:true,includeSummaryTable2:true,defectStatusFilter:'all' as const,defectSeverityFilter:'all' as const,defectSelectionMode:'filter' as const,selectedDefectIds:[]}};
  const original=buildSharedReportPages(project,brand,lang,assets,rb);
  const prefix={cover:'page-cover',intro:'page-sec1',plans:'page-sec2',defects:'page-sec3',summary:'page-sec4'};
  const out:BuiltReportPage[]=[];
@@ -40,7 +41,9 @@ async function mountPage(doc:Document,page:BuiltReportPage){
  return root;
 }
 export async function buildStudioFile(pages:BuiltReportPage[],format:'pdf'|'docx'|'xlsx',lang:AppLanguage,signal?:AbortSignal,onProgress?:(n:number,total:number)=>void):Promise<Blob>{
- if(!pages.length)throw Error('NO_PAGES');const iframe=document.createElement('iframe');configureReportFrame(iframe);document.body.appendChild(iframe);
+ if(!pages.length)throw Error('NO_PAGES');
+ pages=pages.map((p,i)=>{const label=String(i+1),html=p.isCover?p.html:p.html.replace(/(<div style="margin-top:2px; font-weight:700; color:[^"]+; font-size:13\.8px;">\s*(?:หน้า|Page)\s*)[^<]+(<\/div>)/gi,(_,a,b)=>a+label+b);return {...p,pageLabel:label,html};});
+ const iframe=document.createElement('iframe');configureReportFrame(iframe);document.body.appendChild(iframe);
  try{
  const doc=iframe.contentDocument;if(!doc)throw Error('PREVIEW_UNAVAILABLE');doc.open();doc.write(reportDocument(''));doc.close();await waitForReportFonts(doc);
  // Verify custom pages fit before every format export.
