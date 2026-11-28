@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.229",
+  "latest": "v1.0.230",
   "releases": [
+    {
+      "version": "v1.0.230",
+      "build": 230,
+      "storageSchema": 2,
+      "date": "2026-11-28T07:21:35.489Z",
+      "notes": "Load customer photos on demand and parallelize existing multipart downloads",
+      "commit": "bd2b251a9142588d39a738e51fb6ce68f04ffc3c",
+      "notesTh": "เปิดหน้า Defect ก่อน โหลดรูปตามที่ดู ไม่ลดคุณภาพ และเร่งลิงก์เดิม"
+    },
     {
       "version": "v1.0.229",
       "build": 229,

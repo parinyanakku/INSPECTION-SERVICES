@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src https://geleptwbxjoumxyxbhqa.supabase.co; frame-src 'self' about: blob:; base-uri 'none'; form-action 'none'"><title>รายงานตรวจบ้านสำหรับลูกค้า</title>
+<style>*{box-sizing:border-box}body{margin:0;font:16px/1.6 system-ui,sans-serif;background:#f1f5f9;color:#172033}#status{max-width:460px;margin:14vh auto;padding:24px;text-align:center}#stage{font-weight:600}#detail{font-size:13px;color:#475569;overflow-wrap:anywhere}progress{width:100%;height:12px;accent-color:#2563eb}button{font:inherit;padding:10px 22px;background:#1d4ed8;color:#fff;border:0;border-radius:9px}iframe{display:block;border:0;width:100%;height:100vh;height:100dvh}iframe[hidden],button[hidden],progress[hidden],#status[hidden]{display:none}</style></head>
+<body><div id="status" role="status" aria-live="polite"><div id="stage">กำลังเปิดรายงานตรวจบ้าน…</div><progress id="progress" aria-label="ความคืบหน้าการดาวน์โหลด"></progress><p id="detail">กำลังตรวจสอบลิงก์</p><button id="retry" type="button" hidden>ลองเปิดใหม่ / Retry</button></div><iframe id="report" title="รายงานตรวจบ้าน" sandbox="allow-scripts" referrerpolicy="no-referrer" hidden></iframe><script>
+(async()=>{
+ const status=document.getElementById('status'),stage=document.getElementById('stage'),detail=document.getElementById('detail'),progress=document.getElementById('progress'),retry=document.getElementById('retry'),frame=document.getElementById('report');
+ const origin='https://geleptwbxjoumxyxbhqa.supabase.co',limit=47185920,partSize=4194304,maxParts=128,prefix='TIS-REPORT-PARTS-V1\n';
+ const en=(navigator.language||'').toLowerCase().startsWith('en');
+ const tr=(th,enText)=>en?enText:th;
+ if(en){document.documentElement.lang='en';document.title='Home inspection report';}
+ const step=(a,b,c,d)=>{stage.textContent=tr(a,b);detail.textContent=tr(c,d);progress.hidden=false;progress.removeAttribute('value');};
+ const fail=(code)=>{const errors={
+  LINK:tr('ลิงก์ไม่สมบูรณ์หรือหมดอายุ กรุณาขอลิงก์ใหม่จากผู้ตรวจสอบ','Link is incomplete, expired or unavailable. Request a fresh link.'),
+  TIMEOUT:tr('การเชื่อมต่อหยุดตอบสนอง ลองเปิดใหม่เมื่อสัญญาณเสถียร','Connection stopped responding. Retry on a stable network.'),
+  NETWORK:tr('เชื่อมต่อระบบรายงานไม่ได้ กรุณาลองเปิดใหม่','Cannot reach the report service. Please retry.'),
+  SIZE:tr('ขนาดไฟล์รายงานไม่ถูกต้องหรือเกินขีดจำกัด','Report size is invalid or exceeds the limit.'),
+  DECRYPT:tr('ตรวจสอบความถูกต้องของรายงานไม่ผ่าน กรุณาขอลิงก์ใหม่','Report verification failed. Request a fresh link.'),
+  VIEW:tr('เบราว์เซอร์ไม่สามารถแสดงรายงานได้ กรุณาลองเปิดใหม่ใน Safari หรือ Chrome','Browser could not display the report. Retry in Safari or Chrome.')
+ };stage.textContent=tr('เปิดรายงานไม่สำเร็จ','Could not open report');detail.textContent=(errors[code]||errors.NETWORK)+' ('+code+')';progress.hidden=true;retry.hidden=false;status.hidden=false;frame.hidden=true;};
+ retry.onclick=()=>location.reload();
+ function bounded(promise,ms,code){let timer;return Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(code)),ms);})]).finally(()=>clearTimeout(timer));}
+ async function request(url,opts,ms,consume){
+  const ctrl=new AbortController();let timer;
+  try{
+   timer=setTimeout(()=>ctrl.abort(),ms);
+   const res=await fetch(url,{...opts,cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer',signal:ctrl.signal});
+   return await consume(res,ctrl.signal);
+  }catch(e){if(ctrl.signal.aborted)throw Error('TIMEOUT');throw e;}finally{clearTimeout(timer);}
+ }
+ const mb=n=>(n/1048576).toFixed(1)+' MB';
+ async function readPayload(res,signal,onBytes){
+  if(!res.ok)throw Error([401,403,404,410].includes(res.status)?'LINK':'NETWORK');
+  const expected=Number(res.headers.get('content-length'))||0;
+  if(expected>limit)throw Error('SIZE');
+  const update=n=>{if(onBytes){onBytes(n);return;}detail.textContent=mb(n)+(expected?' / '+mb(expected):'');if(expected){progress.max=expected;progress.value=Math.min(n,expected);}};
+  if(!res.body||!res.body.getReader){const b=await bounded(res.arrayBuffer(),45000,'TIMEOUT');if(b.byteLength<29||b.byteLength>limit)throw Error('SIZE');update(b.byteLength);return new Uint8Array(b);}
+  const reader=res.body.getReader();let size=0,parts=[],complete=false;
+  try{
+   for(;;){const part=await bounded(reader.read(),30000,'TIMEOUT');if(signal.aborted)throw Error('TIMEOUT');if(part.done){complete=true;break;}size+=part.value.byteLength;if(size>limit)throw Error('SIZE');parts.push(part.value);update(size);}
+   if(size<29)throw Error('SIZE');const bytes=new Uint8Array(size);let offset=0;for(const chunk of parts){bytes.set(chunk,offset);offset+=chunk.byteLength;}parts=[];return bytes;
+  }finally{if(!complete)try{void reader.cancel().catch(()=>{});}catch{}try{reader.releaseLock();}catch{}}
+ }
+ let objectURL='';
+ try{
+  step('กำลังตรวจสอบลิงก์','Checking report link','ยังไม่ดาวน์โหลดรูปภาพ','Images have not been downloaded yet');
+  const fragment=location.hash.slice(1);let url,key,hash;
+  if(/^[A-Za-z0-9_-]{43}$/.test(fragment)){
+   const raw=Uint8Array.from(atob(fragment.replace(/-/g,'+').replace(/_/g,'/')+'='),c=>c.charCodeAt(0));
+   if(raw.length!==32)throw Error('LINK');
+   key=raw;
+   hash=Array.from(new Uint8Array(await bounded(crypto.subtle.digest('SHA-256',raw),10000,'DECRYPT')),v=>v.toString(16).padStart(2,'0')).join('');
+   url=await request(origin+'/functions/v1/inspection-report-resolve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hash})},20000,async r=>{if(!r.ok)throw Error([400,401,403,404,410].includes(r.status)?'LINK':'NETWORK');return new URL((await r.json()).url);});
+  }else{
+   const p=new URLSearchParams(fragment),hex=p.get('k')||'';
+   if(!p.get('u')||!/^[a-f0-9]{64}$/.test(hex))throw Error('LINK');
+   try{url=new URL(p.get('u'));}catch{throw Error('LINK');}
+   key=Uint8Array.from(hex.match(/../g),v=>parseInt(v,16));
+  }
+  if(url.origin!==origin||!/^\/storage\/v1\/object\/sign\/inspection-client-reports\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.bin$/.test(url.pathname)||!url.searchParams.get('token')||url.username||url.password)throw Error('LINK');
+  step('กำลังดาวน์โหลดรายงาน','Downloading report','กำลังรับข้อมูลและรูปภาพ','Receiving data and photos');
+  let encrypted=await request(url.href,{redirect:'error'},180000,readPayload);
+  step('กำลังตรวจสอบและถอดรหัส','Verifying and decrypting',mb(encrypted.byteLength),mb(encrypted.byteLength));
+  let plain,cryptoKey;
+  try{
+   cryptoKey=await bounded(crypto.subtle.importKey('raw',key,'AES-GCM',false,['decrypt']),10000,'DECRYPT');
+   plain=await bounded(crypto.subtle.decrypt({name:'AES-GCM',iv:encrypted.subarray(0,12)},cryptoKey,encrypted.subarray(12)),30000,'DECRYPT');
+  }catch{throw Error('DECRYPT');}
+  encrypted=null;key=null;
+  let bodyParts=[plain],onPhoto=null;
+  const rootPath=url.pathname.slice('/storage/v1/object/sign/inspection-client-reports/'.length);
+  async function fetchPart(i,manifest,onBytes=()=>{}){
+   const signed=await request(origin+'/functions/v1/inspection-report-resolve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hash,part:i})},20000,async r=>{if(!r.ok)throw Error([400,401,403,404,410].includes(r.status)?'LINK':'NETWORK');return new URL((await r.json()).url);});
+   const expectedPath=url.pathname.slice(0,-4)+'.part-'+String(i).padStart(3,'0')+'.bin';
+   if(signed.origin!==origin||signed.pathname!==expectedPath||!signed.searchParams.get('token')||signed.username||signed.password)throw Error('LINK');
+   const expected=Math.min(partSize,manifest.bytes-i*partSize);
+   const bytes=await request(signed.href,{redirect:'error'},180000,(r,s)=>readPayload(r,s,onBytes));
+   if(bytes.length!==expected+28)throw Error('SIZE');
+   let decoded;try{decoded=await bounded(crypto.subtle.decrypt({name:'AES-GCM',iv:bytes.subarray(0,12),additionalData:new TextEncoder().encode('TIS-REPORT-PART-V1:'+rootPath+':'+i)},cryptoKey,bytes.subarray(12)),30000,'DECRYPT');}catch{throw Error('DECRYPT');}
+   if(decoded.byteLength!==expected)throw Error('SIZE');return new Uint8Array(decoded);
+  }
+  const hasPrefix=prefix=>{const marker=new TextEncoder().encode(prefix),head=new Uint8Array(plain,0,Math.min(plain.byteLength,marker.length));return head.length===marker.length&&head.every((b,i)=>b===marker[i]);};
+  const lazyPrefix='TIS-REPORT-LAZY-V2\n';
+  if(hasPrefix(lazyPrefix)){
+   if(!hash||plain.byteLength>limit)throw Error('SIZE');
+   let manifest;try{manifest=JSON.parse(new TextDecoder().decode(plain).slice(lazyPrefix.length));}catch{throw Error('DECRYPT');}
+   if(manifest.v!==2||manifest.partSize!==partSize||!Number.isSafeInteger(manifest.bytes)||manifest.bytes<1||manifest.bytes>maxParts*partSize||manifest.count!==Math.ceil(manifest.bytes/partSize)||typeof manifest.html!=='string'||!Array.isArray(manifest.assets)||manifest.assets.length>10000)throw Error('SIZE');
+   let end=0;for(const a of manifest.assets){if(!a||a.offset!==end||!Number.isSafeInteger(a.size)||a.size<1||a.size>manifest.bytes-end)throw Error('SIZE');end+=a.size;}if(end!==manifest.bytes)throw Error('SIZE');
+   bodyParts=[manifest.html];plain=null;delete manifest.html;
+   // At most three image requests at once; retain a small shared part cache.
+   const cache=new Map(),queue=[],pending=new Set();let active=0;
+   function getPart(i){if(cache.has(i)){const value=cache.get(i);cache.delete(i);cache.set(i,value);return value;}const value=fetchPart(i,manifest);cache.set(i,value);value.catch(()=>{if(cache.get(i)===value)cache.delete(i);});while(cache.size>5)cache.delete(cache.keys().next().value);return value;}
+   async function getPhoto(id){const a=manifest.assets[id],chunks=[];let offset=a.offset,remaining=a.size;while(remaining){const i=Math.floor(offset/partSize),part=await getPart(i),start=offset%partSize,n=Math.min(remaining,part.length-start);if(n<=0)throw Error('SIZE');chunks.push(part.subarray(start,start+n));offset+=n;remaining-=n;}const src=await new Blob(chunks).text();if(!/^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(src))throw Error('DECRYPT');return src;}
+   function drain(){while(active<3&&queue.length){const id=queue.shift();active++;getPhoto(id).then(src=>frame.contentWindow?.postMessage({type:'tis-photo-result',id,src},'*')).catch(()=>frame.contentWindow?.postMessage({type:'tis-photo-result',id},'*')).finally(()=>{active--;pending.delete(id);drain();});}}
+   onPhoto=e=>{if(e.source!==frame.contentWindow||e.data?.type!=='tis-photo-request'||!Number.isInteger(e.data.id)||e.data.id<0||e.data.id>=manifest.assets.length||pending.has(e.data.id))return;pending.add(e.data.id);queue.push(e.data.id);drain();};
+   window.addEventListener('message',onPhoto);
+  }else if(hasPrefix(prefix)){
+   if(!hash||plain.byteLength>1024)throw Error('SIZE');
+   let manifest;try{manifest=JSON.parse(new TextDecoder().decode(plain).slice(prefix.length));}catch{throw Error('DECRYPT');}
+   if(manifest.v!==1||manifest.partSize!==partSize||!Number.isSafeInteger(manifest.bytes)||manifest.bytes<=limit-28||manifest.bytes>maxParts*partSize||manifest.count!==Math.ceil(manifest.bytes/partSize)||manifest.count>maxParts)throw Error('SIZE');
+   bodyParts=new Array(manifest.count);plain=null;
+   const received=new Array(manifest.count).fill(0);let next=0,done=0,stopped=false;
+   function update(){const n=received.reduce((a,b)=>a+b,0);stage.textContent=tr('กำลังดาวน์โหลดรายงาน '+done+'/'+manifest.count+' ส่วน','Downloading report '+done+'/'+manifest.count+' parts');detail.textContent=mb(n)+' / '+mb(manifest.bytes);progress.max=manifest.bytes;progress.value=n;}
+   update();
+   async function worker(){while(!stopped){const i=next++;if(i>=manifest.count)return;try{const expected=Math.min(partSize,manifest.bytes-i*partSize);const decoded=await fetchPart(i,manifest,n=>{received[i]=Math.min(expected,Math.max(0,n-28));update();});bodyParts[i]=new Blob([decoded]);received[i]=expected;done++;update();}catch(e){stopped=true;throw e;}}}
+   await Promise.all(Array.from({length:Math.min(3,manifest.count)},()=>worker()));
+  }
+  step('กำลังแสดงหน้ารายงาน','Displaying report','กำลังจัดหน้าและรายการ Defect','Preparing report pages and defects');
+  // Do not allocate a second giant decoded HTML string for srcdoc on mobile.
+  // The same encrypted HTML is loaded in a sandbox with no same-origin access.
+  const blob=new Blob(bodyParts,{type:'text/html;charset=utf-8'});plain=null;bodyParts=[];
+  objectURL=URL.createObjectURL(blob);
+  await bounded(new Promise((resolve,reject)=>{frame.onload=()=>{frame.onload=null;frame.onerror=null;resolve();};frame.onerror=()=>reject(Error('VIEW'));frame.src=objectURL;}),45000,'VIEW');
+  frame.hidden=false;status.hidden=true;
+  // Keep the blob alive for the iframe session (including Safari lazy photos).
+  window.addEventListener('pagehide',e=>{if(!e.persisted){if(objectURL)URL.revokeObjectURL(objectURL);if(onPhoto)window.removeEventListener('message',onPhoto);}},{once:true});
+ }catch(e){if(objectURL)URL.revokeObjectURL(objectURL);frame.onload=null;frame.onerror=null;frame.removeAttribute('src');fail(e instanceof Error?e.message:'NETWORK');}
+})();
+</script></body></html>
