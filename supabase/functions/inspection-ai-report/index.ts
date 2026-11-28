@@ -17,6 +17,11 @@ Deno.serve(async(req:Request)=>{
   if(!user.ok||!(await user.json()).id)return reply(401,{error:'AUTH'});
   const license=await fetch(url+'/rest/v1/rpc/inspection_has_access',{method:'POST',headers:caller,body:'{}',signal:AbortSignal.timeout(8000)});
   if(!license.ok||await license.json()!==true)return reply(403,{error:'LICENSE'});
+  // Atomic per-account limit before reading the body or calling providers.
+  // Local quota uses 503, not provider 429: do not trigger a paid fallback.
+  const quota=await fetch(url+'/rest/v1/rpc/inspection_ai_report_take_slot',{method:'POST',headers:caller,body:'{}',signal:AbortSignal.timeout(8000)});
+  if(!quota.ok)return reply(503,{error:'QUOTA_UNAVAILABLE'});
+  if(await quota.json()!==true)return reply(503,{error:'LOCAL_RATE_LIMIT'});
   // Bound streaming body before allocation; no document images or files through this endpoint.
   const reader=req.body?.getReader();if(!reader)return reply(400,{error:'BODY'});
   const decoder=new TextDecoder();let raw='',n=0;

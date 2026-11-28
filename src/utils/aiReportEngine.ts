@@ -15,7 +15,7 @@ async function proxy(body:object){
  if(!token)throw new AIEngineError(401,'SESSION_REQUIRED');
  const r=await fetch(PROXY,{method:'POST',headers:{Authorization:'Bearer '+token,apikey:PUBLIC_KEY,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(85000),cache:'no-store'});
  const j=await r.json().catch(()=>null);
- if(!r.ok||!j)throw new AIEngineError(r.status,'AI_PROXY_'+r.status);
+ if(!r.ok||!j)throw new AIEngineError(r.status,r.status===503&&j?.error==='LOCAL_RATE_LIMIT'?'AI_LOCAL_RATE_LIMIT':'AI_PROXY_'+r.status);
  return j;
 }
 export async function listAIModels(p:Provider,key:string):Promise<string[]>{
