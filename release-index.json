@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.244",
+  "latest": "v1.0.245",
   "releases": [
+    {
+      "version": "v1.0.245",
+      "build": 245,
+      "storageSchema": 2,
+      "date": "2026-11-28T12:29:10.131Z",
+      "notes": "Centralize Windows Google Drive setup for licensed clients",
+      "commit": "c2882f1cac69a1fb6c07e6349cf6647246491dfa",
+      "notesTh": "Admin ตั้งค่า Google OAuth ส่วนกลางครั้งเดียว ผู้ซื้อ Windows ยืนยัน Google ได้โดยไม่เลือกไฟล์ OAuth"
+    },
     {
       "version": "v1.0.244",
       "build": 244,
