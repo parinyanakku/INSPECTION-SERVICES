@@ -1,6 +1,16 @@
 {
-  "latest": "v1.0.235",
+  "latest": "v1.0.236",
   "releases": [
+    {
+      "version": "v1.0.236",
+      "build": 236,
+      "storageSchema": 2,
+      "date": "2026-11-28T09:45:19.673Z",
+      "notes": "Stage private admin test installers using GitHub OIDC",
+      "commit": "23dcfc5aa30f52737c20b981c7860c81559e54d4",
+      "notesTh": "เปิดส่วนดาวน์โหลด MSI APK รุ่นทดสอบเฉพาะผู้ดูแล แยกจากไฟล์แจกผู้ซื้อ",
+      "notesEn": "Admin-only test installer downloads, separate from approved distribution."
+    },
     {
       "version": "v1.0.235",
       "build": 235,
