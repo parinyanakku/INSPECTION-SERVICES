@@ -6,6 +6,9 @@
     <MajorUpgrade DowngradeErrorMessage="A newer ProElite Inspection launcher is already installed." />
     <MediaTemplate EmbedCab="yes" />
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+    <Property Id="INSTALLDIR" Secure="yes">
+      <RegistrySearch Id="PreviousInstallDir" Root="HKCU" Key="Software\Team Inspection Services\ProElite" Name="InstallDir" Type="raw" Win64="yes" />
+    </Property>
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch ProElite Inspection" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
     <Property Id="WixShellExecTarget" Value="[#AppExe]" />
@@ -29,6 +32,7 @@
             <File Id="WebViewForms" Source="$(var.NativeDir)\Microsoft.Web.WebView2.WinForms.dll" />
             <File Id="WebViewLoader" Source="$(var.NativeDir)\WebView2Loader.dll" />
             <RemoveFolder Id="RemoveInstallDir" On="uninstall" />
+            <RegistryValue Root="HKCU" Key="Software\Team Inspection Services\ProElite" Name="InstallDir" Type="string" Value="[INSTALLDIR]" />
             <RegistryValue Root="HKCU" Key="Software\Team Inspection Services\ProElite" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
           </Component>
         </Directory>

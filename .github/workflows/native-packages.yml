@@ -49,7 +49,7 @@ jobs:
           $install = Start-Process msiexec -ArgumentList "/i `"$msi`" INSTALLDIR=`"$custom`" /qn /norestart" -Wait -PassThru
           if ($install.ExitCode -ne 0 -or !(Test-Path (Join-Path $custom 'ProElite.exe'))) { throw 'Custom folder install failed' }
           $remove = Start-Process msiexec -ArgumentList "/x `"$msi`" /qn /norestart" -Wait -PassThru
-          if ($remove.ExitCode -ne 0 -or (Test-Path (Join-Path $custom 'ProElite.exe')) -or (Test-Path $desktopLink)) { throw 'Custom folder uninstall failed' }
+          if ($remove.ExitCode -ne 0 -or (Test-Path (Join-Path $custom 'ProElite.exe')) -or (Test-Path $desktopLink)) { throw "Custom folder uninstall failed: exit=$($remove.ExitCode), executable=$(Test-Path (Join-Path $custom 'ProElite.exe')), shortcut=$(Test-Path $desktopLink)" }
       - name: Stage admin-only test MSI
         if: github.ref == 'refs/heads/main'
         run: node native/stage-test.mjs windows build/native/windows/ProElite-Inspection.msi

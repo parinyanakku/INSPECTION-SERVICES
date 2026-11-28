@@ -1,5 +1,6 @@
 import {useEffect, useRef, useState} from 'react';
 import {appRoot} from '../utils/installApp';
+import {verifyInstallerDigest} from '../utils/installerIntegrity';
 import type {AppLanguage} from '../types/inspection';
 
 const packages = ['ProElite-Inspection.msi', 'ProElite-Inspection.apk'] as const;
@@ -20,6 +21,8 @@ export function DownloadCenter({lang, api, publicKey, token, onClose}: Props) {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState(false);
   const [ready,setReady] = useState<File|null>(null);
+  const [integrity,setIntegrity]=useState<{sha256:string;commit:string}|null>(null);
+  const [integrityError,setIntegrityError]=useState(false);
   const [shareError,setShareError] = useState(false);
   const download = useRef<AbortController | null>(null);
   const storage = api + '/storage/v1/object/';
@@ -45,7 +48,7 @@ export function DownloadCenter({lang, api, publicKey, token, onClose}: Props) {
   }
   useEffect(() => {
     const controller = new AbortController();
-    setFailed(false); setAvailable(null); setBusy(''); setReady(null); setShareError(false);
+    setFailed(false); setAvailable(null); setBusy(''); setReady(null); setShareError(false); setIntegrity(null); setIntegrityError(false);
     async function list() {
       const res = await fetch(storage + 'list/proelite-installers', {
         method:'POST', headers:{apikey:publicKey, Authorization:'Bearer ' + token, 'Content-Type':'application/json'},
@@ -72,20 +75,26 @@ export function DownloadCenter({lang, api, publicKey, token, onClose}: Props) {
   async function save(name:PackageName) {
     if (download.current) return;
     const controller = new AbortController();
-    download.current = controller; setBusy(name); setError(false); setReady(null); setShareError(false);
+    download.current = controller; setBusy(name); setError(false); setReady(null); setShareError(false); setIntegrity(null); setIntegrityError(false);
     try {
       const url=name.includes('-TEST.')?testEndpoint+'?platform='+(name.endsWith('.msi')?'windows':'android'):storage+'authenticated/proelite-installers/approved/'+name;
       const res = await fetch(url,
         {headers, cache:'no-store', signal:AbortSignal.any([controller.signal, AbortSignal.timeout(120000)])});
-      if (!res.ok) throw Error();
+      if (!res.ok) {if(res.status===409&&name.includes('-TEST.'))throw Error('INTEGRITY');throw Error();}
       const file = await res.blob();
       if (controller.signal.aborted) return;
       const magic = new Uint8Array(await file.slice(0,8).arrayBuffer());
       const expected = name.endsWith('.msi') ? [208,207,17,224,161,177,26,225] : [80,75,3,4];
-      if (!expected.every((b,i)=>magic[i]===b)) throw Error('Invalid installer');
+      if (!expected.every((b,i)=>magic[i]===b)) throw Error('INTEGRITY');
+      if(name.includes('-TEST.')){
+        const sha256=res.headers.get('x-proelite-sha256')||'',commit=res.headers.get('x-proelite-build-commit')||'';
+        if(!/^[a-f0-9]{40}$/.test(commit)||!await verifyInstallerDigest(file,sha256))throw Error('INTEGRITY');
+        if(controller.signal.aborted)return;
+        setIntegrity({sha256,commit});
+      }
       if (controller.signal.aborted) return;
       setReady(new File([file],name,{type:'application/octet-stream'}));
-    } catch { if (!controller.signal.aborted) setError(true); }
+    } catch(e) { if (!controller.signal.aborted) {if(e instanceof Error&&e.message==='INTEGRITY')setIntegrityError(true);else setError(true);} }
     finally { if (download.current === controller) { download.current = null; setBusy(''); } }
   }
   function saveReady(){
@@ -129,7 +138,8 @@ export function DownloadCenter({lang, api, publicKey, token, onClose}: Props) {
       </div>
       <button type="button" className={buttonStyle} disabled={!!busy} onClick={()=>setAttempt(n=>n+1)}>{tr('ตรวจไฟล์ล่าสุด','Refresh files')}</button>
     </section>
-    {ready&&<div className="mt-3 rounded-lg border p-3 text-sm space-y-2"><p className="font-semibold break-all">{ready.name}</p><p>{ready.size<1048576? (ready.size/1024).toFixed(1)+' KiB':(ready.size/1048576).toFixed(2)+' MiB'}</p><div className="flex flex-wrap gap-2"><button type="button" className={buttonStyle} onClick={saveReady}>{tr('บันทึกลงเครื่อง','Save file')}</button>{!ready.name.includes('-TEST.')&&<button type="button" className={buttonStyle} onClick={()=>void shareReady()}>{tr('แชร์ไฟล์จากมือถือ','Share file')}</button>}</div>{shareError&&<p role="status">{tr('เครื่องนี้แชร์ไฟล์โดยตรงไม่ได้ ให้บันทึกลงเครื่องแล้วแนบไฟล์ใน LINE หรือแอปส่งไฟล์เอง','Direct file sharing is unavailable on this device. Save the file and attach it manually in your messaging app.')}</p>}</div>}
+    {ready&&<div className="mt-3 rounded-lg border p-3 text-sm space-y-2"><p className="font-semibold break-all">{ready.name}</p><p>{ready.size<1048576? (ready.size/1024).toFixed(1)+' KiB':(ready.size/1048576).toFixed(2)+' MiB'}</p>{integrity&&<div className="rounded border border-green-500/50 p-2 text-xs"><p className="font-semibold">{tr('SHA-256 ตรงกับไฟล์ที่ Build','SHA-256 matches CI build')}</p><p className="break-all font-mono">{integrity.sha256}</p><p>Commit: {integrity.commit.slice(0,12)}</p><p>{tr('ตรวจความถูกต้องของไฟล์เท่านั้น ไม่ใช่ลายเซ็นดิจิทัล','File integrity only, not a digital signature')}</p></div>}<div className="flex flex-wrap gap-2"><button type="button" className={buttonStyle} onClick={saveReady}>{tr('บันทึกลงเครื่อง','Save file')}</button>{!ready.name.includes('-TEST.')&&<button type="button" className={buttonStyle} onClick={()=>void shareReady()}>{tr('แชร์ไฟล์จากมือถือ','Share file')}</button>}</div>{shareError&&<p role="status">{tr('เครื่องนี้แชร์ไฟล์โดยตรงไม่ได้ ให้บันทึกลงเครื่องแล้วแนบไฟล์ใน LINE หรือแอปส่งไฟล์เอง','Direct file sharing is unavailable on this device. Save the file and attach it manually in your messaging app.')}</p>}</div>}
+    {integrityError&&<p role="alert" className="mt-3 text-sm text-red-700">{tr('ไฟล์ยังไม่มีข้อมูลยืนยันจาก Build หรือค่า SHA-256 ไม่ตรง ระบบไม่อนุญาตให้บันทึก กรุณาตรวจไฟล์ล่าสุด','Missing build verification or mismatched SHA-256. Saving is blocked. Refresh files.')}</p>}
     {error && <p role="alert" className="mt-3 text-sm text-red-700">{tr('ดำเนินการไม่สำเร็จ กรุณาตรวจการเชื่อมต่อและสิทธิ์บัญชีแล้วลองอีกครั้ง','Could not complete the request. Check your connection and account access, then try again.')}</p>}
     <button type="button" autoFocus className={buttonStyle+' mt-5 min-h-11 w-full cursor-pointer'} onClick={event=>{event.stopPropagation();dismiss();}}>{tr('ปิด','Close')}</button>
   </dialog>;

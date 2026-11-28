@@ -5,6 +5,8 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
 import {execFileSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import {verifyInstallerDigest} from '../src/utils/installerIntegrity.ts';
 
 const manifest = JSON.parse(readFileSync('public/proelite.webmanifest', 'utf8'));
 test('all installed platforms launch the stable site and use permanent product icons', () => {
@@ -126,4 +128,15 @@ test('Windows MSI wizard, desktop link and optional launch are wired to the inst
  assert.match(x,/WixShellExecTarget" Value="\[#AppExe\]"/);
  assert.match(x,/ComponentRef Id="DesktopShortcut"/);
  assert.match(b,/-ext WixUIExtension -ext WixUtilExtension/);
+});
+
+test('private installer digest rejects modified bytes, missing manifest digest and malformed checksums',async()=>{
+ const bytes=Buffer.from('test installer bytes'), sha=createHash('sha256').update(bytes).digest('hex');
+ assert.equal(await verifyInstallerDigest(new Blob([bytes]),sha),true);
+ assert.equal(await verifyInstallerDigest(new Blob([Buffer.from('modified installer bytes')]),sha),false);
+ assert.equal(await verifyInstallerDigest(new Blob([bytes]),''),false);
+ const edge=readFileSync('supabase/functions/proelite-test-installers/index.ts','utf8');
+ assert.match(edge,/await digest\(body\)!==m.sha256/);
+ assert.match(edge,/Verified build required/);
+ assert.match(readFileSync('src/components/DownloadCenter.tsx','utf8'),/!await verifyInstallerDigest\(file,sha256\)/);
 });
