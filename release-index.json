@@ -1,6 +1,15 @@
 {
-  "latest": "v1.0.225",
+  "latest": "v1.0.227",
   "releases": [
+    {
+      "version": "v1.0.227",
+      "build": 227,
+      "storageSchema": 2,
+      "date": "2026-11-28T01:55:47.141Z",
+      "notes": "Fill native template image fields and allow larger original report copies",
+      "commit": "2583f504a350f7cb46041467cc38f9cee941f428",
+      "notesTh": "เพิ่มช่องรูป Word Excel และรองรับไฟล์รายงานเดิมใหญ่กว่าแม่แบบ"
+    },
     {
       "version": "v1.0.225",
       "build": 225,
