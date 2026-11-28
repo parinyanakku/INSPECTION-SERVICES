@@ -2,6 +2,12 @@ node_modules/
 build/
 dist/
 coverage/
+supabase/.temp/
+*.apk
+*.msi
+*.pfx
+*.keystore
+*.jks
 .DS_Store
 *.log
 .env*

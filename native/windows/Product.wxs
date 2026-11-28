@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="ProElite Inspection" Language="1033" Manufacturer="TEAM INSPECTION SERVICES"
+           Version="$(var.PackageVersion)" UpgradeCode="C0862812-A459-4BE8-82B4-E9BB509601EF">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perUser" />
+    <MajorUpgrade DowngradeErrorMessage="A newer ProElite Inspection launcher is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Icon Id="PackageIcon.ico" SourceFile="package.ico" />
+    <Icon Id="AppIcon.ico" SourceFile="home.ico" />
+    <Property Id="ARPPRODUCTICON" Value="PackageIcon.ico" />
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="LocalAppDataFolder">
+        <Directory Id="INSTALLDIR" Name="ProElite Inspection">
+          <Component Id="Launcher" Guid="5B2DF92E-0684-4D83-8B15-1410A72D328B">
+            <File Id="AppExe" Source="$(var.LauncherFile)" Name="ProElite.exe" />
+            <Shortcut Id="StartMenu" Directory="ProgramMenuFolder" Name="ProElite Inspection"
+                      Target="[#AppExe]" WorkingDirectory="INSTALLDIR" Icon="AppIcon.ico" />
+            <RemoveFolder Id="RemoveInstallDir" On="uninstall" />
+            <RegistryValue Root="HKCU" Key="Software\Team Inspection Services\ProElite" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+          </Component>
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder" />
+    </Directory>
+    <Feature Id="ProductFeature" Title="ProElite Inspection" Level="1"><ComponentRef Id="Launcher" /></Feature>
+  </Product>
+</Wix>

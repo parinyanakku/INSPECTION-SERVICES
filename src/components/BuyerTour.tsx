@@ -5,8 +5,9 @@ import {workspaceStorage} from '../utils/workspaceStorage';
 
 const KEY='tis_buyer_guided_tour_v2';
 type Step={target:string;th:string;en:string;bodyTh:string;bodyEn:string;tab?:WorkspaceTab};
-const steps:Step[]=[
+const lessons:Step[]=[
  {"target":"language-switch","th":"เปลี่ยนภาษาระหว่างใช้งาน","en":"Switch language while working","bodyTh":"กด TH หรือ EN ที่มุมบนของแอป หรือในหัวข้อแนะนำการใช้งานนี้ เพื่อเปลี่ยนภาษาเมนูและคู่มือได้ทันที ไม่ต้องออกจากระบบ ภาษาโปรแกรมจะถูกจดจำบนเบราว์เซอร์นี้ ข้อมูลแฟ้ม รูปภาพ และข้อความที่บันทึกไว้จะไม่ถูกแปลหรือเปลี่ยนเอง","bodyEn":"Select TH or EN at the top of the app or inside this guide to change the interface and guide language immediately without signing out. The browser remembers your preference. Existing project records, photos and saved text are not automatically translated or changed."},
+ {target:'downloads',th:'ติดตั้ง ProElite Inspection',en:'Install ProElite Inspection',bodyTh:'กดติดตั้งและดาวน์โหลด บน iPhone หรือ iPad ให้เปิดใน Safari แล้วเลือกแชร์และเพิ่มไปยังหน้าจอโฮม บน Android หรือ Windows ติดตั้งจากเมนูเบราว์เซอร์ หรือเลือกไฟล์ APK / MSI เมื่อเปิดดาวน์โหลดแล้ว เปิดแอปขณะออนไลน์และใช้บัญชีเดิม',bodyEn:'Open Install & download. On iPhone or iPad, use Share and Add to Home Screen in Safari. On Android or Windows, install from the browser menu or choose the APK or MSI when available. Launch online and sign in with your existing account.'},
  {target:'brand',th:'ตั้งค่าชื่อผู้ตรวจสอบและบริษัท',en:'Set your inspector and company details',bodyTh:'บนมือถือกดตั้งค่าโปรแกรมเพื่อแสดงเมนู แล้วกดแก้ไขข้อมูลบริษัท/โลโก้ กรอกชื่อผู้ตรวจสอบ เลขใบอนุญาต (ถ้ามี) และข้อมูลติดต่อของคุณ แล้วบันทึก',bodyEn:'On mobile, open Settings, then Company & Logo. Enter your own inspector details, license if applicable, and contact information, then save.'},
  {target:'api',th:'ตั้งค่า AI Engine (ไม่บังคับ)',en:'Configure AI Engine (optional)',bodyTh:'บนมือถือเปิดตั้งค่าโปรแกรม แล้วกดตั้งค่า AI Engine ส่วน Gemini เดิมใช้ตรวจภาพและแปลน ส่วนตั้งค่า AI Engine งานรายงานเพิ่มค่ายอื่นได้ด้วยคีย์ของคุณเอง โหลดโมเดล เลือกโมเดล เปิดใช้งาน และบันทึก Auto ใช้ค่ายที่อนุญาตเท่านั้น สามารถข้ามและทำงานด้วยตนเองได้',bodyEn:'On mobile open Settings, then AI Engine settings. Existing Gemini handles photo and plan analysis. The report AI Engine supports additional providers with your own key: list models, select an approved model, enable and save. Auto uses approved providers only. You can skip AI and work manually.'},
  {target:'project',th:'สร้างหรือเปิดแฟ้มโครงการ',en:'Create or open a project',bodyTh:'สร้างแฟ้มใหม่ กรอกชื่อโครงการ เจ้าของบ้าน ที่อยู่ และวันที่ตรวจรับ กดบันทึก แล้วเปิดแฟ้มที่สร้างขึ้น หรือใช้แฟ้มเดิมของคุณ',bodyEn:'Create a project with its name, owners, address and inspection date, save it, then open it. You can also use an existing project.'},
@@ -27,13 +28,15 @@ const steps:Step[]=[
  {target:'backup',th:'บันทึกและสำรองข้อมูล',en:'Save and back up your work',bodyTh:'กลับไปคลังแฟ้มโครงการแล้วสำรอง JSON เก็บไว้ในเครื่องเป็นระยะ โดยเฉพาะก่อนเปลี่ยนเครื่องหรือเบราว์เซอร์ หาก Drive แจ้งข้อมูลแก้ไขต่างกัน ให้เก็บ JSON ทั้งสองเครื่องก่อนแก้ไข',bodyEn:'Return to the project hub and regularly save JSON backups, especially before changing devices or browsers. If Drive reports conflicting edits, back up both devices first.'},
 ];
 // Automatically re-offer the guide when its lesson content changes, not on every technical build.
-const guideRevision=JSON.stringify(steps).split('').reduce((h,c)=>Math.imul(h^c.charCodeAt(0),16777619)>>>0,2166136261).toString(16);
-type Props={lang:AppLanguage;onLanguageChange?:(lang:AppLanguage)=>void;active:boolean;hasProject:boolean;hasProjects:boolean;tab:WorkspaceTab;paused:boolean;onClose:()=>void};
-export function BuyerTour({lang,onLanguageChange,active,hasProject,hasProjects,tab,paused,onClose}:Props){
+const visibleLessons=(downloads:boolean)=>downloads?lessons:lessons.filter(step=>step.target!=='downloads');
+const guideRevision=(downloads:boolean)=>JSON.stringify(visibleLessons(downloads)).split('').reduce((h,c)=>Math.imul(h^c.charCodeAt(0),16777619)>>>0,2166136261).toString(16);
+type Props={canDownload:boolean;lang:AppLanguage;onLanguageChange?:(lang:AppLanguage)=>void;active:boolean;hasProject:boolean;hasProjects:boolean;tab:WorkspaceTab;paused:boolean;onClose:()=>void};
+export function BuyerTour({canDownload,lang,onLanguageChange,active,hasProject,hasProjects,tab,paused,onClose}:Props){
  const [index,setIndex]=useState(0),[rect,setRect]=useState<{left:number;top:number;width:number;height:number}|null>(null),[hint,setHint]=useState(false);
  const panel=useRef<HTMLDivElement>(null);
  const tr=(th:string,en:string)=>lang==='en'?en:th;
- const step=steps[index];
+ const steps=visibleLessons(canDownload);
+ const step=steps[Math.min(index,steps.length-1)];
  let target=step.target;
  if(step.tab&&!hasProject)target=hasProjects?'open-project':'project';
  else if(step.target==='project'&&!hasProject&&hasProjects)target='open-project';
@@ -80,5 +83,5 @@ export function BuyerTour({lang,onLanguageChange,active,hasProject,hasProjects,t
    </div>
  </div>;
 }
-export function buyerTourSeen(){try{return workspaceStorage.getItem(KEY)===guideRevision;}catch{return false;}}
-export function markBuyerTourSeen(){try{workspaceStorage.setItem(KEY,guideRevision);}catch{}}
+export function buyerTourSeen(downloads:boolean){try{return workspaceStorage.getItem(KEY)===guideRevision(downloads);}catch{return false;}}
+export function markBuyerTourSeen(downloads:boolean){try{workspaceStorage.setItem(KEY,guideRevision(downloads));}catch{}}

@@ -12,9 +12,13 @@ const releases=fs.existsSync(index)?JSON.parse(fs.readFileSync(index,'utf8')).re
 const dest=path.join(versions,version);
 const commitBody=execFileSync('git',['log','-1','--format=%b'],{encoding:'utf8'});
 const notesTh=commitBody.match(/^Notes-TH:\s*(.+)$/m)?.[1]?.trim();
+const notesEn=commitBody.match(/^Notes-EN:\s*(.+)$/m)?.[1]?.trim();
 if(!fs.existsSync(dest)){
  fs.cpSync('dist',dest,{recursive:true});
- releases.push({version,build,storageSchema:2,date:new Date().toISOString(),notes:execFileSync('git',['log','-1','--format=%s'],{encoding:'utf8'}).trim(),commit:process.env.GITHUB_SHA,...(notesTh?{notesTh}: {})});
+ // Each immutable release points to the same app identity and install scope.
+ const entry=path.join(dest,'index.html');
+ fs.writeFileSync(entry,fs.readFileSync(entry,'utf8').replace(/href="\.\/(proelite\.webmanifest|product-icons\/home-(?:180|32)\.png)"/g,'href="../../$1"'));
+ releases.push({version,build,storageSchema:2,date:new Date().toISOString(),notes:execFileSync('git',['log','-1','--format=%s'],{encoding:'utf8'}).trim(),commit:process.env.GITHUB_SHA,...(notesTh?{notesTh}: {}),...(notesEn?{notesEn}: {})});
 }
 for(const release of releases){if(release.version==='v1.0.37'&&!release.notesTh)release.notesTh='แก้กรอบรายงาน Excel ขนาด A4 ถูกตัดด้านขวา โดยปรับให้พอดีกระดาษและกำหนดสเกลพิมพ์';}
 releases.sort((a,b)=>b.build-a.build);

@@ -1,0 +1,62 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync, existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import vm from 'node:vm';
+import {execFileSync} from 'node:child_process';
+
+const manifest = JSON.parse(readFileSync('public/proelite.webmanifest', 'utf8'));
+test('all installed platforms launch the stable site and use permanent product icons', () => {
+  const root = new URL('https://teaminspectionproelite.github.io/INSPECTION-SERVICES/');
+  for (const key of ['id','start_url','scope']) assert.equal(new URL(manifest[key],root).href,root.href);
+  for (const file of ['native/android/Launcher.java','native/windows/Launcher.cs']) {
+    assert.ok(readFileSync(file,'utf8').includes('"'+root.href+'"'));
+  }
+  for (const icon of manifest.icons) {
+    const png=readFileSync('public/'+icon.src);
+    assert.equal(png.readUInt32BE(16)+'x'+png.readUInt32BE(20),icon.sizes);
+  }
+});
+test('offline handling stays within the workspace entry points', async () => {
+  const scope='https://example.test/INSPECTION-SERVICES/';
+  let handler;
+  vm.runInNewContext(readFileSync('public/proelite-worker.js','utf8'), {
+    self:{registration:{scope},addEventListener:(_,cb)=>{handler=cb;}},URL,Response,fetch:async()=>{throw Error('offline');}
+  });
+  function dispatch(url,mode='navigate') {
+    let response;
+    handler({request:{url:new URL(url,scope).href,method:'GET',mode},respondWith:r=>{response=r;}});
+    return response;
+  }
+  for (const entry of ['./','versions/v1.0.24/']) assert.equal((await dispatch(entry)).status,503);
+  for (const other of ['r.html#share','versions/v1.0.24/customer-report.html','reset-password.html','release-index.json','https://api.example.test/']) {
+    assert.equal(dispatch(other),undefined);
+  }
+  assert.equal(dispatch('./','cors'),undefined);
+});
+test('archive publication preserves version pins, stable install identity and customer report entries', () => {
+  const cwd=mkdtempSync(path.join(tmpdir(),'proelite-archive-'));
+  const archive=path.join(cwd,'archive');
+  const git=execFileSync('git',['rev-parse','--absolute-git-dir'],{encoding:'utf8'}).trim();
+  try {
+    mkdirSync(path.join(cwd,'scripts'));
+    const launcher=readFileSync('scripts/pages-launcher.html','utf8');
+    writeFileSync(path.join(cwd,'scripts/pages-launcher.html'),launcher);
+    for (const build of ['1','2']) {
+      const dist=path.join(cwd,'dist');
+      rmSync(dist,{recursive:true,force:true}); mkdirSync(dist);
+      writeFileSync(path.join(dist,'index.html'),'<link rel="manifest" href="./proelite.webmanifest">');
+      for (const name of ['r.html','customer-report.html']) writeFileSync(path.join(dist,name),'viewer'+build);
+      execFileSync(process.execPath,[path.resolve('scripts/archive-pages.mjs')],{cwd,env:{...process.env,ARCHIVE_DIR:archive,GIT_DIR:git,GITHUB_RUN_NUMBER:build}});
+    }
+    const read=name=>readFileSync(path.join(cwd,'dist',name),'utf8');
+    assert.equal(read('index.html'),launcher);
+    assert.equal(JSON.parse(read('release-index.json')).latest,'v1.0.2');
+    for (const release of ['v1.0.1','v1.0.2']) {
+      assert.match(read('versions/'+release+'/index.html'),/href="\.\.\/\.\.\/proelite.webmanifest"/);
+      assert.equal(read('versions/'+release+'/r.html'),'viewer2');
+    }
+    assert.ok(existsSync(path.join(archive,'versions/v1.0.1/index.html')));
+  } finally { rmSync(cwd,{recursive:true,force:true}); }
+});

@@ -1,0 +1,69 @@
+name: Build private ProElite packages
+on:
+  push:
+    branches: [main]
+    paths: ['native/**', 'public/product-icons/**', '.github/workflows/native-packages.yml']
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: 'Stage candidates in private storage (requires configured signing and upload secrets)'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build per-user MSI
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP wix.zip
+          Invoke-WebRequest https://api.nuget.org/v3-flatcontainer/wix/3.14.1/wix.3.14.1.nupkg -OutFile $zip
+          if ((Get-FileHash $zip).Hash -ne '15D50463C73DCE31FBEA5440AC33AF47E92D54D4188166D207E9E39577B8FE0F') { throw 'WiX checksum mismatch' }
+          $dir = Join-Path $env:RUNNER_TEMP wix
+          Expand-Archive $zip $dir
+          ./native/windows/build.ps1 -WixBin "$dir/tools" -BuildNumber ${{ github.run_number }}
+      - name: Verify install and uninstall on the disposable runner
+        shell: pwsh
+        run: |
+          $msi = (Resolve-Path build/native/windows/ProElite-Inspection.msi).Path
+          $install = Start-Process msiexec -ArgumentList "/i `"$msi`" /qn /norestart" -Wait -PassThru
+          if ($install.ExitCode -ne 0 -or !(Test-Path "$env:LOCALAPPDATA/ProElite Inspection/ProElite.exe")) { throw 'Install failed' }
+          $remove = Start-Process msiexec -ArgumentList "/x `"$msi`" /qn /norestart" -Wait -PassThru
+          if ($remove.ExitCode -ne 0 -or (Test-Path "$env:LOCALAPPDATA/ProElite Inspection/ProElite.exe")) { throw 'Uninstall failed' }
+      - name: Stage unsigned MSI for operator signing
+        if: inputs.stage && github.ref == 'refs/heads/main'
+        env:
+          PROELITE_UPLOAD_URL: ${{ secrets.PROELITE_WINDOWS_CANDIDATE_UPLOAD_URL }}
+        run: node native/stage.mjs windows build/native/windows/ProElite-Inspection.msi
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Prepare Android SDK
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Build and verify test APK
+        shell: pwsh
+        run: ./native/android/build.ps1 -BuildNumber ${{ github.run_number }}
+      - name: Build release-signed APK and stage privately
+        if: inputs.stage && github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          PROELITE_KEYSTORE_BASE64: ${{ secrets.PROELITE_KEYSTORE_BASE64 }}
+          PROELITE_KEY_ALIAS: ${{ secrets.PROELITE_KEY_ALIAS }}
+          PROELITE_KEY_PASSWORD: ${{ secrets.PROELITE_KEY_PASSWORD }}
+          PROELITE_STORE_PASSWORD: ${{ secrets.PROELITE_STORE_PASSWORD }}
+          PROELITE_UPLOAD_URL: ${{ secrets.PROELITE_ANDROID_CANDIDATE_UPLOAD_URL }}
+        run: |
+          $env:PROELITE_KEYSTORE = Join-Path $env:RUNNER_TEMP release.keystore
+          [IO.File]::WriteAllBytes($env:PROELITE_KEYSTORE,[Convert]::FromBase64String($env:PROELITE_KEYSTORE_BASE64))
+          try {
+            ./native/android/build.ps1 -BuildNumber ${{ github.run_number }} -Release
+            node native/stage.mjs android build/native/android/ProElite-Inspection.apk
+          } finally { Remove-Item -LiteralPath $env:PROELITE_KEYSTORE -ErrorAction SilentlyContinue }
